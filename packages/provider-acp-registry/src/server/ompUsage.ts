@@ -20,6 +20,7 @@ const OmpUsageLimit = Schema.Struct({
   id: Schema.NonEmptyString,
   label: Schema.NonEmptyString,
   window: Schema.optional(OmpUsageWindow),
+  scope: Schema.optional(Schema.Struct({ sharedGroup: Schema.optional(Schema.String) })),
   amount: Schema.Struct({
     usedFraction: Schema.optional(Schema.Number),
     used: Schema.optional(Schema.Number),
@@ -127,9 +128,17 @@ export function ompUsageToAccounts(
     const report = decodeReport(rawReport);
     if (Option.isNone(report)) return [];
     const { provider, metadata } = report.value;
+    // One shared allowance (e.g. Antigravity's "Claude & GPT") is reported once per model family.
+    const sharedGroups = new Set<string>();
     const windows = report.value.limits.flatMap((rawLimit) => {
       const limit = decodeLimit(rawLimit);
-      const window = Option.isSome(limit) ? toWindow(limit.value) : undefined;
+      if (Option.isNone(limit)) return [];
+      const group = limit.value.scope?.sharedGroup;
+      if (group !== undefined) {
+        if (sharedGroups.has(group)) return [];
+        sharedGroups.add(group);
+      }
+      const window = toWindow(limit.value);
       return window ? [window] : [];
     });
     const email = metadataText(metadata, "email");

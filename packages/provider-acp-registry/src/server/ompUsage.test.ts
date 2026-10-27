@@ -143,4 +143,33 @@ describe("ompUsageToAccounts", () => {
     expect(ompUsageToAccounts({ reports: "nope" }, fallback, now)).toEqual([]);
     expect(ompUsageToAccounts(null, fallback, now)).toEqual([]);
   });
+
+  it("reports a shared allowance once even when listed per model family", () => {
+    const shared = (id: string) => ({
+      id,
+      label: "Claude & GPT (shared)",
+      scope: {
+        provider: "google-antigravity",
+        windowId: "weekly",
+        sharedGroup: "3p-weekly:weekly",
+      },
+      window: { id: "weekly", label: "Weekly" },
+      amount: percent(0.25),
+    });
+    const [account] = ompUsageToAccounts(
+      {
+        reports: [
+          {
+            provider: "google-antigravity",
+            limits: [shared("anthropic:3p-weekly"), shared("openai:3p-weekly")],
+          },
+        ],
+      },
+      fallback,
+      now,
+    );
+    expect(account?.usageLimits.windows.map((window) => [window.id, window.usedPercent])).toEqual([
+      ["anthropic:3p-weekly", 25],
+    ]);
+  });
 });

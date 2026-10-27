@@ -584,6 +584,7 @@ export const AcpRegistryDriver: ProviderDriver<
     });
     // Readiness snapshots replace the published one before enrichment lands; keep the last read.
     const lastUsageAccounts = yield* Ref.make<ServerProvider["usageLimitAccounts"]>(undefined);
+    const usageSessionId = yield* Ref.make<string | undefined>(undefined);
     const checkProvider = checkAcpRegistryProviderReadiness(readinessInput).pipe(
       Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
       Effect.flatMap(withLiveRuntimeState),
@@ -630,17 +631,20 @@ export const AcpRegistryDriver: ProviderDriver<
       ) {
         return provider;
       }
+      const previousSessionId = yield* Ref.get(usageSessionId);
       const fetched = yield* readAcpRegistryUsageAccounts({
         instanceId,
         settings: effectiveConfig,
         cwd: host.paths.cwd,
         environment: processEnvironment,
+        ...(previousSessionId === undefined ? {} : { usageSessionId: previousSessionId }),
       }).pipe(
         Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(Crypto.Crypto, crypto),
       );
-      const usageLimitAccounts = fetched ?? (yield* Ref.get(lastUsageAccounts));
+      if (fetched !== undefined) yield* Ref.set(usageSessionId, fetched.sessionId);
+      const usageLimitAccounts = fetched?.accounts ?? (yield* Ref.get(lastUsageAccounts));
       if (usageLimitAccounts === undefined) return provider;
       yield* Ref.set(lastUsageAccounts, usageLimitAccounts);
       return { ...provider, usageLimitAccounts };
