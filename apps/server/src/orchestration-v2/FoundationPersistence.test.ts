@@ -490,6 +490,73 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
     ),
   );
 
+  it.effect("finds live app threads bound to native provider sessions", () =>
+    Effect.gen(function* () {
+      const sink = yield* EventSink.EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const bound = makeThread(ThreadId.make("thread:native-lookup:bound"), now);
+      const unbound = makeThread(ThreadId.make("thread:native-lookup:other"), now);
+      const providerThread = (
+        threadId: ThreadId,
+        nativeId: string,
+        instance = providerInstanceId,
+      ) => ({
+        id: ProviderThreadId.make(`provider-thread:${threadId}`),
+        driver: providerDriver,
+        providerInstanceId: instance,
+        providerSessionId: null,
+        appThreadId: threadId,
+        ownerNodeId: null,
+        nativeThreadRef: { driver: providerDriver, nativeId, strength: "strong" as const },
+        nativeConversationHeadRef: null,
+        status: "idle" as const,
+        firstRunOrdinal: 1,
+        lastRunOrdinal: 1,
+        handoffIds: [],
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      yield* sink.write({
+        events: [
+          threadCreatedEvent({ id: "event:native-lookup:bound", thread: bound, now }),
+          threadCreatedEvent({ id: "event:native-lookup:other", thread: unbound, now }),
+          {
+            id: EventId.make("event:native-lookup:bound-provider"),
+            type: "provider-thread.updated",
+            threadId: bound.id,
+            driver: providerDriver,
+            providerInstanceId,
+            occurredAt: now,
+            payload: providerThread(bound.id, "native-session-a"),
+          },
+          {
+            id: EventId.make("event:native-lookup:other-provider"),
+            type: "provider-thread.updated",
+            threadId: unbound.id,
+            driver: providerDriver,
+            providerInstanceId: ProviderInstanceId.make("codex-other"),
+            occurredAt: now,
+            payload: providerThread(
+              unbound.id,
+              "native-session-b",
+              ProviderInstanceId.make("codex-other"),
+            ),
+          },
+        ],
+      });
+      assert.deepEqual(
+        yield* projections.findThreadIdsByNativeThread({
+          driver: providerDriver,
+          providerInstanceId,
+          nativeIds: ["native-session-a", "native-session-b", "native-session-missing"],
+        }),
+        [{ nativeId: "native-session-a", threadId: bound.id }],
+      );
+    }),
+  );
+
   it.effect.each(["high-water", "replay"] as const)(
     "bounds live events while the V2 %s query is blocked",
     (phase) =>

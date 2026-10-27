@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { toastManager } from "../ui/toast";
 import { usageLimitsBannerItem } from "./ComposerUsageLimits";
+import { isPinnableAccount, modelUpstreamProvider } from "./sessionPin";
 
 /** Keep opened data live. Retain hidden panels during reconnect; clear when quota-spending work resumes. */
 export function useUsageLimitsPanel(input: {
@@ -19,6 +20,10 @@ export function useUsageLimitsPanel(input: {
   readonly providerDriver: ServerProvider["driver"] | null;
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
+  /** Current model slug (`<upstream>/<model>`); selects which hub accounts are pinnable. */
+  readonly modelSlug: string | null;
+  readonly pinDisabled: boolean;
+  readonly sendPinCommand: (commandText: string) => void;
 }) {
   const {
     environmentId,
@@ -28,38 +33,77 @@ export function useUsageLimitsPanel(input: {
     providerDriver,
     providers,
     sources,
+    modelSlug,
+    pinDisabled,
+    sendPinCommand,
   } = input;
+  const upstream = modelUpstreamProvider(modelSlug);
   const [panel, setPanel] = useState<{
     readonly key: string;
     readonly threadKey: string;
     readonly now: number;
+    readonly pinnableOnly: boolean;
   } | null>(null);
   if (panel !== null && panelKey !== null && panel.key !== panelKey) {
     setPanel(null);
   }
-  const report =
+  const fullReport =
     panel !== null && panelKey !== null && panel.key === panelKey && providerInstanceId !== null
       ? collectProviderUsageLimits(providerInstanceId, providers, sources, panel.now)
       : null;
+  const pinnableAccounts = fullReport?.accounts.filter((account) =>
+    isPinnableAccount(account, upstream),
+  );
+  const report =
+    fullReport !== null && panel?.pinnableOnly && pinnableAccounts && pinnableAccounts.length > 0
+      ? { ...fullReport, accounts: pinnableAccounts }
+      : fullReport;
   const banner =
     report !== null && panel !== null
       ? // A fresh id per opening: the stack keeps the last dismissed id as "exiting".
-        usageLimitsBannerItem(`usage-limits:${panel.key}:${panel.now}`, report, environmentId, () =>
-          setPanel(null),
+        usageLimitsBannerItem(
+          `usage-limits:${panel.key}:${panel.now}`,
+          report,
+          environmentId,
+          () => setPanel(null),
+          {
+            upstream,
+            disabled: pinDisabled,
+            onPin: (commandText) => {
+              setPanel(null);
+              sendPinCommand(commandText);
+            },
+          },
         )
       : null;
   // Intercept /usage-limits only when Limits has selected-provider data.
   const offered =
-    providerDriver !== null && hasProviderUsageLimits(providerDriver, providers, sources);
+    providerDriver !== null &&
+    providerInstanceId !== null &&
+    hasProviderUsageLimits(
+      { driver: providerDriver, instanceId: providerInstanceId },
+      providers,
+      sources,
+    );
 
-  const open = useStableCallback(() => {
+  // Bare `/session pin` is intercepted only when this provider reports pinnable hub accounts.
+  const sessionPinOffered =
+    offered &&
+    upstream !== null &&
+    providers.some(
+      (provider) =>
+        provider.instanceId === providerInstanceId &&
+        provider.usageLimitAccounts?.some((account) => account.nativeProvider === upstream),
+    );
+
+  const open = useStableCallback((options?: { readonly pinnableOnly?: boolean }) => {
     const now = Date.now();
     const nextReport =
       providerInstanceId !== null && panelKey !== null
         ? collectProviderUsageLimits(providerInstanceId, providers, sources, now)
         : null;
     if (nextReport && panelKey !== null) {
-      setPanel({ key: panelKey, threadKey, now });
+      setPanel({ key: panelKey, threadKey, now, pinnableOnly: options?.pinnableOnly === true });
       return true;
     }
     setPanel(null);
@@ -73,5 +117,5 @@ export function useUsageLimitsPanel(input: {
     ),
   );
 
-  return { banner, offered, open, clearFor };
+  return { banner, offered, sessionPinOffered, open, clearFor };
 }

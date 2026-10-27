@@ -6,6 +6,7 @@ import {
   type ServerProviderSlashCommand,
   isProviderAvailable,
   type ServerProvider,
+  type ServerProviderUsageAccount,
   type ServerProviderUsageLimits,
   type ServerProviderUsageWindow,
   type UsageLimitSourceSnapshots,
@@ -63,9 +64,18 @@ function providersWithLimits(providers: readonly ServerProvider[]): readonly Ser
       provider.enabled &&
       provider.installed &&
       isProviderAvailable(provider) &&
-      provider.usageLimits !== undefined,
+      (provider.usageLimits !== undefined || (provider.usageLimitAccounts?.length ?? 0) > 0),
   );
 }
+
+const hubAccountReport = (account: ServerProviderUsageAccount): AccountReport => ({
+  driver: account.driver,
+  email: account.email,
+  usageLimits: account.usageLimits,
+});
+
+const hubAccountLabel = (account: ServerProviderUsageAccount): string =>
+  `${account.nativeProviderLabel ?? account.nativeProvider} · ${account.email ?? account.nativeAccountId ?? account.id}`;
 
 export type LimitPresentations = ReadonlyMap<
   EnvironmentId,
@@ -225,9 +235,11 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
   };
   const resolveKey = accountKeyResolver(
     [...presentations.values()].flatMap((presentation) => [
-      ...(presentation.serverConfig?.providers ?? [])
-        .filter((provider) => provider.enabled)
-        .map(nativeReport),
+      ...(presentation.serverConfig?.providers ?? []).flatMap((provider) =>
+        provider.enabled
+          ? [nativeReport(provider), ...(provider.usageLimitAccounts ?? []).map(hubAccountReport)]
+          : [],
+      ),
       ...(presentation.serverConfig?.usageLimitSources ?? []).flatMap((source) => source.accounts),
     ]),
   );
@@ -250,6 +262,30 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
     }
   }
   const labelEnvironment = presentations.size > 1;
+  for (const [environmentId, presentation] of presentations) {
+    for (const provider of providersWithLimits(presentation.serverConfig?.providers ?? [])) {
+      const providerName = provider.displayName?.trim() || provider.instanceId;
+      const sourceLabel = labelEnvironment
+        ? `${presentation.entry.target.label} · ${providerName}`
+        : providerName;
+      for (const account of provider.usageLimitAccounts ?? []) {
+        if (limitsNotice(account.usageLimits) !== null) continue;
+        const key = `${environmentId}:${provider.instanceId}:${account.id}`;
+        merge(resolveKey(hubAccountReport(account)) ?? key, {
+          key,
+          driver: account.driver,
+          displayName: account.email ? null : hubAccountLabel(account),
+          email: account.email,
+          plan: account.plan,
+          accentColor: undefined,
+          environments: [],
+          sourceLabel,
+          redeem: null,
+          limits: account.usageLimits,
+        });
+      }
+    }
+  }
   for (const [environmentId, presentation] of presentations) {
     for (const source of presentation.serverConfig?.usageLimitSources ?? []) {
       const sourceLabel = labelEnvironment
@@ -296,6 +332,14 @@ export function collectLimitNotices(presentations: LimitPresentations): readonly
       const notice = provider.usageLimits ? limitsNotice(provider.usageLimits) : null;
       const name = provider.displayName?.trim() || String(provider.driver);
       if (notice) notices.push(`${label(environmentLabel, name)}: ${notice}`);
+      for (const account of provider.usageLimitAccounts ?? []) {
+        const accountNotice = limitsNotice(account.usageLimits);
+        if (accountNotice) {
+          notices.push(
+            `${label(environmentLabel, name)} · ${hubAccountLabel(account)}: ${accountNotice}`,
+          );
+        }
+      }
     }
     for (const source of presentation.serverConfig?.usageLimitSources ?? []) {
       if (source.error) {
@@ -589,15 +633,23 @@ export function isUsageLimitsCommand(prompt: string): boolean {
 }
 
 export function hasProviderUsageLimits(
-  driver: ServerProvider["driver"],
+  provider: Pick<ServerProvider, "driver" | "instanceId">,
   providers: readonly ServerProvider[],
   sources: UsageLimitSourceSnapshots,
 ): boolean {
+  const limited = providersWithLimits(providers);
   return (
-    providersWithLimits(providers).some((provider) => provider.driver === driver) ||
+    limited.some(
+      (candidate) =>
+        candidate.driver === provider.driver &&
+        (candidate.usageLimits !== undefined || candidate.instanceId === provider.instanceId),
+    ) ||
+    limited.some((candidate) =>
+      candidate.usageLimitAccounts?.some((account) => account.driver === provider.driver),
+    ) ||
     sources.some(
       (source) =>
-        source.accounts.some((account) => account.driver === driver) ||
+        source.accounts.some((account) => account.driver === provider.driver) ||
         (source.error !== undefined && source.accounts.length === 0),
     )
   );
@@ -626,7 +678,7 @@ export function withUsageLimitsCommands(
   sources: UsageLimitSourceSnapshots,
 ): ServerProvider[] {
   return providers.map((provider) => {
-    if (!hasProviderUsageLimits(provider.driver, providers, sources)) return provider;
+    if (!hasProviderUsageLimits(provider, providers, sources)) return provider;
     const commands = (items: readonly ServerProviderSlashCommand[]) => [
       ...items.filter((command) => command.name !== USAGE_LIMITS_COMMAND.name),
       USAGE_LIMITS_COMMAND,
@@ -653,9 +705,13 @@ export function collectProviderUsageLimits(
   now: number,
 ): UsageLimitsReport | null {
   const selected = providers.find((provider) => provider.instanceId === instanceId);
-  if (!selected || !hasProviderUsageLimits(selected.driver, providers, sources)) return null;
+  if (!selected || !hasProviderUsageLimits(selected, providers, sources)) return null;
   const resolveKey = accountKeyResolver([
-    ...providers.filter((provider) => provider.enabled).map(nativeReport),
+    ...providers.flatMap((provider) =>
+      provider.enabled
+        ? [nativeReport(provider), ...(provider.usageLimitAccounts ?? []).map(hubAccountReport)]
+        : [],
+    ),
     ...sources.flatMap((source) => source.accounts),
   ]);
   type NativeSnapshot = { provider: ServerProvider; limits: ServerProviderUsageLimits };
@@ -742,6 +798,26 @@ export function collectProviderUsageLimits(
       ...(provider.auth.email ? { email: provider.auth.email } : {}),
       limits: shownCredits ? { ...limits, resetCredits: shownCredits } : limits,
     });
+  }
+  for (const provider of providersWithLimits(providers)) {
+    const own = provider.instanceId === selected.instanceId;
+    for (const account of provider.usageLimitAccounts ?? []) {
+      if (!own && account.driver !== selected.driver) continue;
+      const key = resolveKey(hubAccountReport(account));
+      if (!own && key && nativeAccountKeys.has(key)) continue;
+      accounts.push({
+        id: `${provider.instanceId}:${account.id}`,
+        driver: account.driver,
+        label: hubAccountLabel(account),
+        sourceLabel: provider.displayName?.trim() || provider.instanceId,
+        nativeProvider: account.nativeProvider,
+        ...(account.nativeAccountId ? { nativeAccountId: account.nativeAccountId } : {}),
+        ...(account.plan ? { plan: account.plan } : {}),
+        ...(account.email ? { email: account.email } : {}),
+        instanceId: provider.instanceId,
+        limits: account.usageLimits,
+      });
+    }
   }
   for (const source of sources) {
     const matching = source.accounts.filter((account) => account.driver === selected.driver);

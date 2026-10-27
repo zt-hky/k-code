@@ -9,6 +9,13 @@ import {
   extractDevinSubagentUpdate,
 } from "./devinAcp.ts";
 import { extractDroidElicitationForm } from "./droidAcp.ts";
+import { extractOmpAskElicitationForm } from "./ompAsk.ts";
+import {
+  extractOmpPlanApprovalElicitation,
+  extractOmpProposedPlanMarkdown,
+  OMP_AGENT_ID,
+  OMP_MODE_OPTION_ID,
+} from "./ompAcp.ts";
 import {
   copilotClientCapabilitiesMeta,
   extractCopilotSubagentUpdate,
@@ -215,6 +222,14 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     promptFailure: (cause) => acpRegistryPromptFailure(registryAgentId, cause),
     ...(registryAgentId === "factory-droid"
       ? { extractElicitationForm: extractDroidElicitationForm }
+      : {}),
+    ...(registryAgentId === OMP_AGENT_ID
+      ? {
+          extractElicitationForm: extractOmpAskElicitationForm,
+          extractProposedPlanMarkdown: extractOmpProposedPlanMarkdown,
+          planApprovalElicitation: extractOmpPlanApprovalElicitation,
+          interactionModeOptionIds: [OMP_MODE_OPTION_ID],
+        }
       : {}),
     ...(registryAgentId === "mistral-vibe"
       ? { registerExtensions: registerMistralVibeAcpExtensions }

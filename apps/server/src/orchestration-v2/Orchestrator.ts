@@ -407,6 +407,12 @@ export interface OrchestratorV2Shape {
   readonly findGuestShareThreadId: (
     shareId: GuestShareId,
   ) => Effect.Effect<ThreadId | null, OrchestratorV2Error>;
+  readonly findThreadIdsByNativeThread: (
+    input: Parameters<ProjectionStoreV2["Service"]["findThreadIdsByNativeThread"]>[0],
+  ) => Effect.Effect<
+    ReadonlyArray<{ readonly nativeId: string; readonly threadId: ThreadId }>,
+    OrchestratorV2Error
+  >;
   readonly getThreadEventSequence: (
     threadId: ThreadId,
   ) => Effect.Effect<number, OrchestratorV2Error>;
@@ -13369,6 +13375,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         .findGuestShareThreadId(shareId)
         .pipe(Effect.mapError(shellProjectionError));
     }),
+    findThreadIdsByNativeThread: Effect.fn("OrchestratorV2.findThreadIdsByNativeThread")(
+      function (input) {
+        return projectionStore
+          .findThreadIdsByNativeThread(input)
+          .pipe(Effect.mapError(shellProjectionError));
+      },
+    ),
     getThreadEventSequence: Effect.fn("OrchestratorV2.getThreadEventSequence")(function (threadId) {
       return eventSink
         .latestSequence({ threadId })

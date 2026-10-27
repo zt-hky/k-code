@@ -12,11 +12,6 @@ import type {
   ProviderInstanceId,
   ServerProvider,
 } from "@t3tools/contracts";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-  type AtomCommandResult,
-} from "@t3tools/client-runtime/state/runtime";
 import { useState } from "react";
 
 import { ensureLocalApi } from "../../localApi";
@@ -26,22 +21,13 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { toastManager } from "../ui/toast";
+import { reportAcpFailure, useAcpNativeSessionCommands } from "../../hooks/useAcpNativeSessions";
 import { SettingsRow } from "./settingsLayout";
 
 interface AcpSessionProject {
   readonly id: ProjectId;
   readonly title: string;
   readonly workspaceRoot: string;
-}
-
-function reportFailure(title: string, result: AtomCommandResult<unknown, unknown>) {
-  if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
-  const error = squashAtomCommandFailure(result);
-  toastManager.add({
-    type: "error",
-    title,
-    description: error instanceof Error ? error.message : "The ACP operation failed.",
-  });
 }
 
 function parseProviderHeaders(
@@ -92,12 +78,7 @@ export function AcpSessionManagementSection(props: {
   const [providerDrafts, setProviderDrafts] = useState<
     Readonly<Record<string, { apiType: string; baseUrl: string; headers: string }>>
   >({});
-  const listSessions = useAtomCommand(serverEnvironment.listAcpRegistrySessions, {
-    reportFailure: false,
-  });
-  const importSession = useAtomCommand(serverEnvironment.importAcpRegistrySession, {
-    reportFailure: false,
-  });
+  const { listSessions, importSession } = useAcpNativeSessionCommands(props.environmentId);
   const deleteSession = useAtomCommand(serverEnvironment.deleteAcpRegistrySession, {
     reportFailure: false,
   });
@@ -132,12 +113,9 @@ export function AcpSessionManagementSection(props: {
     if (projectId === null || loading) return;
     setLoading(true);
     const result = await listSessions({
-      environmentId: props.environmentId,
-      input: {
-        instanceId: props.instanceId,
-        projectId,
-        ...(cursor === undefined ? {} : { cursor }),
-      },
+      instanceId: props.instanceId,
+      projectId,
+      ...(cursor === undefined ? {} : { cursor }),
     });
     setLoading(false);
     if (result._tag === "Success") {
@@ -147,7 +125,7 @@ export function AcpSessionManagementSection(props: {
       setNextCursor(result.value.nextCursor);
       return;
     }
-    reportFailure("Could not list ACP sessions", result);
+    reportAcpFailure("Could not list ACP sessions", result);
   };
 
   const importNativeSession = async (session: AcpRegistrySession) => {
@@ -159,14 +137,11 @@ export function AcpSessionManagementSection(props: {
       return;
     setImportingSessionId(session.sessionId);
     const result = await importSession({
-      environmentId: props.environmentId,
-      input: {
-        instanceId: props.instanceId,
-        projectId,
-        sessionId: session.sessionId,
-        title: session.title,
-        updatedAt: session.updatedAt,
-      },
+      instanceId: props.instanceId,
+      projectId,
+      sessionId: session.sessionId,
+      title: session.title,
+      updatedAt: session.updatedAt,
     });
     setImportingSessionId(null);
     if (result._tag === "Success") {
@@ -183,7 +158,7 @@ export function AcpSessionManagementSection(props: {
       });
       return;
     }
-    reportFailure("Could not import ACP session", result);
+    reportAcpFailure("Could not import ACP session", result);
   };
 
   const deleteNativeSession = async (session: AcpRegistrySession) => {
@@ -208,7 +183,7 @@ export function AcpSessionManagementSection(props: {
       toastManager.add({ type: "success", title: "ACP session deleted" });
       return;
     }
-    reportFailure("Could not delete ACP session", result);
+    reportAcpFailure("Could not delete ACP session", result);
   };
 
   const loadProviders = async () => {
@@ -235,7 +210,7 @@ export function AcpSessionManagementSection(props: {
       );
       return;
     }
-    reportFailure("Could not list ACP providers", result);
+    reportAcpFailure("Could not list ACP providers", result);
   };
 
   const saveProvider = async (provider: AcpRegistryConfigurableProvider) => {
@@ -275,7 +250,7 @@ export function AcpSessionManagementSection(props: {
       await loadProviders();
       return;
     }
-    reportFailure("Could not configure ACP provider", result);
+    reportAcpFailure("Could not configure ACP provider", result);
   };
 
   const disableConfiguredProvider = async (provider: AcpRegistryConfigurableProvider) => {
@@ -296,7 +271,7 @@ export function AcpSessionManagementSection(props: {
       await loadProviders();
       return;
     }
-    reportFailure("Could not disable ACP provider", result);
+    reportAcpFailure("Could not disable ACP provider", result);
   };
 
   const logoutProvider = async () => {
@@ -313,7 +288,7 @@ export function AcpSessionManagementSection(props: {
       toastManager.add({ type: "success", title: "Logged out of ACP agent" });
       return;
     }
-    reportFailure("Could not log out of ACP agent", result);
+    reportAcpFailure("Could not log out of ACP agent", result);
   };
 
   return (

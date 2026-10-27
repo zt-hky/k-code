@@ -49,6 +49,19 @@ export const ServerProviderUsageLimits = Schema.Struct({
 });
 export type ServerProviderUsageLimits = typeof ServerProviderUsageLimits.Type;
 
+/** One upstream account surfaced by a hub provider (e.g. an agent multiplexing several logins). */
+export const ServerProviderUsageAccount = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  driver: ProviderDriverKind,
+  nativeProvider: TrimmedNonEmptyString,
+  nativeProviderLabel: Schema.optional(TrimmedNonEmptyString),
+  nativeAccountId: Schema.optional(TrimmedNonEmptyString),
+  email: Schema.optional(TrimmedNonEmptyString),
+  plan: Schema.optional(TrimmedNonEmptyString),
+  usageLimits: ServerProviderUsageLimits,
+});
+export type ServerProviderUsageAccount = typeof ServerProviderUsageAccount.Type;
+
 /** Partial updates merge windows by id; omitted windows remain unchanged. */
 export const ProviderUsageLimitsUpdate = Schema.Struct({
   windows: Schema.Array(ServerProviderUsageWindow),
@@ -124,6 +137,8 @@ export const UsageLimitsReport = Schema.Struct({
       label: TrimmedNonEmptyString,
       plan: Schema.optional(TrimmedNonEmptyString),
       email: Schema.optional(TrimmedNonEmptyString),
+      nativeProvider: Schema.optional(TrimmedNonEmptyString),
+      nativeAccountId: Schema.optional(TrimmedNonEmptyString),
       sourceLabel: Schema.optional(TrimmedNonEmptyString),
       instanceId: Schema.optional(ProviderInstanceId),
       resetCreditInput: Schema.optional(ProviderConsumeResetCreditInput),

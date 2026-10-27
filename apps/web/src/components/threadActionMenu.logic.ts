@@ -5,6 +5,7 @@ export type ThreadActionMenuId =
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"
+  | "resume-session"
   | "pin"
   | "unpin"
   | "settle"
@@ -32,12 +33,14 @@ export type DraftActionMenuId =
   | "copy-path"
   | "copy-branch"
   | "project-settings"
+  | "resume-session"
   | "discard";
 
 export function buildDraftActionMenuItems(options: {
   readonly hasPath: boolean;
   readonly hasBranch: boolean;
   readonly hasProject: boolean;
+  readonly canResumeSession?: boolean;
 }): ReadonlyArray<ContextMenuItem<DraftActionMenuId>> {
   return [
     {
@@ -54,6 +57,9 @@ export function buildDraftActionMenuItems(options: {
     },
     ...(options.hasProject
       ? [{ id: "project-settings" as const, label: "Project settings", icon: "settings" }]
+      : []),
+    ...(options.hasProject && options.canResumeSession
+      ? [{ id: "resume-session" as const, label: "Resume session…", icon: "history" }]
       : []),
     {
       id: "discard",
@@ -90,6 +96,7 @@ export interface ThreadActionMenuState {
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
   /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
   readonly canShareWithGuest?: boolean;
+  readonly canResumeSession?: boolean;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -97,6 +104,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
   return ![
     "new-thread-on-branch",
     "project-settings",
+    "resume-session",
     "mark-unread",
     "share-guest",
     "copy",
@@ -219,6 +227,9 @@ export function buildThreadActionMenuItems(
       ],
     },
     { id: "project-settings", label: "Project settings", icon: "settings" },
+    ...(state.canResumeSession
+      ? [{ id: "resume-session" as const, label: "Resume session…", icon: "history" }]
+      : []),
     {
       id: "archive",
       label: "Archive thread",

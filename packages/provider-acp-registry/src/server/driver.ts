@@ -19,10 +19,12 @@ import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Path from "effect/Path";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { AcpRegistryAdapterV2Driver, type AcpRegistryAdapterV2DriverEnv } from "./adapter.ts";
+import { OMP_AGENT_ID, OMP_MODE_OPTION_ID } from "./ompAcp.ts";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
@@ -51,7 +53,9 @@ import {
   logoutAcpRegistry,
   probeAcpRegistryConfiguration,
   setAcpRegistryProvider,
+  readAcpRegistryUsageAccounts,
 } from "./probe.ts";
+import { acpRegistryUsageReader } from "./usage.ts";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.ts";
 import * as AcpRegistryAuth from "./auth.ts";
@@ -84,17 +88,26 @@ const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
   };
 };
 
+const registryAgentId = (settings: AcpRegistrySettings) =>
+  settings.source === "local" ? undefined : settings.agentId;
+
 function modelsFromDiscovery(
   discovery:
     | Pick<AcpRegistryLiveConfiguration, "models" | "currentModelId" | "configOptions">
     | undefined,
   customModels: ReadonlyArray<string>,
+  agentId?: string,
 ): ReadonlyArray<ServerProviderModel> {
   const discovered = discovery?.models ?? [];
+  // T3's Build/Plan toggle owns omp's native plan mode.
+  const optionDescriptors =
+    agentId === OMP_AGENT_ID
+      ? discovery?.configOptions.filter((option) => option.id !== OMP_MODE_OPTION_ID)
+      : discovery?.configOptions;
   const capabilities =
-    discovery === undefined || discovery.configOptions.length === 0
+    optionDescriptors === undefined || optionDescriptors.length === 0
       ? EMPTY_CAPABILITIES
-      : createModelCapabilities({ optionDescriptors: discovery.configOptions });
+      : createModelCapabilities({ optionDescriptors });
   const builtInModels: ReadonlyArray<ServerProviderModel> =
     discovered.length === 0
       ? [
@@ -199,6 +212,7 @@ function baseSnapshot(
       ? null
       : (resolveOfficialAcpRegistryIconUrl(input.probe?.probe.icon) ??
         officialAcpRegistryIconUrlForAgentId(input.settings.agentId));
+  const agentId = registryAgentId(input.settings);
   return {
     instanceId: input.instanceId,
     driver: DRIVER_KIND,
@@ -225,7 +239,8 @@ function baseSnapshot(
             : input.settings.agentId.length > 0),
     },
     ...(input.message ? { message: input.message } : {}),
-    models: modelsFromDiscovery(input.probe?.probe, input.settings.customModels),
+    ...(agentId === OMP_AGENT_ID ? { showInteractionModeToggle: true } : {}),
+    models: modelsFromDiscovery(input.probe?.probe, input.settings.customModels, agentId),
     ...(input.probe === undefined
       ? {}
       : {
@@ -256,12 +271,13 @@ export function applyAcpRegistryLiveConfiguration(
   provider: ServerProvider,
   configuration: AcpRegistryLiveConfiguration,
   customModels: ReadonlyArray<string>,
+  agentId?: string,
 ): ServerProvider {
   const { message: _staleProbeMessage, ...snapshot } = provider;
   return {
     ...snapshot,
     status: provider.enabled ? "ready" : provider.status,
-    models: modelsFromDiscovery(configuration, customModels),
+    models: modelsFromDiscovery(configuration, customModels, agentId),
   };
 }
 
@@ -447,13 +463,18 @@ export const checkAcpRegistryProviderReadiness = Effect.fn(
 
 export type AcpRegistryDriverEnv = AcpRegistryAdapterV2DriverEnv | ProviderHost.ProviderHost;
 
-export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryDriverEnv> = {
+export const AcpRegistryDriver: ProviderDriver<
+  AcpRegistrySettings,
+  AcpRegistryDriverEnv,
+  Path.Path
+> = {
   driverKind: DRIVER_KIND,
   metadata: {
     displayName: "ACP Registry",
     supportsMultipleInstances: true,
     hasDefaultInstance: false,
   },
+  usage: acpRegistryUsageReader,
   configSchema: AcpRegistrySettings,
   defaultConfig: () => decodeSettings({}),
   create: Effect.fn("AcpRegistryDriver.create")(function* ({
@@ -554,15 +575,27 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
                     withCommands,
                     liveConfiguration,
                     effectiveConfig.customModels,
+                    registryAgentId(effectiveConfig),
                   ),
               });
               return applyAcpRegistryUrlAuthAction(withConfiguration, authAction);
             }),
           );
     });
+    // Readiness snapshots replace the published one before enrichment lands; keep the last read.
+    const lastUsageAccounts = yield* Ref.make<ServerProvider["usageLimitAccounts"]>(undefined);
     const checkProvider = checkAcpRegistryProviderReadiness(readinessInput).pipe(
       Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
       Effect.flatMap(withLiveRuntimeState),
+      Effect.flatMap((provider) =>
+        Ref.get(lastUsageAccounts).pipe(
+          Effect.map((usageLimitAccounts) =>
+            usageLimitAccounts === undefined || !provider.enabled || !provider.installed
+              ? provider
+              : { ...provider, usageLimitAccounts },
+          ),
+        ),
+      ),
     );
     const enrichProvider = checkAcpRegistryProviderStatus(
       {
@@ -587,6 +620,31 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
       generation: current.generation + 1,
       entry: null,
     }));
+    const withUsageAccounts = Effect.fn("AcpRegistryDriver.withUsageAccounts")(function* (
+      provider: ServerProvider,
+    ) {
+      if (
+        registryAgentId(effectiveConfig) !== OMP_AGENT_ID ||
+        !provider.enabled ||
+        !provider.installed
+      ) {
+        return provider;
+      }
+      const fetched = yield* readAcpRegistryUsageAccounts({
+        instanceId,
+        settings: effectiveConfig,
+        cwd: host.paths.cwd,
+        environment: processEnvironment,
+      }).pipe(
+        Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.provideService(Crypto.Crypto, crypto),
+      );
+      const usageLimitAccounts = fetched ?? (yield* Ref.get(lastUsageAccounts));
+      if (usageLimitAccounts === undefined) return provider;
+      yield* Ref.set(lastUsageAccounts, usageLimitAccounts);
+      return { ...provider, usageLimitAccounts };
+    });
     const enrichProviderCached = Effect.fn("AcpRegistryDriver.enrichProviderCached")(function* (
       baseSnapshot: ServerProvider,
     ) {
@@ -598,12 +656,14 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
         cached.expiresAt > now &&
         cached.provider.version === baseSnapshot.version
       ) {
-        return {
-          provider: { ...cached.provider, checkedAt: baseSnapshot.checkedAt },
-          generation: cacheState.generation,
-        };
+        // Usage limits move faster than the probe cache, so re-read them on every refresh.
+        const refreshed = yield* withUsageAccounts({
+          ...cached.provider,
+          checkedAt: baseSnapshot.checkedAt,
+        });
+        return { provider: refreshed, generation: cacheState.generation };
       }
-      const enriched = yield* enrichProvider;
+      const enriched = yield* withUsageAccounts(yield* enrichProvider);
       if (enriched.status === "ready") {
         yield* Ref.update(enrichmentCache, (current) =>
           current.generation === cacheState.generation
@@ -689,6 +749,7 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
                       current,
                       configuration,
                       effectiveConfig.customModels,
+                      registryAgentId(effectiveConfig),
                     ),
                   ),
                 ),

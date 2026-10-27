@@ -3,6 +3,7 @@ import {
   AcpRegistryOperationError,
   AcpRegistryListSessionsResult,
   AcpRegistryProbeResult,
+  ProviderDriverKind,
   type AcpRegistryProbeAuthMethod,
   type AcpRegistryProbeModel,
   type AcpRegistryUrlAuthAction,
@@ -25,6 +26,8 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
+import { ompUsageToAccounts, OMP_USAGE_METHOD } from "./ompUsage.ts";
+import * as DateTime from "effect/DateTime";
 import {
   findModelConfigOption,
   parseSessionModeState,
@@ -712,6 +715,27 @@ export const listAcpRegistryProviders = Effect.fn("AcpRegistryProbe.listProvider
           ),
       }),
       Effect.mapError((error) => managementFailure("providers_list", error)),
+    ),
+);
+
+const OMP_USAGE_TIMEOUT = Duration.seconds(30);
+
+/** Best-effort: a failed or malformed usage read yields undefined so callers keep their last good accounts. */
+export const readAcpRegistryUsageAccounts = Effect.fn("AcpRegistryProbe.readUsageAccounts")(
+  function* (input: AcpRegistryManagementInput) {
+    const runtime = yield* makeAcpRegistryManagementRuntime(input);
+    const response = yield* runtime.request(OMP_USAGE_METHOD, {});
+    const now = yield* DateTime.now;
+    return ompUsageToAccounts(response, ProviderDriverKind.make("acpRegistry"), now);
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.scoped,
+      Effect.timeoutOption(OMP_USAGE_TIMEOUT),
+      Effect.map(Option.getOrUndefined),
+      Effect.catch((error) =>
+        Effect.logWarning("could not read omp usage", { cause: error }).pipe(Effect.as(undefined)),
+      ),
     ),
 );
 

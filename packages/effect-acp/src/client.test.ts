@@ -1593,6 +1593,68 @@ it.effect("rejects malformed SDK elicitation without calling the question handle
   }).pipe(Effect.scoped),
 );
 
+// Oh My Pi 18.13.1 `askDialog` (modes/acp/acp-agent.ts): titled single-select via `oneOf`,
+// titled multi-select via `items.anyOf`, and a free-text `qN__other` companion per question.
+const ohMyPiAskForm = {
+  sessionId: "session-1",
+  mode: "form" as const,
+  message: "Answer 2 questions",
+  requestedSchema: {
+    type: "object" as const,
+    properties: {
+      q0: {
+        type: "string" as const,
+        title: "Which database?",
+        description: "Storage",
+        oneOf: [
+          { const: "SQLite", title: "SQLite", description: "Embedded" },
+          { const: "Postgres", title: "Postgres" },
+        ],
+        default: "SQLite",
+      },
+      q0__other: { type: "string" as const, title: "Other (type your own)" },
+      q1: {
+        type: "array" as const,
+        title: "Which targets?",
+        items: {
+          anyOf: [
+            { const: "web", title: "web" },
+            { const: "mobile", title: "mobile" },
+          ],
+        },
+      },
+      q1__other: { type: "string" as const, title: "Other (type your own)" },
+    },
+  },
+};
+
+it.effect("decodes Oh My Pi forms that mix titled single- and multi-select questions", () =>
+  Effect.gen(function* () {
+    const { stdio, input, output } = yield* makeInMemoryStdio();
+    const acp = yield* AcpClient.make(stdio);
+    const content = { q0: "Postgres", q1: ["web", "mobile"], q1__other: "desktop" };
+    yield* acp.handleElicitation((request) => {
+      assert.deepEqual(request, ohMyPiAskForm);
+      return Effect.succeed({ action: "accept" as const, content });
+    });
+    yield* Queue.offer(
+      input,
+      yield* encodeJsonl(jsonRpcRequest("elicitation/create", Schema.Unknown), {
+        jsonrpc: "2.0",
+        id: 75,
+        headers: [],
+        method: "elicitation/create",
+        params: ohMyPiAskForm,
+      }),
+    );
+    assert.deepEqual(yield* decodeWireResponse(yield* Queue.take(output)), {
+      jsonrpc: "2.0",
+      id: 75,
+      result: { action: "accept", content },
+    });
+  }).pipe(Effect.scoped),
+);
+
 it.effect("returns method-not-found when SDK elicitation has no question handler", () =>
   Effect.gen(function* () {
     const { stdio, input, output } = yield* makeInMemoryStdio();

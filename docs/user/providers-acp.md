@@ -93,10 +93,13 @@ running. Commands the agent names with a `$` prefix appear in T3 Code's `$` skil
 
 ## Native sessions
 
-When an agent advertises ACP session listing and import support, expand its provider card,
-choose a project, and select **List sessions**. Importing one creates a deterministic T3 thread
-backed by that native session. Importing the same agent session again returns the existing thread,
-including when another client performs the import.
+When an agent advertises ACP session listing and import support, choose **Resume session…** from a
+project's thread menu or the command palette to pick up one of the agent's earlier sessions in that
+folder, newest first. Opening a session that a T3 thread already uses switches to that thread
+instead of creating another. Adding a folder that already has sessions offers the same action in a
+toast. The provider card's **List sessions** shows the same list with import and delete controls.
+Importing creates a deterministic T3 thread backed by that native session. Importing the same agent
+session again returns the existing thread, including when another client performs the import.
 
 The thread keeps the native session's title and last-update value as provider metadata without
 overwriting a title you set in T3 Code. Agents that report ACP context usage drive the composer's

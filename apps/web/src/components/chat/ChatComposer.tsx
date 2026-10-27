@@ -308,6 +308,7 @@ export interface ChatComposerHandle {
   isModelPickerOpen: () => boolean;
   isCaretAtStart: () => boolean;
   compactContext: () => void;
+  submit: () => void;
   readSnapshot: () => {
     value: string;
     cursor: number;
@@ -2873,6 +2874,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         trigger.click();
       },
       compactContext: compactThreadContextStable,
+      submit: () => onSend(),
       isModelPickerOpen: () => isComposerModelPickerOpen,
       isCaretAtStart: () => {
         const range = composerEditorRef.current?.readSelectionRange();
@@ -2982,6 +2984,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }),
     [
       activeThread,
+      onSend,
       addComposerAttachments,
       addComposerFoldersStable,
       foldPastedText,
