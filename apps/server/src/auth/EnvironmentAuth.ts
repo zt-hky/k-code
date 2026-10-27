@@ -465,6 +465,14 @@ export class EnvironmentAuth extends Context.Service<
       },
       ServerAuthInvalidCredentialError | ServerAuthInternalError
     >;
+    /** Issues a standard browser session for an identity a trusted front door already verified. */
+    readonly createTrustedBrowserSession: (input: {
+      readonly subject: string;
+      readonly requestMetadata: AuthClientMetadata;
+    }) => Effect.Effect<
+      { readonly response: AuthBrowserSessionResult; readonly sessionToken: string },
+      ServerAuthInternalError
+    >;
     readonly exchangeBootstrapCredentialForAccessToken: (
       credential: string,
       requestedScopes: ReadonlyArray<AuthEnvironmentScope> | undefined,
@@ -890,6 +898,27 @@ export const make = Effect.gen(function* () {
       sessionToken: session.token,
     } satisfies BootstrapExchangeResult;
   });
+
+  const createTrustedBrowserSession: EnvironmentAuth["Service"]["createTrustedBrowserSession"] =
+    Effect.fn("EnvironmentAuth.createTrustedBrowserSession")(function* (input) {
+      const session = yield* sessions
+        .issue({
+          method: "browser-session-cookie",
+          subject: input.subject,
+          scopes: AuthStandardClientScopes,
+          client: input.requestMetadata,
+        })
+        .pipe(Effect.mapError((cause) => new ServerAuthAuthenticatedSessionIssueError({ cause })));
+      return {
+        response: {
+          authenticated: true,
+          ...authScopeResponse(session.scopes),
+          sessionMethod: session.method,
+          expiresAt: DateTime.toUtc(session.expiresAt),
+        } satisfies AuthBrowserSessionResult,
+        sessionToken: session.token,
+      };
+    });
 
   type ResolvedBootstrapGrant = Pick<
     PairingGrantStore.BootstrapGrant,
@@ -1368,6 +1397,7 @@ export const make = Effect.gen(function* () {
     }),
     getSessionState,
     createBrowserSession,
+    createTrustedBrowserSession,
     exchangeBootstrapCredentialForAccessToken,
     createPairingLink,
     issuePairingCredential,

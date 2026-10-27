@@ -34,6 +34,19 @@ describe("ACP Registry contracts", () => {
     ).toBeNull();
   });
 
+  it("accepts bounded inline SVG icons from local registry overlays only", () => {
+    const svg = `data:image/svg+xml;base64,${btoa("<svg xmlns='http://www.w3.org/2000/svg'/>")}`;
+    expect(resolveOfficialAcpRegistryIconUrl(svg)).toBe(svg);
+    expect(resolveOfficialAcpRegistryIconUrl("https://evil.com/x.svg")).toBeNull();
+    expect(
+      resolveOfficialAcpRegistryIconUrl(`data:text/html;base64,${btoa("<script></script>")}`),
+    ).toBeNull();
+    expect(resolveOfficialAcpRegistryIconUrl("data:image/svg+xml,<svg/>")).toBeNull();
+    expect(
+      resolveOfficialAcpRegistryIconUrl(`data:image/svg+xml;base64,${"A".repeat(700_000)}`),
+    ).toBeNull();
+  });
+
   it("decodes managed binary uninstall payloads and rejects unsafe agent IDs", () => {
     expect(decodeUninstallInput({ agentId: "  example-agent  " })).toEqual({
       agentId: "example-agent",

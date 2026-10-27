@@ -23,6 +23,7 @@ import { causeErrorTag } from "@t3tools/shared/observability";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
 import * as Cookies from "effect/http/Cookies";
@@ -31,6 +32,7 @@ import { HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
+import * as CloudflareAccess from "./CloudflareAccess.ts";
 import * as SessionStore from "./SessionStore.ts";
 import { traceAuthenticatedRelayRequest, traceRelayRequest } from "../cloud/traceRelayRequest.ts";
 import { deriveAuthClientMetadata } from "./utils.ts";
@@ -263,6 +265,7 @@ export const layer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const sessions = yield* SessionStore.SessionStore;
+    const cloudflareAccess = yield* Effect.serviceOption(CloudflareAccess.CloudflareAccess);
 
     return handlers
       .handle(
@@ -285,6 +288,26 @@ export const layer = HttpApiBuilder.group(
             ) {
               yield* appendSessionCookie(sessions.cookieName, credential.token, result.expiresAt);
               yield* appendCredentialResponseHeaders;
+            }
+            // Behind Cloudflare Access, the verified Access identity replaces pairing.
+            if (!result.authenticated && Option.isSome(cloudflareAccess)) {
+              const identity = yield* cloudflareAccess.value.identify(request);
+              if (Option.isSome(identity)) {
+                const issued = yield* serverAuth.createTrustedBrowserSession({
+                  subject: "cloudflare-access",
+                  requestMetadata: {
+                    ...deriveAuthClientMetadata({ request }),
+                    label: `Cloudflare Access (${identity.value.email})`,
+                  },
+                });
+                yield* appendSessionCookie(
+                  sessions.cookieName,
+                  issued.sessionToken,
+                  issued.response.expiresAt,
+                );
+                yield* appendCredentialResponseHeaders;
+                return { ...issued.response, auth: result.auth };
+              }
             }
             return result;
           },

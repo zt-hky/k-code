@@ -57,7 +57,8 @@ function AcpRegistryProviderIcon(props: {
             width: props.size,
             height: props.size,
             opacity: loaded ? 1 : 0,
-            tintColor: props.color,
+            // Inline overlay icons are full-color artwork; CDN icons are monochrome glyphs.
+            tintColor: iconUrl.startsWith("data:") ? undefined : props.color,
           }}
           onError={() => setImage({ iconUrl, status: "failed" })}
           onLoad={() => setImage({ iconUrl, status: "loaded" })}

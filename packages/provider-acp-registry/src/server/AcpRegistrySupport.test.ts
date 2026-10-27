@@ -949,6 +949,96 @@ describe("AcpRegistrySupport", () => {
     );
   });
 
+  it.effect("merges overlay agents behind official entries without caching them", () => {
+    const official = makeAgent({
+      binary: { "linux-x86_64": { archive: archiveUrl, cmd: "example-agent" } },
+    });
+    const overlay = {
+      ...makeAgent({ binary: { "linux-x86_64": { archive: archiveUrl, cmd: "overlay" } } }),
+      id: "overlay-agent",
+      name: "Overlay Agent",
+    } satisfies AcpRegistrySupport.AcpRegistryAgent;
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="1" fill="#ed4abf"/></svg>';
+    let registryAvailable = true;
+    return Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const cacheDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-acp-registry-overlay-",
+      });
+      const overlayDir = `${cacheDir}/overlay`;
+      const writeOverlay = (directory: string, files: Record<string, string>) =>
+        fileSystem
+          .makeDirectory(`${overlayDir}/${directory}`, { recursive: true })
+          .pipe(
+            Effect.andThen(
+              Effect.forEach(Object.entries(files), ([name, content]) =>
+                fileSystem.writeFileString(`${overlayDir}/${directory}/${name}`, content),
+              ),
+            ),
+          );
+      yield* writeOverlay("overlay-agent", {
+        "agent.json": JSON.stringify(overlay),
+        "icon.svg": svg,
+      });
+      yield* writeOverlay("shadow", {
+        "agent.json": JSON.stringify({ ...official, name: "Shadowed Agent" }),
+      });
+      yield* writeOverlay("broken", {
+        "agent.json": JSON.stringify({ ...overlay, id: "broken-agent", version: ".." }),
+      });
+      yield* writeOverlay("not-svg", {
+        "agent.json": JSON.stringify({ ...overlay, id: "not-svg", name: "Not SVG" }),
+        "icon.svg": "<html><script>alert(1)</script></html>",
+      });
+      const makeCatalog = AcpRegistrySupport.makeAcpRegistryCatalog({
+        cacheDir,
+        toolsDir: `${cacheDir}/tools`,
+        overlayDir,
+        registryUrl,
+      });
+
+      const result = yield* (yield* makeCatalog).search({ query: "" });
+      expect(result.agents.map((agent) => [agent.id, agent.name, agent.icon])).toEqual([
+        ["example-agent", "Example Agent", null],
+        ["not-svg", "Not SVG", null],
+        ["overlay-agent", "Overlay Agent", `data:image/svg+xml;base64,${btoa(svg)}`],
+      ]);
+      const cached = yield* fileSystem.readFileString(`${cacheDir}/acp-registry/registry.json`);
+      expect(JSON.parse(cached).agents.map((agent: { id: string }) => agent.id)).toEqual([
+        "example-agent",
+      ]);
+
+      // A fresh catalog reading only the cache still sees the overlay agent, and a command
+      // override launches it with the registry args without installing anything.
+      registryAvailable = false;
+      const commandPath = `${cacheDir}/omp`;
+      yield* fileSystem.writeFileString(commandPath, "#!/bin/sh\n");
+      yield* fileSystem.chmod(commandPath, 0o755);
+      const offline = yield* makeCatalog;
+      const overlaySettings = settings({ agentId: "overlay-agent", commandPath });
+      expect(yield* offline.inspect(overlaySettings)).toMatchObject({
+        status: "ready",
+        agentId: "overlay-agent",
+      });
+      const resolved = yield* offline.resolve(overlaySettings, "/workspace");
+      expect(resolved.agent?.icon).toBe(`data:image/svg+xml;base64,${btoa(svg)}`);
+      expect(resolved.spawn).toMatchObject({ command: commandPath, args: [] });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerResolver((request) =>
+          registryAvailable
+            ? Effect.succeed(
+                HttpClientResponse.fromWeb(request, new Response(makeRegistry(official))),
+              )
+            : Effect.succeed(
+                HttpClientResponse.fromWeb(request, new Response(null, { status: 503 })),
+              ),
+        ),
+      ),
+    );
+  });
+
   it.effect("filters runner recipes that the environment cannot prepare", () => {
     const runnerAgent = makeAgent({ npx: { package: "@example/acp@1.2.3" } });
     const binaryAgent = {
