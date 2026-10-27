@@ -33,6 +33,12 @@ export function loadCachedAcpRegistryIcon(iconUrl: string): Promise<Blob> {
   if (resolveOfficialAcpRegistryIconUrl(iconUrl) !== iconUrl) {
     return Promise.reject(new Error("ACP registry icon URL was not allowed."));
   }
+  if (iconUrl.startsWith("data:")) {
+    const bytes = Uint8Array.from(atob(iconUrl.slice(iconUrl.indexOf(",") + 1)), (char) =>
+      char.charCodeAt(0),
+    );
+    return Promise.resolve(new Blob([bytes], { type: "image/svg+xml" }));
+  }
   const pending = inFlightIcons.get(iconUrl);
   if (pending) return pending;
   const load = (async () => {
@@ -107,6 +113,8 @@ export function AcpRegistryAgentIcon({
 }) {
   const colorFilterId = useId();
   const iconUrl = resolveOfficialAcpRegistryIconUrl(icon);
+  // Inline overlay icons are local, full-color artwork; CDN icons are monochrome glyphs.
+  const isInlineIcon = iconUrl?.startsWith("data:") === true;
   // Render only after the load pipeline resolves, so the fallback icon does
   // not flash a broken image.
   const source = AsyncResult.getOrElse(
@@ -123,20 +131,23 @@ export function AcpRegistryAgentIcon({
     <span
       aria-hidden
       className={cn(
-        "relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground",
+        "relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg",
+        !isInlineIcon && "bg-muted text-muted-foreground",
         className,
       )}
     >
       {/* Recolor alpha because external images cannot inherit currentColor; local SVG filters work despite
        * CDN mask CORS restrictions. */}
-      <svg aria-hidden className="pointer-events-none absolute size-0" focusable="false">
-        <defs>
-          <filter id={colorFilterId} colorInterpolationFilters="sRGB">
-            <feFlood floodColor="currentColor" />
-            <feComposite in2="SourceAlpha" operator="in" />
-          </filter>
-        </defs>
-      </svg>
+      {isInlineIcon ? null : (
+        <svg aria-hidden className="pointer-events-none absolute size-0" focusable="false">
+          <defs>
+            <filter id={colorFilterId} colorInterpolationFilters="sRGB">
+              <feFlood floodColor="currentColor" />
+              <feComposite in2="SourceAlpha" operator="in" />
+            </filter>
+          </defs>
+        </svg>
+      )}
       {status !== "loaded" ? (
         <ACPRegistryIcon
           className={cn("size-4", fallbackClassName)}
@@ -150,7 +161,7 @@ export function AcpRegistryAgentIcon({
             "size-full object-contain",
             status !== "loaded" && "invisible absolute inset-0",
           )}
-          style={{ filter: `url(#${colorFilterId})` }}
+          style={isInlineIcon ? undefined : { filter: `url(#${colorFilterId})` }}
           decoding="async"
           referrerPolicy="no-referrer"
           src={source}

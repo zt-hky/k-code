@@ -12,6 +12,9 @@ const AcpRegistryAgentId = TrimmedNonEmptyString.check(
 
 const ACP_REGISTRY_CDN_HOSTNAME = "cdn.agentclientprotocol.com";
 const ACP_REGISTRY_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+// Local registry overlays inline their icon; 512 KiB of SVG base64-encodes to ~700k characters.
+export const ACP_REGISTRY_ICON_MAX_LENGTH = 700_000;
+const SVG_DATA_URL_PATTERN = /^data:image\/svg\+xml;base64,[A-Za-z0-9+/]+={0,2}$/;
 
 export function officialAcpRegistryIconUrlForAgentId(
   agentId: string | null | undefined,
@@ -24,6 +27,11 @@ export function officialAcpRegistryIconUrlForAgentId(
 
 export function resolveOfficialAcpRegistryIconUrl(icon: string | null | undefined): string | null {
   if (!icon) return null;
+  if (icon.startsWith("data:")) {
+    return icon.length <= ACP_REGISTRY_ICON_MAX_LENGTH && SVG_DATA_URL_PATTERN.test(icon)
+      ? icon
+      : null;
+  }
   try {
     const url = new URL(icon);
     if (
@@ -68,7 +76,7 @@ export const AcpRegistrySearchAgent = Schema.Struct({
   license: Schema.NullOr(Schema.String.check(Schema.isMaxLength(128))),
   website: Schema.NullOr(AcpRegistryUrl),
   repository: Schema.NullOr(AcpRegistryUrl),
-  icon: Schema.NullOr(AcpRegistryUrl),
+  icon: Schema.NullOr(Schema.String.check(Schema.isMaxLength(ACP_REGISTRY_ICON_MAX_LENGTH))),
   distribution: AcpRegistryDistribution,
   integrity: AcpRegistryIntegrity,
 });
@@ -272,7 +280,7 @@ export const AcpRegistryProbeResult = Schema.Struct({
   instanceId: ProviderInstanceId,
   // `ready` requires a disposable ACP session/new probe, not passive auth detection.
   ready: Schema.Literal(true),
-  icon: Schema.NullOr(AcpRegistryUrl),
+  icon: Schema.NullOr(Schema.String.check(Schema.isMaxLength(ACP_REGISTRY_ICON_MAX_LENGTH))),
   authMethods: Schema.Array(AcpRegistryProbeAuthMethod).check(Schema.isMaxLength(32)),
   models: Schema.Array(AcpRegistryProbeModel).check(Schema.isMaxLength(256)),
   currentModelId: Schema.NullOr(AcpRegistryProbeText),

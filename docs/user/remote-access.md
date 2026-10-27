@@ -181,6 +181,25 @@ For a plain HTTP LAN endpoint, use the direct pairing URL in a browser that can
 open it, or pair from the desktop app. On mobile, an IP address entered without a
 scheme uses HTTP, so include `https://` when your server uses HTTPS.
 
+### Cloudflare Access
+
+To reach the web app at your own domain without pairing codes, put it behind a
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+and a [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/)
+application, then start the server with:
+
+```bash
+T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN=<team>.cloudflareaccess.com \
+T3CODE_CLOUDFLARE_ACCESS_AUD=<application audience tag> \
+T3CODE_CLOUDFLARE_ACCESS_EMAILS=you@example.com \
+t3 serve
+```
+
+After you sign in to Access, the browser gets a T3 Code session automatically.
+Only the listed emails (comma-separated) receive one, even if the Access policy
+allows more. The mobile app and app.t3.codes cannot pass Access; pair them over
+the LAN or Tailscale instead.
+
 ## Desktop-managed SSH
 
 In the desktop app, open **Settings → Environments → Add environment**, choose

@@ -26,6 +26,7 @@ import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
+import * as Base64 from "effect/encoding/Base64";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -50,6 +51,7 @@ import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSession
 const ACP_REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 
 const MAX_REGISTRY_BYTES = 1024 * 1024;
+const MAX_OVERLAY_ICON_BYTES = 512 * 1024;
 const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024;
 const MAX_PACKAGE_MANIFEST_BYTES = 1024 * 1024;
 // Older clients omit the limit and validate responses against a 20-agent cap.
@@ -532,6 +534,7 @@ export const layerFromHost = Layer.merge(
       return layer({
         cacheDir: paths.providerStatusCacheDir,
         toolsDir: path.join(paths.baseDir, "tools"),
+        overlayDir: path.join(paths.baseDir, "acp-registry-overlay"),
       });
     }),
   ),
@@ -542,6 +545,8 @@ export interface AcpRegistryCatalogOptions {
   readonly cacheDir: string;
   readonly toolsDir: string;
   readonly registryUrl?: string;
+  /** Local `<agentId>/agent.json` (+ optional `icon.svg`) entries merged into the official index. */
+  readonly overlayDir?: string;
 }
 
 const INSTALL_LOCK_RETRY_COUNT = 300;
@@ -600,6 +605,21 @@ function archiveFileName(kind: ArchiveKind): string {
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+// Official entries win on id collisions so the overlay can never shadow a published agent.
+function mergeOverlayAgents(
+  registry: AcpRegistryIndex,
+  overlay: ReadonlyArray<AcpRegistryAgent>,
+): AcpRegistryIndex {
+  if (overlay.length === 0) return registry;
+  const ids = new Set(registry.agents.map((agent) => agent.id));
+  const additions = overlay.filter((agent) => {
+    if (ids.has(agent.id)) return false;
+    ids.add(agent.id);
+    return true;
+  });
+  return { version: registry.version, agents: [...registry.agents, ...additions] };
 }
 
 function searchRank(agent: AcpRegistryAgent, query: string): number | undefined {
@@ -762,9 +782,56 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
     return { version: envelope.version, agents } satisfies AcpRegistryIndex;
   });
 
+  const readOverlayIcon = Effect.fn("AcpRegistryCatalog.readOverlayIcon")(function* (
+    iconPath: string,
+  ) {
+    const info = yield* fileSystem.stat(iconPath).pipe(Effect.option);
+    if (Option.isNone(info)) return undefined;
+    const bytes =
+      info.value.type === "File" && Number(info.value.size) <= MAX_OVERLAY_ICON_BYTES
+        ? yield* fileSystem.readFile(iconPath).pipe(Effect.option)
+        : Option.none<Uint8Array>();
+    const head = Option.isSome(bytes)
+      ? new TextDecoder().decode(bytes.value.subarray(0, 256)).trimStart()
+      : "";
+    if (Option.isNone(bytes) || !(head.startsWith("<svg") || head.startsWith("<?xml"))) {
+      yield* Effect.logWarning("ignored invalid ACP Registry overlay icon", { iconPath });
+      return undefined;
+    }
+    return `data:image/svg+xml;base64,${Base64.encode(bytes.value)}`;
+  });
+
+  const readOverlayAgents = Effect.fn("AcpRegistryCatalog.readOverlayAgents")(function* () {
+    const overlayDir = input.overlayDir;
+    if (overlayDir === undefined) return [];
+    const entries = yield* fileSystem
+      .readDirectory(overlayDir)
+      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+    const agents: Array<AcpRegistryAgent> = [];
+    for (const entry of [...entries].sort(compareText)) {
+      const agentDirectory = path.join(overlayDir, entry);
+      const info = yield* fileSystem.stat(agentDirectory).pipe(Effect.option);
+      if (Option.isNone(info) || info.value.type !== "Directory") continue;
+      const manifest = yield* fileSystem
+        .readFileString(path.join(agentDirectory, "agent.json"))
+        .pipe(Effect.flatMap(decodeJson), Effect.option);
+      const agent = Option.flatMap(manifest, decodeRegistryAgent);
+      if (Option.isNone(agent)) {
+        yield* Effect.logWarning("ignored invalid ACP Registry overlay entry", { agentDirectory });
+        continue;
+      }
+      const icon = yield* readOverlayIcon(path.join(agentDirectory, "icon.svg"));
+      agents.push(icon === undefined ? agent.value : { ...agent.value, icon });
+    }
+    return agents;
+  });
+
+  const withOverlay = (registry: AcpRegistryIndex) =>
+    readOverlayAgents().pipe(Effect.map((overlay) => mergeOverlayAgents(registry, overlay)));
+
   const readCachedRegistry = fileSystem
     .readFileString(registryCachePath)
-    .pipe(Effect.flatMap(decodeRegistryText), Effect.option);
+    .pipe(Effect.flatMap(decodeRegistryText), Effect.flatMap(withOverlay), Effect.option);
 
   const writeRegistryCache = (text: string) =>
     crypto.randomUUIDv4().pipe(
@@ -840,8 +907,9 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       });
     }
     const registry = yield* decodeRegistryText(collected.text);
+    // The cache keeps the official index only; overlay entries are re-read from disk.
     yield* writeRegistryCache(collected.text);
-    return registry;
+    return yield* withOverlay(registry);
   });
 
   const refreshRegistry = Effect.fn("AcpRegistryCatalog.refreshRegistry")(function* () {
