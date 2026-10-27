@@ -9,7 +9,7 @@ import {
   extractDevinSubagentUpdate,
 } from "./devinAcp.ts";
 import { extractDroidElicitationForm } from "./droidAcp.ts";
-import { extractOmpAskElicitationForm } from "./ompAsk.ts";
+import { extractOmpAskElicitationForm, isOmpAskToolCall } from "./ompAsk.ts";
 import {
   extractOmpPlanApprovalElicitation,
   extractOmpProposedPlanMarkdown,
@@ -226,6 +226,7 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     ...(registryAgentId === OMP_AGENT_ID
       ? {
           extractElicitationForm: extractOmpAskElicitationForm,
+          isUserInputTool: isOmpAskToolCall,
           extractProposedPlanMarkdown: extractOmpProposedPlanMarkdown,
           planApprovalElicitation: extractOmpPlanApprovalElicitation,
           interactionModeOptionIds: [OMP_MODE_OPTION_ID],

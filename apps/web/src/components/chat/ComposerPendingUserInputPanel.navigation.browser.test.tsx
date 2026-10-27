@@ -17,6 +17,7 @@ vi.mock(import("../ChatMarkdown"), async (importOriginal) => ({
 
 import { act, fakeTimers, render } from "../../../test/render";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
+import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { usePendingThreadRequests } from "./usePendingThreadRequests";
 
 const threadRef = { environmentId: EnvironmentId.make("env"), threadId: ThreadId.make("thread") };
@@ -187,4 +188,31 @@ it("isolates drafts by environment, thread and request and discards only resolve
       index === 0 ? undefined : `Answer ${index}`,
     );
   }
+});
+
+it("advances after a single-select pick but waits for an explicit submit on the last question", async () => {
+  const onAdvance = vi.fn();
+  const panel = (questionIndex: number) => (
+    <ComposerPendingUserInputPanel
+      pendingUserInputs={[prompt]}
+      cwd={undefined}
+      threadRef={threadRef}
+      respondingRequestIds={[]}
+      answers={{}}
+      questionIndex={questionIndex}
+      onToggleOption={() => {}}
+      onAdvance={onAdvance}
+      onDismiss={() => {}}
+    />
+  );
+  await using screen = await render(panel(0));
+  using _timers = fakeTimers();
+  await screen.getByRole("button", { name: /Incremental/ }).click();
+  await act(() => vi.advanceTimersByTime(250));
+  expect(onAdvance).toHaveBeenCalledTimes(1);
+
+  await screen.rerender(panel(prompt.questions.length - 1));
+  await screen.getByRole("button", { name: /Incremental/ }).click();
+  await act(() => vi.advanceTimersByTime(250));
+  expect(onAdvance).toHaveBeenCalledTimes(1);
 });

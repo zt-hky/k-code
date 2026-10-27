@@ -596,6 +596,23 @@ describe("AcpAdapterV2", () => {
     ],
   }));
 
+  // omp also reports the `ask` tool call around its elicitation.
+  const ompAskToolFrame = (status: "pending" | "completed") => ({
+    type: "emit_inbound" as const,
+    frame: {
+      kind: "notification" as const,
+      method: "session/update",
+      params: {
+        sessionId: "droid-session",
+        update: {
+          sessionUpdate: status === "pending" ? "tool_call" : "tool_call_update",
+          toolCallId: "omp-ask",
+          status,
+          rawInput: { questions: [{ id: "db", question: "Which database?", options: [] }] },
+        },
+      },
+    },
+  });
   // Oh My Pi 18.13.1 askDialog over ACP (modes/acp/acp-agent.ts): question i is `q{i}` (titled
   // `oneOf`, or array `items.anyOf` when multi) plus a free-text `q{i}__other`.
   const ompOther = { type: "string", title: "Other (type your own)" };
@@ -848,6 +865,7 @@ describe("AcpAdapterV2", () => {
               type: "expect_outbound",
               frame: { kind: "request", method: "session/prompt", params: "<any>" },
             },
+            ...(settings === OMP_SETTINGS ? [ompAskToolFrame("pending")] : []),
             {
               type: "emit_inbound",
               frame: {
@@ -869,6 +887,7 @@ describe("AcpAdapterV2", () => {
                 result: expectedResult,
               },
             },
+            ...(settings === OMP_SETTINGS ? [ompAskToolFrame("completed")] : []),
             {
               type: "emit_inbound",
               frame: {
@@ -929,27 +948,35 @@ describe("AcpAdapterV2", () => {
           now: yield* DateTime.now,
         }),
       );
-      const item = Option.getOrThrow(
-        yield* runtime.events.pipe(
-          Stream.filter(
-            (event) =>
-              event.type === "turn_item.updated" && event.turnItem.type === "user_input_request",
-          ),
-          Stream.runHead,
+      const beforeQuestion = yield* runtime.events.pipe(
+        Stream.takeUntil(
+          (event) =>
+            event.type === "turn_item.updated" && event.turnItem.type === "user_input_request",
         ),
+        Stream.runCollect,
       );
-      if (item.type !== "turn_item.updated" || item.turnItem.type !== "user_input_request")
+      const item = beforeQuestion.at(-1);
+      if (item?.type !== "turn_item.updated" || item.turnItem.type !== "user_input_request")
         return yield* Effect.die("Expected Droid question");
       assert.deepEqual(item.turnItem.questions, questions);
       yield* runtime.respondToRuntimeRequest({
         requestId: item.turnItem.requestId,
         ...(preparedAnswers === undefined ? {} : { answers: preparedAnswers }),
       });
-      const terminal = yield* runtime.events.pipe(
-        Stream.filter((event) => event.type === "turn.terminal"),
-        Stream.runHead,
+      const afterQuestion = yield* runtime.events.pipe(
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runCollect,
       );
-      assert.equal(Option.getOrThrow(terminal).status, "completed");
+      const terminal = afterQuestion.at(-1);
+      assert.equal(terminal?.type === "turn.terminal" ? terminal.status : undefined, "completed");
+      if (settings === OMP_SETTINGS) {
+        assert.isFalse(
+          [...beforeQuestion, ...afterQuestion].some(
+            (event) => event.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool",
+          ),
+          "the question card replaces omp's ask tool row",
+        );
+      }
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 

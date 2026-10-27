@@ -84,3 +84,16 @@ export const extractOmpAskElicitationForm: NonNullable<
     },
   };
 };
+
+/** omp's `ask` tool call; its questions are answered through the elicitation above. */
+export const isOmpAskToolCall: NonNullable<AcpAdapterV2Flavor["isUserInputTool"]> = (toolCall) => {
+  const questions = unknownRecord(toolCall.data.rawInput)?.questions;
+  return (
+    Array.isArray(questions) &&
+    questions.length > 0 &&
+    questions.every((question) => {
+      const record = unknownRecord(question);
+      return typeof record?.question === "string" && Array.isArray(record.options);
+    })
+  );
+};
