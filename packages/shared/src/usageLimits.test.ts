@@ -1393,3 +1393,141 @@ describe("ChatGPT sharing presentation", () => {
     ).toBe(false);
   });
 });
+
+describe("hub provider usage accounts", () => {
+  const checkedAt = "2026-09-03T11:00:00.000Z";
+  const claude = ProviderDriverKind.make("claudeAgent");
+  const hubDriver = ProviderDriverKind.make("acpRegistry");
+  const hub = provider({
+    instanceId: ProviderInstanceId.make("ohmypi"),
+    driver: hubDriver,
+    displayName: "Oh My Pi",
+    usageLimitAccounts: [
+      {
+        id: "anthropic:acct-1",
+        driver: claude,
+        nativeProvider: "anthropic",
+        nativeProviderLabel: "Claude",
+        nativeAccountId: "acct-1",
+        email: "Shared@Example.com",
+        usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 31 }] },
+      },
+      {
+        id: "google-antigravity:acct-2",
+        driver: ProviderDriverKind.make("antigravity"),
+        nativeProvider: "google-antigravity",
+        nativeAccountId: "acct-2",
+        usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 5 }] },
+      },
+    ],
+  });
+  const native = provider({
+    instanceId: ProviderInstanceId.make("claude"),
+    driver: claude,
+    auth: { status: "authenticated", email: "shared@example.com" },
+    usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 40 }] },
+  });
+
+  it("pools hub accounts and merges one that is also a native login", () => {
+    const env = EnvironmentId.make("env");
+    const presentations = new Map([
+      [env, { entry: { target: { label: "Laptop" } }, serverConfig: { providers: [hub, native] } }],
+    ]);
+    const accounts = collectLimitAccounts(presentations);
+    expect(accounts.map((account) => account.driver)).toEqual([claude, "antigravity"]);
+    expect(accounts[0]).toMatchObject({
+      key: "env:claude",
+      sourceLabel: null,
+      environments: [{ environmentId: env, label: "Laptop" }],
+    });
+    expect(accounts[1]).toMatchObject({
+      sourceLabel: "Oh My Pi",
+      displayName: "google-antigravity · acct-2",
+      redeem: null,
+    });
+  });
+
+  it("keeps hub-only accounts when no native login exists and lists unavailable ones as notices", () => {
+    const broken = {
+      ...hub,
+      usageLimitAccounts: [
+        ...hub.usageLimitAccounts!,
+        {
+          id: "anthropic:down",
+          driver: claude,
+          nativeProvider: "anthropic",
+          email: "down@example.com",
+          usageLimits: {
+            checkedAt,
+            windows: [],
+            unavailable: { reason: "probeFailed" as const, message: "token expired" },
+          },
+        },
+      ],
+    };
+    const presentations = new Map([
+      [
+        EnvironmentId.make("env"),
+        { entry: { target: { label: "Laptop" } }, serverConfig: { providers: [broken] } },
+      ],
+    ]);
+    expect(collectLimitAccounts(presentations).map((account) => account.email)).toEqual([
+      "Shared@Example.com",
+      undefined,
+    ]);
+    expect(collectLimitNotices(presentations)).toEqual([
+      "Oh My Pi · anthropic · down@example.com: token expired",
+    ]);
+  });
+
+  it("offers /usage-limits on the hub and the drivers it carries accounts for", () => {
+    const commandNames = (providers: ServerProvider[], index: number) =>
+      withUsageLimitsCommands(providers, [])[index]?.slashCommands.map(({ name }) => name);
+    const other = provider({
+      instanceId: ProviderInstanceId.make("other-acp"),
+      driver: hubDriver,
+    });
+    expect(commandNames([hub, native, other], 0)).toEqual(["usage-limits"]);
+    expect(commandNames([hub, native, other], 1)).toEqual(["usage-limits"]);
+    expect(commandNames([hub, native, other], 2)).toEqual([]);
+    expect(commandNames([{ ...hub, usageLimitAccounts: undefined }, other], 0)).toEqual([]);
+  });
+
+  it("lists every hub account for the selected hub instance, tagged with its upstream", () => {
+    const report = collectProviderUsageLimits(hub.instanceId, [hub, native], [], now);
+    expect(
+      report?.accounts.map(
+        ({ id, label, sourceLabel, nativeProvider, nativeAccountId, email }) => ({
+          id,
+          label,
+          sourceLabel,
+          nativeProvider,
+          nativeAccountId,
+          email,
+        }),
+      ),
+    ).toEqual([
+      {
+        id: "ohmypi:anthropic:acct-1",
+        label: "Claude · Shared@Example.com",
+        sourceLabel: "Oh My Pi",
+        nativeProvider: "anthropic",
+        nativeAccountId: "acct-1",
+        email: "Shared@Example.com",
+      },
+      {
+        id: "ohmypi:google-antigravity:acct-2",
+        label: "google-antigravity · acct-2",
+        sourceLabel: "Oh My Pi",
+        nativeProvider: "google-antigravity",
+        nativeAccountId: "acct-2",
+        email: undefined,
+      },
+    ]);
+  });
+
+  it("skips hub accounts already shown as the native login in that driver's report", () => {
+    const report = collectProviderUsageLimits(native.instanceId, [hub, native], [], now);
+    expect(report?.accounts.map((account) => account.id)).toEqual(["claude"]);
+  });
+});

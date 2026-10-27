@@ -155,6 +155,8 @@ import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
+import { openResumeSessionDialog } from "./resumeSessionDialogState";
+import { readEnvironmentSupportsSessionResume } from "../hooks/useAcpNativeSessions";
 import {
   buildThreadRouteParams,
   resolveActiveThreadRouteRef,
@@ -2471,12 +2473,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               hasPath: Boolean(workspacePath),
               hasBranch: Boolean(session.branch),
               hasProject: projectGroup != null,
+              canResumeSession: readEnvironmentSupportsSessionResume(session.environmentId),
             }),
             position,
           ),
         );
         if (clicked._tag === "Failure") return;
         switch (clicked.value) {
+          case "resume-session":
+            openResumeSessionDialog(scopeProjectRef(session.environmentId, session.projectId));
+            return;
           case "project-settings":
             if (projectGroup)
               openProjectSettings(projectGroup, {
@@ -2564,6 +2570,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 canShareWithGuestAtom(threadRef.environmentId),
               ),
               canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+              canResumeSession: readEnvironmentSupportsSessionResume(thread.environmentId),
               supports: {
                 settlement: configLoaded,
                 autoSettleOptOut: supportsAutoSettleOptOut,
@@ -2600,6 +2607,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   : [threadProjectGroup.projectKey],
               );
             }
+            return;
+          case "resume-session":
+            openResumeSessionDialog(scopeProjectRef(thread.environmentId, thread.projectId));
             return;
           case "project-settings":
             if (threadProjectGroup)

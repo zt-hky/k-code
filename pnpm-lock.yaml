@@ -1598,6 +1598,9 @@ importers:
       '@t3tools/provider-core':
         specifier: workspace:*
         version: link:../provider-core
+      '@t3tools/provider-pi':
+        specifier: workspace:*
+        version: link:../provider-pi
       '@t3tools/shared':
         specifier: workspace:*
         version: link:../shared

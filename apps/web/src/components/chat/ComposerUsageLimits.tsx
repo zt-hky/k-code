@@ -11,6 +11,14 @@ import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { LimitWindows, ResetCredits } from "../usage/UsageLimits";
 import { ComposerBanner } from "./ComposerBanner";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
+import { isPinnableAccount, sessionPinCommandText } from "./sessionPin";
+
+export interface UsageLimitsPin {
+  /** Upstream provider of the thread's current model; only its accounts can be pinned. */
+  readonly upstream: string | null;
+  readonly disabled: boolean;
+  readonly onPin: (commandText: string) => void;
+}
 
 function accountLabel(account: UsageLimitsReport["accounts"][number]): string {
   if (!account.instanceId) return account.label;
@@ -49,6 +57,7 @@ export function usageLimitsBannerItem(
   report: UsageLimitsReport,
   environmentId: EnvironmentId,
   onDismiss: () => void,
+  pin?: UsageLimitsPin,
 ): ComposerBannerStackItem {
   const [first] = report.accounts;
   const single = report.accounts.length === 1 && first ? first : null;
@@ -65,7 +74,7 @@ export function usageLimitsBannerItem(
     description: summary,
     dismissLabel: "Dismiss usage limits",
     onDismiss,
-    children: <UsageLimitsBannerBody report={report} environmentId={environmentId} />,
+    children: <UsageLimitsBannerBody report={report} environmentId={environmentId} pin={pin} />,
   };
 }
 
@@ -105,9 +114,11 @@ export function modelFallbackBannerItem({
 function UsageLimitsBannerBody({
   report,
   environmentId,
+  pin,
 }: {
   readonly report: UsageLimitsReport;
   readonly environmentId: EnvironmentId;
+  readonly pin: UsageLimitsPin | undefined;
 }) {
   const now = Date.parse(report.createdAt);
   return (
@@ -136,6 +147,17 @@ function UsageLimitsBannerBody({
                   now={now}
                 />
               )}
+              {pin && isPinnableAccount(account, pin.upstream) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="self-start"
+                  disabled={pin.disabled}
+                  onClick={() => pin.onPin(sessionPinCommandText(account))}
+                >
+                  Pin to thread
+                </Button>
+              ) : null}
               {externalUsage ? (
                 <Button
                   size="sm"

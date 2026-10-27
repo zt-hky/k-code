@@ -611,6 +611,10 @@ export default function ChatView(props: ChatViewProps) {
     const draft = store.getComposerDraft(composerDraftTarget);
     return draft ? composerDraftHasUserContent({ ...draft, prompt: "" }) : false;
   });
+  const composerHasUserContent = useComposerDraftStore((store) => {
+    const draft = store.getComposerDraft(composerDraftTarget);
+    return draft ? composerDraftHasUserContent(draft) : false;
+  });
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
@@ -1365,20 +1369,6 @@ export default function ChatView(props: ChatViewProps) {
           activePendingApproval?.requestId ?? activePendingUserInput?.requestId ?? "",
         ].join(":");
   const {
-    banner: usageLimitsBanner,
-    offered: usageLimitsOffered,
-    open: openUsageLimits,
-    clearFor: clearUsageLimitsFor,
-  } = useUsageLimitsPanel({
-    environmentId,
-    threadKey: routeThreadKey,
-    panelKey: usageLimitsKey,
-    providerInstanceId: activeProviderInstanceId,
-    providerDriver: activeProviderStatus?.driver ?? null,
-    providers: providerStatuses,
-    sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
-  });
-  const {
     beginLocalDispatch,
     resetLocalDispatch,
     localDispatchStartedAt,
@@ -1429,6 +1419,35 @@ export default function ChatView(props: ChatViewProps) {
     (compactionRunning || (compactRequestIsActive && !compactionSettled));
   const isWorking =
     phase === "running" || isSendBusy || isCompacting || runlessWorkStartedAt !== null;
+  const sendThreadText = useStableCallback((text: string) => {
+    promptRef.current = text;
+    setComposerDraftPrompt(composerDraftTarget, text);
+    composerRef.current?.submit();
+  });
+  const {
+    banner: usageLimitsBanner,
+    offered: usageLimitsOffered,
+    sessionPinOffered,
+    open: openUsageLimits,
+    clearFor: clearUsageLimitsFor,
+  } = useUsageLimitsPanel({
+    environmentId,
+    threadKey: routeThreadKey,
+    panelKey: usageLimitsKey,
+    providerInstanceId: activeProviderInstanceId,
+    providerDriver: activeProviderStatus?.driver ?? null,
+    providers: providerStatuses,
+    sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
+    modelSlug:
+      (composerSelectedModelSelection?.instanceId === activeProviderInstanceId
+        ? composerSelectedModelSelection.model
+        : null) ??
+      (activeThread?.modelSelection.instanceId === activeProviderInstanceId
+        ? activeThread.modelSelection.model
+        : null),
+    pinDisabled: isWorking || composerHasUserContent,
+    sendPinCommand: sendThreadText,
+  });
   const activeContextWindow = deriveLatestContextWindowSnapshot(
     serverVisibleTurnItems ?? [],
     activeThreadLiveTokenUsage,
@@ -2840,6 +2859,7 @@ export default function ChatView(props: ChatViewProps) {
     showPlanFollowUpPrompt,
     usageLimitsKey,
     usageLimitsOffered,
+    sessionPinOffered,
     openUsageLimits,
     clearUsageLimitsFor,
     needsLoadBalancing,

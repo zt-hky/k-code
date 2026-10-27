@@ -35,6 +35,8 @@ import {
 } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { readLocalApi } from "../localApi";
+import { openResumeSessionDialog } from "../components/resumeSessionDialogState";
+import { readEnvironmentSupportsSessionResume } from "./useAcpNativeSessions";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
@@ -148,6 +150,7 @@ export function useThreadActionMenu(input: {
         snoozePresets,
         canShareWithGuest,
         canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+        canResumeSession: readEnvironmentSupportsSessionResume(threadRef.environmentId),
       });
       const clicked = await settlePromise(() => api.contextMenu.show(items, position));
       if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -191,6 +194,9 @@ export function useThreadActionMenu(input: {
       switch (action) {
         case "find":
           onFind?.(threadRef);
+          return;
+        case "resume-session":
+          openResumeSessionDialog(scopeProjectRef(threadRef.environmentId, thread.projectId));
           return;
         case "project-settings": {
           const project = projects.find(

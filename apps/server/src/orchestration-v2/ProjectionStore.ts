@@ -73,6 +73,7 @@ import {
   NodeId,
   ProjectId,
   ProviderInstanceId,
+  type ProviderDriverKind,
 } from "@t3tools/contracts";
 import {
   createOrchestrationV2TurnItemVisibility,
@@ -488,6 +489,15 @@ export interface ProjectionStoreV2Shape {
   readonly findGuestShareThreadId: (
     shareId: GuestShareId,
   ) => Effect.Effect<ThreadId | null, ProjectionStoreV2Error>;
+  /** App threads that own provider threads bound to these native session ids on one provider instance. */
+  readonly findThreadIdsByNativeThread: (input: {
+    readonly driver: ProviderDriverKind;
+    readonly providerInstanceId: ProviderInstanceId;
+    readonly nativeIds: ReadonlyArray<string>;
+  }) => Effect.Effect<
+    ReadonlyArray<{ readonly nativeId: string; readonly threadId: ThreadId }>,
+    ProjectionStoreV2Error
+  >;
   readonly getThread: (
     threadId: ThreadId,
   ) => Effect.Effect<OrchestrationV2AppThread, ProjectionStoreV2Error>;
@@ -6748,6 +6758,27 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
     }, Effect.mapError(shellSnapshotReadError));
 
+    const findThreadIdsByNativeThread: ProjectionStoreV2Shape["findThreadIdsByNativeThread"] =
+      Effect.fn("ProjectionStore.findThreadIdsByNativeThread")(function* (input) {
+        if (input.nativeIds.length === 0) return [];
+        const rows = yield* sql<{ readonly native_id: string; readonly thread_id: string }>`
+          SELECT
+            json_extract(p.payload_json, '$.nativeThreadRef.nativeId') AS native_id,
+            p.thread_id AS thread_id
+          FROM orchestration_v2_projection_provider_threads p
+          JOIN orchestration_v2_projection_threads t ON t.thread_id = p.thread_id
+          WHERE p.driver = ${input.driver}
+            AND p.provider_instance_id = ${input.providerInstanceId}
+            AND t.deleted_at IS NULL
+            AND json_extract(p.payload_json, '$.nativeThreadRef.nativeId') IN ${sql.in(input.nativeIds)}
+          ORDER BY p.provider_thread_id ASC
+        `;
+        return rows.map((row) => ({
+          nativeId: row.native_id,
+          threadId: ThreadId.make(row.thread_id),
+        }));
+      }, Effect.mapError(shellSnapshotReadError));
+
     const listOlderSettledThreads: ProjectionStoreV2Shape["listOlderSettledThreads"] = Effect.fn(
       "ProjectionStore.listOlderSettledThreads",
     )(function* ({ before, projectIds, limit }) {
@@ -6896,6 +6927,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       listOlderSettledThreads: readOnReader(listOlderSettledThreads),
       getThreadShell: readOnReader(getThreadShell),
       findGuestShareThreadId: readOnReader(findGuestShareThreadId),
+      findThreadIdsByNativeThread: readOnReader(findThreadIdsByNativeThread),
       getThread: readOnReader(getThread),
       getSettlementCandidates: readOnReader(getSettlementCandidates),
       getThreadsWithPullRequests: readOnReader(getThreadsWithPullRequests),

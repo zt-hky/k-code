@@ -166,6 +166,24 @@ function isJsonArray(value: Schema.Json | undefined): value is ReadonlyArray<Sch
   return Array.isArray(value);
 }
 
+// `properties` maps user-chosen names to schemas, so their keys are never keywords:
+// TitledMultiSelectItems declares a property literally named `anyOf`.
+function mapSchemaChildren(
+  value: { readonly [key: string]: Schema.Json },
+  transform: (child: Schema.Json) => Schema.Json,
+): Record<string, Schema.Json> {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      key === "properties" && child !== null && typeof child === "object" && !isJsonArray(child)
+        ? Object.fromEntries(
+            Object.entries(child).map(([name, schema]) => [name, transform(schema)]),
+          )
+        : transform(child),
+    ]),
+  );
+}
+
 function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
   if (isJsonArray(value)) {
     return value.map(normalizeSchemaKeywords);
@@ -174,11 +192,7 @@ function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
     return value;
   }
 
-  const normalizedEntries = Object.entries(value).map(([key, child]) => [
-    key,
-    normalizeSchemaKeywords(child),
-  ]);
-  const normalizedObject = Object.fromEntries(normalizedEntries) as Record<string, Schema.Json>;
+  const normalizedObject = mapSchemaChildren(value, normalizeSchemaKeywords);
   // ACP's forward-compatible variants exclude known discriminator values.
   // The Effect generator does not support `not`; express this exact exclusion
   // as a string pattern while preserving validation of the known variants.
@@ -316,9 +330,7 @@ function flattenCompositions(
 ): Schema.Json {
   if (isJsonArray(value)) return value.map((child) => flattenCompositions(child, definitions));
   if (value === null || typeof value !== "object") return value;
-  const normalized = Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [key, flattenCompositions(child, definitions)]),
-  );
+  const normalized = mapSchemaChildren(value, (child) => flattenCompositions(child, definitions));
   const { allOf, anyOf, ...base } = normalized;
   const merge = (left: Schema.Json, right: Schema.Json): Schema.Json => {
     if (

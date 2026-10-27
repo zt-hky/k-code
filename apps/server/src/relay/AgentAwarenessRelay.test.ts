@@ -192,6 +192,7 @@ const makeTestRelay = Effect.fnUntraced(function* (
     listActiveSubagentThreadIds: unused,
     countThreads: unused,
     listActiveShellIndex: () => Effect.succeed([]),
+    findThreadIdsByNativeThread: unused,
     listOlderSettledThreads: unused,
     readShellSnapshot: unused,
     ensureLegacyTranscript: unused,

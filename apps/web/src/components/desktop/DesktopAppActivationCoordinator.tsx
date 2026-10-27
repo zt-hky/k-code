@@ -1,4 +1,5 @@
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { DesktopAppActivationRequest } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useRef } from "react";
 
@@ -14,11 +15,13 @@ import { usePrimaryEnvironment } from "../../state/environments";
 import { projectEnvironment } from "../../state/projects";
 import { useEnvironmentShellHasSnapshot } from "../../state/shell";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useOfferSessionResume } from "../../hooks/useAcpNativeSessions";
 
 export function DesktopAppActivationCoordinator() {
   const primaryEnvironment = usePrimaryEnvironment();
   const createProject = useAtomCommand(projectEnvironment.create, { reportFailure: false });
   const openThread = useNewThreadHandler();
+  const offerSessionResume = useOfferSessionResume();
   const queueRef = useRef(Promise.resolve());
   const activation = window.desktopBridge?.appActivation;
   const shellHasSnapshot = useEnvironmentShellHasSnapshot(
@@ -51,11 +54,12 @@ export function DesktopAppActivationCoordinator() {
         ) ?? null,
       createProject: async (environmentId, workspaceRoot) => {
         const projectId = newProjectId();
+        const title = inferProjectTitleFromPath(workspaceRoot);
         const result = await createProject({
           environmentId,
           input: {
             projectId,
-            title: inferProjectTitleFromPath(workspaceRoot),
+            title,
             workspaceRoot,
             createWorkspaceRootIfMissing: false,
             defaultModelSelection: null,
@@ -65,6 +69,7 @@ export function DesktopAppActivationCoordinator() {
           const error = squashAtomCommandFailure(result);
           throw error instanceof Error ? error : new Error("T3 Code could not add the project.");
         }
+        void offerSessionResume(scopeProjectRef(environmentId, projectId), title);
         return projectId;
       },
       waitForProject: async (projectRef) => {

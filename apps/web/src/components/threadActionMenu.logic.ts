@@ -7,6 +7,7 @@ export type ThreadActionMenuId =
   | "filter-by-project"
   | "turn-into-project"
   | "project-settings"
+  | "resume-session"
   | "pin"
   | "unpin"
   | "settle"
@@ -34,12 +35,14 @@ export type DraftActionMenuId =
   | "copy-path"
   | "copy-branch"
   | "project-settings"
+  | "resume-session"
   | "discard";
 
 export function buildDraftActionMenuItems(options: {
   readonly hasPath: boolean;
   readonly hasBranch: boolean;
   readonly hasProject: boolean;
+  readonly canResumeSession?: boolean;
 }): ReadonlyArray<ContextMenuItem<DraftActionMenuId>> {
   return [
     {
@@ -56,6 +59,9 @@ export function buildDraftActionMenuItems(options: {
     },
     ...(options.hasProject
       ? [{ id: "project-settings" as const, label: "Project settings", icon: "settings" }]
+      : []),
+    ...(options.hasProject && options.canResumeSession
+      ? [{ id: "resume-session" as const, label: "Resume session…", icon: "history" }]
       : []),
     {
       id: "discard",
@@ -95,6 +101,7 @@ export interface ThreadActionMenuState {
   readonly canShareWithGuest?: boolean;
   /** A No project thread with its own folder, on a server that can promote it. */
   readonly canTurnIntoProject?: boolean;
+  readonly canResumeSession?: boolean;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -103,6 +110,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "find",
     "new-thread-on-branch",
     "project-settings",
+    "resume-session",
     "mark-unread",
     "share-guest",
     "copy",
@@ -238,6 +246,9 @@ export function buildThreadActionMenuItems(
       ],
     },
     { id: "project-settings", label: "Project settings", icon: "settings" },
+    ...(state.canResumeSession
+      ? [{ id: "resume-session" as const, label: "Resume session…", icon: "history" }]
+      : []),
     {
       id: "archive",
       label: "Archive thread",

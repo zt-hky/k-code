@@ -61,6 +61,7 @@ import {
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
+  HistoryIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -224,6 +225,11 @@ import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
+import { openResumeSessionDialog } from "./resumeSessionDialogState";
+import {
+  readEnvironmentSupportsSessionResume,
+  useOfferSessionResume,
+} from "../hooks/useAcpNativeSessions";
 import { ProjectContentSearchDialog } from "./search/ProjectContentSearchDialog";
 import { settingsForThisPlatform, SETTINGS_SECTION_LABELS } from "./settings/settingsSearch";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -407,6 +413,7 @@ function OpenCommandPaletteDialog(props: {
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
+  const offerSessionResume = useOfferSessionResume();
   const { scratchEnvironmentId, scratchWorkspaceRootFor, startScratchThread } = useScratchProject();
   const startTriage = useStartTriage();
   const lookupRepository = useAtomQueryRunner(sourceControlEnvironment.repository, {
@@ -1324,6 +1331,24 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
+  if (
+    currentProjectEnvironmentId !== null &&
+    currentProjectId !== null &&
+    readEnvironmentSupportsSessionResume(currentProjectEnvironmentId)
+  ) {
+    const projectRef = scopeProjectRef(currentProjectEnvironmentId, currentProjectId);
+    actionItems.push({
+      kind: "action",
+      value: "action:resume-session",
+      searchTerms: ["resume", "session", "continue", "history", "agent", "native", "import"],
+      title: "Resume session…",
+      icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openResumeSessionDialog(projectRef);
+      },
+    });
+  }
+
   if (activeThread !== null && canShareActiveThreadWithGuest) {
     const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
     actionItems.push({
@@ -1776,6 +1801,10 @@ function OpenCommandPaletteDialog(props: {
       );
       return;
     }
+    void offerSessionResume(
+      scopeProjectRef(input.environmentId, projectId),
+      inferProjectTitleFromPath(cwd),
+    );
     setOpen(false);
   };
 

@@ -15,6 +15,7 @@ import {
   makeThreadErrorSetter,
 } from "../ChatView.logic";
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
+import { isSessionPinCommand } from "./sessionPin";
 import {
   AuthOrchestrationOperateScope,
   DEFAULT_MODEL,
@@ -206,6 +207,7 @@ interface ComposerSendInput {
   readonly showPlanFollowUpPrompt: boolean;
   readonly usageLimitsKey: string | null;
   readonly usageLimitsOffered: boolean;
+  readonly sessionPinOffered: boolean;
   readonly openUsageLimits: UsageLimitsPanel["open"];
   readonly clearUsageLimitsFor: UsageLimitsPanel["clearFor"];
   readonly needsLoadBalancing: boolean;
@@ -297,6 +299,7 @@ export function useComposerSend(input: ComposerSendInput) {
     showPlanFollowUpPrompt,
     usageLimitsKey,
     usageLimitsOffered,
+    sessionPinOffered,
     openUsageLimits,
     clearUsageLimitsFor,
     needsLoadBalancing,
@@ -404,14 +407,16 @@ export function useComposerSend(input: ComposerSendInput) {
     // What the user pressed send on; uploads below can take a while, and a redirect must not
     // decline approvals for a draft that changed meanwhile.
     const promptAtSend = promptRef.current;
+    const usageLimitsCommand = isUsageLimitsCommand(promptRef.current);
+    const sessionPinCommand = sessionPinOffered && isSessionPinCommand(promptRef.current);
     if (
       usageLimitsOffered &&
       usageLimitsKey !== null &&
       !directAnnotation &&
       !draftHasNonPromptContent(composerDraftTarget) &&
-      isUsageLimitsCommand(promptRef.current)
+      (usageLimitsCommand || sessionPinCommand)
     ) {
-      if (openUsageLimits()) {
+      if (openUsageLimits({ pinnableOnly: sessionPinCommand })) {
         promptRef.current = "";
         setComposerDraftPrompt(composerDraftTarget, "");
         composerRef.current?.resetCursorState();

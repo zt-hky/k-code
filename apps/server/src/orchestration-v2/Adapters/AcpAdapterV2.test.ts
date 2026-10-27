@@ -97,6 +97,7 @@ import {
 
 const DEFAULT_GROK_SETTINGS = Schema.decodeSync(GrokSettings)({});
 const DROID_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({ agentId: "factory-droid" });
+const OMP_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({ agentId: "omp" });
 
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
@@ -595,6 +596,104 @@ describe("AcpAdapterV2", () => {
     ],
   }));
 
+  // Oh My Pi 18.13.1 askDialog over ACP (modes/acp/acp-agent.ts): question i is `q{i}` (titled
+  // `oneOf`, or array `items.anyOf` when multi) plus a free-text `q{i}__other`.
+  const ompOther = { type: "string", title: "Other (type your own)" };
+  const ompMixedSchema = {
+    type: "object",
+    properties: {
+      q0: {
+        type: "string",
+        title: "Which database?",
+        description: "Storage",
+        oneOf: [
+          { const: "SQLite", title: "SQLite", description: "Embedded" },
+          { const: "Postgres", title: "Postgres" },
+        ],
+        default: "SQLite",
+      },
+      q0__other: ompOther,
+      q1: {
+        type: "array",
+        title: "Which targets?",
+        items: {
+          anyOf: [
+            { const: "web", title: "web" },
+            { const: "mobile", title: "mobile" },
+          ],
+        },
+      },
+      q1__other: ompOther,
+    },
+  };
+  const ompMixedQuestions = [
+    {
+      id: "q0",
+      header: "Storage",
+      question: "Which database?",
+      options: [
+        { label: "SQLite (Recommended)", description: "Embedded", value: "SQLite" },
+        { label: "Postgres", description: "Postgres", value: "Postgres" },
+      ],
+      allowCustomAnswer: true,
+    },
+    {
+      id: "q1",
+      header: "Question 2",
+      question: "Which targets?",
+      options: [
+        { label: "web", description: "web", value: "web" },
+        { label: "mobile", description: "mobile", value: "mobile" },
+      ],
+      multiSelect: true,
+      allowCustomAnswer: true,
+    },
+  ];
+  const ompAsk = { settings: OMP_SETTINGS, message: "Answer 2 questions" } as const;
+  const ompAskCases = [
+    {
+      ...ompAsk,
+      scenario: "returns Oh My Pi single- and multi-select choices",
+      schema: ompMixedSchema,
+      questions: ompMixedQuestions,
+      answers: { q0: "Postgres", q1: ["web", "mobile"] },
+      result: { action: "accept", content: { q0: "Postgres", q1: ["web", "mobile"] } },
+    },
+    {
+      ...ompAsk,
+      scenario: "returns Oh My Pi custom answers through __other",
+      schema: ompMixedSchema,
+      questions: ompMixedQuestions,
+      answers: { q0: " MySQL ", q1: "desktop" },
+      result: { action: "accept", content: { q0__other: "MySQL", q1: [], q1__other: "desktop" } },
+    },
+    {
+      ...ompAsk,
+      scenario: "cancels an Oh My Pi ask",
+      schema: ompMixedSchema,
+      questions: ompMixedQuestions,
+      answers: undefined,
+      result: { action: "cancel" },
+    },
+    {
+      settings: OMP_SETTINGS,
+      message: "What should the module be called?",
+      scenario: "answers an option-less Oh My Pi question",
+      schema: { type: "object", properties: { q0__other: ompOther } },
+      questions: [
+        {
+          id: "q0",
+          header: "Question 1",
+          question: "What should the module be called?",
+          options: [],
+          allowCustomAnswer: true,
+        },
+      ],
+      answers: { q0: "ledger" },
+      result: { action: "accept", content: { q0__other: "ledger" } },
+    },
+  ];
+
   // regression: #20417 Droid AskUser answers were sent as a cancel
   it.live.each([
     {
@@ -640,8 +739,47 @@ describe("AcpAdapterV2", () => {
       answers: { name: "Ada" },
       result: { action: "accept", content: { name: "Ada" } },
     },
-  ])("Droid elicitation $scenario", ({ schema, questions, answers, result, withAttachments }) =>
+    {
+      scenario: "maps generic multi-select and boolean fields to typed content",
+      schema: {
+        type: "object",
+        properties: {
+          targets: { type: "array", title: "Targets", items: { type: "string", enum: ["a", "b"] } },
+          confirm: { type: "boolean", title: "Confirm" },
+        },
+      },
+      questions: [
+        {
+          id: "targets",
+          header: "Targets",
+          question: "Your answer?",
+          options: [
+            { label: "a", description: "a", value: "a" },
+            { label: "b", description: "b", value: "b" },
+          ],
+          multiSelect: true,
+          allowCustomAnswer: false,
+        },
+        {
+          id: "confirm",
+          header: "Confirm",
+          question: "Your answer?",
+          options: [
+            { label: "true", description: "Yes", value: "true" },
+            { label: "false", description: "No", value: "false" },
+          ],
+        },
+      ],
+      answers: { targets: ["b", "z"], confirm: "true" },
+      result: { action: "accept", content: { targets: ["b"], confirm: true } },
+    },
+    ...ompAskCases,
+  ])("ACP registry elicitation $scenario", (testCase) =>
     Effect.gen(function* () {
+      const { schema, questions, answers, result } = testCase;
+      const withAttachments = "withAttachments" in testCase && testCase.withAttachments;
+      const settings = "settings" in testCase ? testCase.settings : DROID_SETTINGS;
+      const message = "message" in testCase ? testCase.message : "Your answer?";
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-droid-form-" });
@@ -718,7 +856,7 @@ describe("AcpAdapterV2", () => {
                 params: {
                   mode: "form",
                   sessionId: "droid-session",
-                  message: "Your answer?",
+                  message,
                   requestedSchema: schema,
                 },
               },
@@ -748,7 +886,7 @@ describe("AcpAdapterV2", () => {
       const adapter = yield* makeAcpRegistryAdapterV2({
         instanceId,
         selfInvocation: yield* resolveSelfInvocation(),
-        settings: DROID_SETTINGS,
+        settings,
         environment: {},
         makeRuntime: makeAcpReplayRuntime({
           transcript,
@@ -812,6 +950,158 @@ describe("AcpAdapterV2", () => {
         Stream.runHead,
       );
       assert.equal(Option.getOrThrow(terminal).status, "completed");
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  const makeOmpPlanHarness = Effect.fnUntraced(function* (
+    name: string,
+    interactionMode: "default" | "plan",
+    environment: Readonly<Record<string, string>>,
+  ) {
+    const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const path = yield* Path.Path;
+    const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
+    const instanceId = ProviderInstanceId.make(`omp-${name}`);
+    const adapter = yield* makeAcpRegistryAdapterV2({
+      instanceId,
+      selfInvocation: yield* resolveSelfInvocation(),
+      settings: OMP_SETTINGS,
+      environment: {},
+      makeRuntime: makeMockRuntime({
+        childProcessSpawner,
+        mockAgentPath: yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        ),
+        protocolEvents,
+        environment,
+      }),
+    }).pipe(
+      Effect.provide(
+        Layer.mock(AcpRegistryCatalog)({ resolve: () => Effect.die("runtime is injected") }),
+      ),
+    );
+    const threadId = ThreadId.make(`omp-${name}-thread`);
+    const modelSelection = { instanceId, model: "default" } as const;
+    const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+      runtimeMode: "full-access",
+      interactionMode,
+      cwd: process.cwd(),
+    });
+    const runtime = yield* adapter.openSession({
+      threadId,
+      modelSelection,
+      runtimePolicy,
+      providerSessionId: ProviderSessionId.make(`omp-${name}-session`),
+    });
+    const providerThread = yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+    yield* runtime.startTurn(
+      makeTurnInput({
+        threadId,
+        providerThread,
+        instanceId,
+        runtimePolicy,
+        now: yield* DateTime.now,
+      }),
+    );
+    return { runtime, providerThread, protocolEvents };
+  });
+
+  it.live("captures omp's plan approval gate as a proposed plan and completes the plan run", () =>
+    Effect.gen(function* () {
+      const { runtime, protocolEvents } = yield* makeOmpPlanHarness("plan-gate", "plan", {
+        T3_ACP_EMIT_OMP_PLAN_APPROVAL: "1",
+      });
+      const events = Array.from(
+        yield* runtime.events.pipe(
+          Stream.takeUntil((event) => event.type === "turn.terminal"),
+          Stream.runCollect,
+        ),
+      );
+      const plans = events.flatMap((event) =>
+        event.type === "plan.updated" && event.plan.kind === "proposed_plan" ? [event.plan] : [],
+      );
+      assert.deepEqual(
+        plans.map((plan) => plan.status),
+        ["active"],
+      );
+      assert.deepEqual(
+        plans.map((plan) => plan.markdown),
+        ["# Demo plan\n\n- Step one\n- Step two"],
+      );
+      assert.isFalse(
+        events.some(
+          (event) =>
+            event.type === "turn_item.updated" && event.turnItem.type === "user_input_request",
+        ),
+      );
+      const terminal = events.at(-1);
+      assert.equal(terminal?.type === "turn.terminal" && terminal.status, "completed");
+      const methods = yield* pollProtocolMethods(protocolEvents);
+      assert.include(methods, "session/cancel");
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live("keeps omp's plan approval gate as a user question outside plan mode", () =>
+    Effect.gen(function* () {
+      const { runtime } = yield* makeOmpPlanHarness("default-gate", "default", {
+        T3_ACP_EMIT_OMP_PLAN_APPROVAL: "1",
+      });
+      const item = Option.getOrThrow(
+        yield* runtime.events.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "turn_item.updated" && event.turnItem.type === "user_input_request",
+          ),
+          Stream.runHead,
+        ),
+      );
+      if (item.type !== "turn_item.updated" || item.turnItem.type !== "user_input_request")
+        return yield* Effect.die("Expected the plan approval question");
+      assert.deepEqual(
+        item.turnItem.questions.map((question) => question.options.map((option) => option.label)),
+        [["Approve and execute", "Refine plan"]],
+      );
+      yield* runtime.respondToRuntimeRequest({
+        requestId: item.turnItem.requestId,
+        answers: { value: "Approve and execute" },
+      });
+      const terminal = Option.getOrThrow(
+        yield* runtime.events.pipe(
+          Stream.filter((event) => event.type === "turn.terminal"),
+          Stream.runHead,
+        ),
+      );
+      assert.equal(terminal.type === "turn.terminal" && terminal.status, "completed");
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live("ends a user-stopped omp plan run as interrupted", () =>
+    Effect.gen(function* () {
+      const { runtime, providerThread } = yield* makeOmpPlanHarness("plan-stop", "plan", {
+        T3_ACP_EMIT_OMP_PLAN_APPROVAL: "stall",
+      });
+      const started = Option.getOrThrow(
+        yield* runtime.events.pipe(
+          Stream.filter(
+            (event) => event.type === "turn_item.updated" && event.turnItem.providerTurnId !== null,
+          ),
+          Stream.runHead,
+        ),
+      );
+      if (started.type !== "turn_item.updated" || started.turnItem.providerTurnId === null) {
+        return yield* Effect.die("Expected a started omp turn");
+      }
+      const providerTurnId = started.turnItem.providerTurnId;
+      yield* runtime.interruptTurn({ providerThread, providerTurnId });
+      const terminal = Option.getOrThrow(
+        yield* runtime.events.pipe(
+          Stream.filter(
+            (event) => event.type === "turn.terminal" && event.providerTurnId === providerTurnId,
+          ),
+          Stream.runHead,
+        ),
+      );
+      assert.equal(terminal.type === "turn.terminal" && terminal.status, "interrupted");
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 

@@ -31,6 +31,9 @@ const emitBackgroundToolDuringAnswer =
   process.env.T3_ACP_EMIT_BACKGROUND_TOOL_DURING_ANSWER === "1";
 const emitMcpToolApprovalElicitation =
   process.env.T3_ACP_EMIT_MCP_TOOL_APPROVAL_ELICITATION === "1";
+const ompPlanStall = process.env.T3_ACP_EMIT_OMP_PLAN_APPROVAL === "stall";
+const emitOmpPlanApproval = ompPlanStall || process.env.T3_ACP_EMIT_OMP_PLAN_APPROVAL === "1";
+const ompPlanMarkdown = "# Demo plan\n\n- Step one\n- Step two\n";
 const grokKillTaskShape = process.env.T3_ACP_GROK_KILL_TASK_SHAPE;
 const emitGrokBackgroundTaskPoll = process.env.T3_ACP_GROK_BACKGROUND_TASK_COMPLETION === "poll";
 const emitForeignSessionUpdates = process.env.T3_ACP_EMIT_FOREIGN_SESSION_UPDATES === "1";
@@ -1472,6 +1475,43 @@ const program = Effect.gen(function* () {
 
         return yield* finishPrompt(requestedSessionId, "end_turn");
       }
+
+      if (emitOmpPlanApproval) {
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "omp-plan-write-1",
+            title: "Write local://demo-plan.md",
+            kind: "edit",
+            status: "completed",
+            rawInput: { path: "local://demo-plan.md", content: ompPlanMarkdown },
+          },
+        });
+        const approval = ompPlanStall
+          ? undefined
+          : yield* agent.client.elicit({
+              sessionId: requestedSessionId,
+              message: `Approve plan "Demo plan" and start implementation?\n# Demo plan\n…`,
+              mode: "form",
+              requestedSchema: {
+                type: "object",
+                properties: {
+                  value: { type: "string", enum: ["Approve and execute", "Refine plan"] },
+                },
+                required: ["value"],
+              },
+            });
+        if (approval?.action === "accept") {
+          return yield* finishPrompt(requestedSessionId, "end_turn");
+        }
+        while (!cancelledSessions.has(requestedSessionId)) {
+          yield* Effect.sleep("25 millis");
+        }
+        cancelledSessions.delete(requestedSessionId);
+        return yield* finishPrompt(requestedSessionId, "cancelled");
+      }
+
 
       if (emitMcpToolApprovalElicitation) {
         yield* agent.client.elicit({

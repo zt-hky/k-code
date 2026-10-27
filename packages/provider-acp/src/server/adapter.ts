@@ -63,6 +63,7 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/toolActivity";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { makeAcpMcpOverAcpBridge, type AcpMcpOverAcpBridge } from "./mcpOverAcpBridge.ts";
+import { genericElicitationForm } from "./elicitationForm.ts";
 import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
@@ -262,6 +263,12 @@ export interface AcpAdapterV2Flavor {
         ) => EffectAcpSchema.CreateElicitationResponse;
       }
     | undefined;
+  /** Matches a native plan-approval form so plan-mode runs end with a T3 proposed plan instead. */
+  readonly planApprovalElicitation?: (
+    request: EffectAcpSchema.CreateElicitationRequest,
+  ) => { readonly excerptMarkdown: string } | undefined;
+  /** Native option ids owned by T3's interaction mode; stale persisted selections for them are ignored. */
+  readonly interactionModeOptionIds?: ReadonlyArray<string>;
   readonly withRuntimeStartup?: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
   readonly makeRuntime: (
     input: AcpAdapterV2RuntimeInput,
@@ -1000,22 +1007,6 @@ function selectAutoApprovedPermissionOption(
   );
 }
 
-function elicitationContent(
-  answers: ProviderUserInputAnswers,
-  allowedKeys: ReadonlySet<string>,
-): Record<string, EffectAcpSchema.ElicitationContentValue> {
-  const content: Record<string, EffectAcpSchema.ElicitationContentValue> = {};
-  for (const [key, value] of Object.entries(answers)) {
-    if (!allowedKeys.has(key)) continue;
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      content[key] = value;
-    } else if (Array.isArray(value)) {
-      content[key] = value.filter((entry): entry is string => typeof entry === "string");
-    }
-  }
-  return content;
-}
-
 interface ActiveTextSegment {
   readonly nativeItemId: string;
   readonly startedAt: DateTime.Utc;
@@ -1090,6 +1081,8 @@ interface ActiveAcpTurn {
   promptSettled: boolean;
   promptSettledStatus: "completed" | "interrupted" | "failed" | "cancelled" | null;
   workAccepted: boolean;
+  /** The native plan-approval gate was replaced by a T3 proposed plan; its cancelled prompt is a completed run. */
+  planApprovalCaptured: boolean;
   readonly promptWireSettled: Deferred.Deferred<void, never>;
   backgroundFinalizeGeneration: number;
 }
@@ -2220,7 +2213,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               runId: context.input.runId,
               nodeId,
               kind: "proposed_plan",
-              status: "completed",
+              status: "active",
               markdown,
             },
           });
@@ -3411,6 +3404,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const previous = context.tools.get(incoming.toolCallId);
           const merged = mergeToolCallState(previous, incoming);
           const normalized = flavor.normalizeToolCall?.(merged) ?? merged;
+          const proposedPlanMarkdown = flavor.extractProposedPlanMarkdown?.(normalized);
+          if (proposedPlanMarkdown !== undefined && proposedPlanMarkdown.length > 0) {
+            yield* captureProposedPlan({ planMarkdown: proposedPlanMarkdown });
+          }
           const backgroundTaskId = flavor.extractBackgroundTaskId?.(normalized);
           const backgroundCommandTaskId =
             flavor.isBackgroundCommandTool?.(normalized) === true
@@ -4467,7 +4464,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             failure !== undefined
               ? "failed"
               : work.stopReason === "cancelled"
-                ? "cancelled"
+                ? context.planApprovalCaptured && !context.interrupted
+                  ? "completed"
+                  : "cancelled"
                 : "completed",
             failure,
           );
@@ -6209,36 +6208,29 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               if (params.mode !== "form" || !("requestedSchema" in params)) {
                 return { action: "decline" } as const;
               }
-              const requestedSchema = unknownRecord(params.requestedSchema);
-              const properties = unknownRecord(requestedSchema?.properties) ?? {};
-              const nativeForm = flavor.extractElicitationForm?.(params);
+              const planApproval = flavor.planApprovalElicitation?.(params);
+              if (planApproval !== undefined) {
+                const planContext = yield* Ref.get(activeTurn);
+                if (
+                  planContext !== null &&
+                  !planContext.finalized &&
+                  !planContext.interrupted &&
+                  planContext.input.runtimePolicy.interactionMode === "plan"
+                ) {
+                  const capturedMarkdown =
+                    (yield* lastProposedPlanMarkdown) ?? planApproval.excerptMarkdown;
+                  yield* captureProposedPlan({ planMarkdown: capturedMarkdown });
+                  planContext.planApprovalCaptured = true;
+                  yield* targetRuntime.cancel.pipe(Effect.ignore);
+                  return { action: "decline" } as const;
+                }
+              }
+              const form =
+                flavor.extractElicitationForm?.(params) ??
+                genericElicitationForm(params.message, params.requestedSchema);
               const elicitationScopeId =
                 "sessionId" in params ? params.sessionId : `request:${params.requestId}`;
-              const questions =
-                nativeForm?.questions ??
-                Object.entries(properties).map(
-                  ([id, property], index): OrchestrationV2UserInputQuestion => {
-                    const record = unknownRecord(property);
-                    const enumValues = Array.isArray(record?.enum)
-                      ? record.enum.filter((value): value is string => typeof value === "string")
-                      : [];
-                    const options =
-                      enumValues.length > 0
-                        ? enumValues.map((value) => ({ label: value, description: value }))
-                        : record?.type === "boolean"
-                          ? [
-                              { label: "true", description: "Yes" },
-                              { label: "false", description: "No" },
-                            ]
-                          : [];
-                    return {
-                      id,
-                      header: nonEmptyText(record?.title, `Question ${index + 1}`),
-                      question: nonEmptyText(record?.description, params.message),
-                      options,
-                    };
-                  },
-                );
+              const questions = form.questions;
               const userInput = yield* requestUserInputWithAdmission(
                 handlerGeneration,
                 Effect.gen(function* () {
@@ -6258,14 +6250,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               const response =
                 userInput.answers === null
                   ? ({ action: "cancel" } as const)
-                  : (nativeForm?.respond(userInput.answers) ??
-                    ({
-                      action: "accept",
-                      content: elicitationContent(
-                        userInput.answers,
-                        new Set(Object.keys(properties)),
-                      ),
-                    } as const));
+                  : form.respond(userInput.answers);
               yield* userInput.acknowledgeNativeResponse;
               return response;
             }).pipe(holdingAgentRequest(handlerGeneration)),
@@ -6738,9 +6723,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               };
             });
           }
-          const optionSelections = (modelSelection.options ?? []).map((selection) =>
-            selection.value === ACP_EMPTY_OPTION_VALUE ? { ...selection, value: "" } : selection,
-          );
+          const optionSelections = (modelSelection.options ?? [])
+            .filter((selection) => flavor.interactionModeOptionIds?.includes(selection.id) !== true)
+            .map((selection) =>
+              selection.value === ACP_EMPTY_OPTION_VALUE ? { ...selection, value: "" } : selection,
+            );
           const configOptions = yield* runtime.getConfigOptions;
           const availableConfigIds = new Set(configOptions.map((option) => option.id));
           const hasNativeConfigWithSyntheticModeId = availableConfigIds.has(
@@ -7458,6 +7445,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               promptSettled: false,
               promptSettledStatus: null,
               workAccepted: false,
+              planApprovalCaptured: false,
               promptWireSettled,
               backgroundFinalizeGeneration: 0,
             };
@@ -7636,7 +7624,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       : result.stopReason === "cancelled"
                         ? context.interrupted
                           ? "interrupted"
-                          : "cancelled"
+                          : context.planApprovalCaptured
+                            ? "completed"
+                            : "cancelled"
                         : "completed";
                     if (flavor.deferFinalizeForBackgroundWork === true && !context.interrupted) {
                       context.promptSettled = true;
