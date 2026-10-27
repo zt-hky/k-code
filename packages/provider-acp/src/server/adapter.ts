@@ -333,6 +333,8 @@ export interface AcpAdapterV2Flavor {
     toolCall: AcpToolCallState,
   ) => AcpAdapterV2SubagentUpdate | undefined;
   readonly isProvisionalSubagentTool?: (toolCall: AcpToolCallState) => boolean;
+  /** Tools whose questions arrive as a form elicitation; the question card replaces their tool row. */
+  readonly isUserInputTool?: (toolCall: AcpToolCallState) => boolean;
   readonly normalizeToolCall?: (toolCall: AcpToolCallState) => AcpToolCallState;
   readonly extractProposedPlanMarkdown?: (toolCall: AcpToolCallState) => string | undefined;
   readonly extractBackgroundTaskId?: (toolCall: AcpToolCallState) => string | undefined;
@@ -3439,6 +3441,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               ? toolCall
               : { ...toolCall, backgroundCommandTaskId },
           );
+          // The question card already shows this tool's questions and answers.
+          if (flavor.isUserInputTool?.(toolCall) === true) return;
           if (
             followsAgentWorkState &&
             projectedStatus === undefined &&

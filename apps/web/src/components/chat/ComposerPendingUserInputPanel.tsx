@@ -133,6 +133,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     }
     setOptimisticSingleSelect({ questionId, optionValue });
     onToggleOption(questionId, optionValue);
+    // Auto-advance between questions only; submitting stays an explicit Submit or Enter.
+    if (progress.isLastQuestion) return;
     if (autoAdvanceTimerRef.current !== null) {
       window.clearTimeout(autoAdvanceTimerRef.current);
     }
