@@ -10,6 +10,7 @@ import {
   type ProviderInstanceId,
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
+  type ServerProviderUsageAccount,
 } from "@t3tools/contracts";
 import { AcpRegistrySettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
@@ -463,7 +464,7 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
 const MANAGEMENT_TIMEOUT = Duration.seconds(60);
 
 const makeAcpRegistryManagementRuntime = Effect.fn("AcpRegistryProbe.makeManagementRuntime")(
-  function* (input: AcpRegistryManagementInput) {
+  function* (input: AcpRegistryManagementInput & { readonly resumeSessionId?: string }) {
     const catalog = yield* AcpRegistrySupport.AcpRegistryCatalog;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const crypto = yield* Crypto.Crypto;
@@ -477,6 +478,9 @@ const makeAcpRegistryManagementRuntime = Effect.fn("AcpRegistryProbe.makeManagem
       AcpSessionRuntime.layer({
         spawn: resolved.spawn,
         cwd: input.cwd,
+        ...(input.resumeSessionId
+          ? { resumeSessionId: input.resumeSessionId, resumeMethod: "resume" as const }
+          : {}),
         clientCapabilities: {
           auth: { terminal: false },
           elicitation: { url: {} },
@@ -720,17 +724,39 @@ export const listAcpRegistryProviders = Effect.fn("AcpRegistryProbe.listProvider
 
 const OMP_USAGE_TIMEOUT = Duration.seconds(30);
 
-/** Best-effort: a failed or malformed usage read yields undefined so callers keep their last good accounts. */
+export interface AcpRegistryUsageRead {
+  readonly accounts: ReadonlyArray<ServerProviderUsageAccount>;
+  readonly sessionId: string;
+}
+
+/**
+ * omp only reports usage once a session exists. Reuse one usage session via `session/resume`
+ * so periodic reads don't add an empty session to the agent's resume list each time.
+ * Best-effort: failures yield undefined so callers keep their last good accounts.
+ */
 export const readAcpRegistryUsageAccounts = Effect.fn("AcpRegistryProbe.readUsageAccounts")(
-  function* (input: AcpRegistryManagementInput) {
-    const runtime = yield* makeAcpRegistryManagementRuntime(input);
-    const response = yield* runtime.request(OMP_USAGE_METHOD, {});
-    const now = yield* DateTime.now;
-    return ompUsageToAccounts(response, ProviderDriverKind.make("acpRegistry"), now);
+  function* (input: AcpRegistryManagementInput & { readonly usageSessionId?: string }) {
+    const read = Effect.fn("AcpRegistryProbe.readUsageAccountsOnce")(function* (
+      resumeSessionId: string | undefined,
+    ) {
+      const runtime = yield* makeAcpRegistryManagementRuntime({
+        ...input,
+        ...(resumeSessionId ? { resumeSessionId } : {}),
+      });
+      const started = yield* runtime.start();
+      const response = yield* runtime.request(OMP_USAGE_METHOD, {});
+      const now = yield* DateTime.now;
+      return {
+        accounts: ompUsageToAccounts(response, ProviderDriverKind.make("acpRegistry"), now),
+        sessionId: started.sessionId,
+      } satisfies AcpRegistryUsageRead;
+    }, Effect.scoped);
+    return yield* input.usageSessionId === undefined
+      ? read(undefined)
+      : read(input.usageSessionId).pipe(Effect.catch(() => read(undefined)));
   },
   (effect) =>
     effect.pipe(
-      Effect.scoped,
       Effect.timeoutOption(OMP_USAGE_TIMEOUT),
       Effect.map(Option.getOrUndefined),
       Effect.catch((error) =>
