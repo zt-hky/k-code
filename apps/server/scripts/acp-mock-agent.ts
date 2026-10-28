@@ -34,6 +34,7 @@ const emitMcpToolApprovalElicitation =
 const ompPlanStall = process.env.T3_ACP_EMIT_OMP_PLAN_APPROVAL === "stall";
 const emitOmpPlanApproval = ompPlanStall || process.env.T3_ACP_EMIT_OMP_PLAN_APPROVAL === "1";
 const ompPlanMarkdown = "# Demo plan\n\n- Step one\n- Step two\n";
+const omitSessionListHandler = process.env.T3_ACP_OMIT_SESSION_LIST_HANDLER === "1";
 const grokKillTaskShape = process.env.T3_ACP_GROK_KILL_TASK_SHAPE;
 const emitGrokBackgroundTaskPoll = process.env.T3_ACP_GROK_BACKGROUND_TASK_COMPLETION === "poll";
 const emitForeignSessionUpdates = process.env.T3_ACP_EMIT_FOREIGN_SESSION_UPDATES === "1";
@@ -1542,7 +1543,6 @@ const program = Effect.gen(function* () {
         cancelledSessions.delete(requestedSessionId);
         return yield* finishPrompt(requestedSessionId, "cancelled");
       }
-
 
       if (emitMcpToolApprovalElicitation) {
         yield* agent.client.elicit({
