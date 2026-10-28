@@ -74,27 +74,44 @@ export interface T3AcpInstructionState {
   readonly model: string;
 }
 
+/** Instruction kinds an ACP provider instance can switch off; all are on by default. */
+export interface T3AcpInstructionSections {
+  readonly interactionMode: boolean;
+  readonly t3Tools: boolean;
+  readonly runtimeInfo: boolean;
+  readonly pullRequestLinking: boolean;
+}
+
 /** ACP lacks system/developer fields; inject context on first prompt and tool/mode/model changes. */
-export function t3AcpPromptWithInstructions(input: {
+export function t3AcpInstructionsDue(input: {
   readonly prompt: string;
   readonly state: T3AcpInstructionState;
   readonly previousState?: T3AcpInstructionState;
-}): string {
+}): boolean {
   // Native slash commands must remain at the start of the prompt.
-  if (input.prompt.trimStart().startsWith("/")) return input.prompt;
-  if (
+  if (input.prompt.trimStart().startsWith("/")) return false;
+  return !(
     input.previousState?.interactionMode === input.state.interactionMode &&
     input.previousState.hasT3Mcp === input.state.hasT3Mcp &&
     input.previousState.hasDeviceTools === input.state.hasDeviceTools &&
     input.previousState.model === input.state.model
-  ) {
-    return input.prompt;
-  }
+  );
+}
+
+export function t3AcpPromptWithInstructions(input: {
+  readonly prompt: string;
+  readonly state: T3AcpInstructionState;
+  readonly sections?: T3AcpInstructionSections;
+}): string {
   const instructions = [
-    input.state.interactionMode === "plan"
-      ? T3_CODE_ACP_PLAN_MODE_INSTRUCTIONS
-      : T3_CODE_ACP_DEFAULT_MODE_INSTRUCTIONS,
-    ...(input.state.hasT3Mcp
+    ...(input.sections?.interactionMode === false
+      ? []
+      : [
+          input.state.interactionMode === "plan"
+            ? T3_CODE_ACP_PLAN_MODE_INSTRUCTIONS
+            : T3_CODE_ACP_DEFAULT_MODE_INSTRUCTIONS,
+        ]),
+    ...(input.state.hasT3Mcp && input.sections?.t3Tools !== false
       ? [
           T3_CODE_BROWSER_TOOL_INSTRUCTIONS.trim(),
           ...(input.state.hasDeviceTools ? [T3_CODE_DEVICE_TOOL_INSTRUCTIONS] : []),
@@ -103,6 +120,7 @@ export function t3AcpPromptWithInstructions(input: {
         ]
       : []),
   ];
+  if (instructions.length === 0) return input.prompt;
   return `<t3_code_instructions>\n${instructions.join("\n\n")}\n</t3_code_instructions>\n\n<user_request>\n${input.prompt}\n</user_request>`;
 }
 

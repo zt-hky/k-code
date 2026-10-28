@@ -644,6 +644,20 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "remote-open-ssh-host",
+    title: "SSH host",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    searchTerms: ["open in editor vscode remote ssh ip address tailscale cursor zed"],
+  },
+  {
+    id: "remote-open-ssh-user",
+    title: "SSH user",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    searchTerms: ["open in editor vscode remote ssh username login"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",

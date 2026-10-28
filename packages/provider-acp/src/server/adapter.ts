@@ -101,7 +101,9 @@ import {
 import { ACP_EMPTY_OPTION_VALUE, ACP_SESSION_MODE_OPTION_ID } from "./sessionConfig.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import {
+  t3AcpInstructionsDue,
   t3AcpPromptWithInstructions,
+  type T3AcpInstructionSections,
   type T3AcpInstructionState,
 } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
@@ -327,6 +329,7 @@ export interface AcpAdapterV2Flavor {
   readonly subagentsIdleOnTurnCompletion?: boolean;
   readonly supportsCompaction?: boolean;
   readonly runtimeHarness?: string;
+  readonly instructionSections?: T3AcpInstructionSections;
   readonly registerExtensions?: (
     context: AcpAdapterV2ExtensionContext,
   ) => Effect.Effect<void, EffectAcpErrors.AcpError>;
@@ -7421,14 +7424,22 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             resolveAttachmentPath: host.resolveAttachmentPath,
             resolveExtractedTextPath: host.resolveExtractedTextPath,
           });
-          const text = t3AcpPromptWithInstructions({
+          const injectsInstructions = t3AcpInstructionsDue({
             prompt: messageText,
             state: instructionState,
             ...(previousInstructionState === undefined || compactionMarker !== undefined
               ? {}
               : { previousState: previousInstructionState }),
           });
-          const injectsInstructions = text !== messageText;
+          const text = injectsInstructions
+            ? t3AcpPromptWithInstructions({
+                prompt: messageText,
+                state: instructionState,
+                ...(flavor.instructionSections === undefined
+                  ? {}
+                  : { sections: flavor.instructionSections }),
+              })
+            : messageText;
           const prompt = yield* messagePromptBlocks(text, turnInput.message.attachments);
           if (prompt.length === 0) {
             return yield* new ProviderAdapter.ProviderAdapterProtocolError({
@@ -7436,14 +7447,20 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               detail: "ACP turn requires non-empty text or attachments",
             });
           }
-          if (injectsInstructions) {
-            prompt.push({
-              type: "text",
-              text: buildRuntimeInstructions({
+          const runtimeInstructions = injectsInstructions
+            ? buildRuntimeInstructions({
                 harness: flavor.runtimeHarness ?? driver,
                 model: turnInput.modelSelection.model,
-              }),
-            });
+                ...(flavor.instructionSections === undefined
+                  ? {}
+                  : {
+                      runtimeInfo: flavor.instructionSections.runtimeInfo,
+                      pullRequestLinking: flavor.instructionSections.pullRequestLinking,
+                    }),
+              })
+            : "";
+          if (runtimeInstructions.length > 0) {
+            prompt.push({ type: "text", text: runtimeInstructions });
           }
           return {
             prompt,

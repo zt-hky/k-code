@@ -1391,6 +1391,103 @@ describe("AcpAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.live.each([
+    {
+      scenario: "sends the request verbatim when every instruction kind is off",
+      runtimeInfo: false,
+      expected: ["Plain request."],
+    },
+    {
+      scenario: "sends only runtime info when the other instruction kinds are off",
+      runtimeInfo: true,
+      expected: ["Plain request.", "<runtime_info>"],
+    },
+  ])("ACP instruction toggles $scenario", ({ runtimeInfo, expected }) =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const path = yield* Path.Path;
+      const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
+      const instanceId = ProviderInstanceId.make(`acp-test-instruction-toggles-${runtimeInfo}`);
+      const threadId = ThreadId.make(`thread-acp-instruction-toggles-${runtimeInfo}`);
+      yield* (yield* McpProviderSessions.McpProviderSessions).set({
+        environmentId: EnvironmentId.make("environment-acp-instruction-toggles"),
+        threadId,
+        providerSessionId: `mcp-session-acp-instruction-toggles-${runtimeInfo}`,
+        providerInstanceId: instanceId,
+        endpoint: "http://127.0.0.1:43123/mcp",
+        authorizationHeader: "Bearer instruction-toggle-token",
+        browserToolsAvailable: true,
+      });
+      const adapter = yield* makeAcpAdapterV2({
+        instanceId,
+        flavor: {
+          driver: ACP_TEST_DRIVER,
+          capabilities: AcpProviderCapabilitiesV2,
+          instructionSections: {
+            interactionMode: false,
+            t3Tools: false,
+            runtimeInfo,
+            pullRequestLinking: false,
+          },
+          makeRuntime: makeMockRuntime({
+            childProcessSpawner,
+            mockAgentPath: yield* path.fromFileUrl(
+              new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+            ),
+            protocolEvents,
+          }),
+        },
+        selfInvocation: yield* resolveSelfInvocation(),
+      });
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const modelSelection = { instanceId, model: "default" } as const;
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make(`provider-session-toggles-${runtimeInfo}`),
+        modelSelection,
+        runtimePolicy,
+      });
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      yield* runtime.startTurn(
+        makeTurnInput({
+          threadId,
+          providerThread,
+          instanceId,
+          runtimePolicy,
+          now: yield* DateTime.now,
+          messageText: "Plain request.",
+        }),
+      );
+      yield* runtime.events.pipe(
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runDrain,
+      );
+      while (true) {
+        const event = yield* Queue.take(protocolEvents);
+        if (event.direction !== "outgoing" || rawProtocolMethod(event) !== "session/prompt") {
+          continue;
+        }
+        const blocks = rawProtocolPromptTextBlocks(event).map((block) => block.text);
+        assert.deepEqual(
+          blocks.map((text, index) =>
+            index === 0 ? text : text.slice(0, "<runtime_info>".length),
+          ),
+          expected,
+        );
+        assert.notInclude(blocks.join("\n"), "<pull_request_linking>");
+        return;
+      }
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.live(
     "reinjects ACP instructions after protocol compaction, including during reinjection",
     () =>

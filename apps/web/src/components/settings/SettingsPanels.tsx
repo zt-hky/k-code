@@ -534,6 +534,12 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
       ? ["Add project base directory"]
       : []),
+    ...(settings.remoteOpenSshHost !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost
+      ? ["SSH host"]
+      : []),
+    ...(settings.remoteOpenSshUser !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser
+      ? ["SSH user"]
+      : []),
     ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
       ? ["Unpin confirmation"]
       : []),
@@ -647,6 +653,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
+      remoteOpenSshHost: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost,
+      remoteOpenSshUser: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -1563,6 +1571,63 @@ export function ThreadsSettingsPanel() {
               placeholder={mixedAddProjectBaseDirectory ? "Mixed" : "~/"}
               spellCheck={false}
               aria-label="Add project base directory"
+            />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection id="remote-editor" title="Open in editor over SSH">
+        <SettingsRow
+          serverScoped
+          settingKeys={["remoteOpenSshHost"]}
+          {...searchableSetting("remote-open-ssh-host")}
+          description="Host or IP your editor connects to over SSH when opening files from another device. Leave empty to use the detected Tailscale or local network name."
+          resetAction={
+            settings.remoteOpenSshHost !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost ? (
+              <SettingResetButton
+                label="SSH host"
+                onClick={() =>
+                  updateSettings({ remoteOpenSshHost: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost })
+                }
+              />
+            ) : null
+          }
+          control={
+            <DraftInput
+              size="sm"
+              className="w-full sm:w-72"
+              value={settings.remoteOpenSshHost}
+              onCommit={(next) => updateSettings({ remoteOpenSshHost: next })}
+              placeholder="Detected automatically"
+              spellCheck={false}
+              aria-label="SSH host"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["remoteOpenSshUser"]}
+          {...searchableSetting("remote-open-ssh-user")}
+          description="SSH user for that host. Leave empty to use the user running T3 Code."
+          resetAction={
+            settings.remoteOpenSshUser !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser ? (
+              <SettingResetButton
+                label="SSH user"
+                onClick={() =>
+                  updateSettings({ remoteOpenSshUser: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser })
+                }
+              />
+            ) : null
+          }
+          control={
+            <DraftInput
+              size="sm"
+              className="w-full sm:w-72"
+              value={settings.remoteOpenSshUser}
+              onCommit={(next) => updateSettings({ remoteOpenSshUser: next })}
+              placeholder="Server user"
+              spellCheck={false}
+              aria-label="SSH user"
             />
           }
         />
