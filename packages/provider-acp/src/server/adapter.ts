@@ -434,6 +434,10 @@ export interface AcpAdapterV2SubagentUpdate {
     | "cancelled";
   readonly childSessionId: string | null;
   readonly result: string | null;
+  /** Latest activity (current tool or last output); `null` clears it, `undefined` keeps the previous one. */
+  readonly progress?: string | null;
+  /** Thinking level the child runs with, when the agent reports one. */
+  readonly reasoningEffort?: string | null;
   readonly suppressNormalTool?: boolean;
 }
 
@@ -2835,7 +2839,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const turnItemOrdinal =
             existing?.turnItemOrdinal ?? (yield* resolveItemOrdinal(context, nativeTaskId));
           const taskStatus = update.status;
-          const task: OrchestrationV2Subagent = {
+          const baseTask: OrchestrationV2Subagent = {
             ...(existing?.task ?? {
               id: nodeId,
               threadId: context.input.threadId,
@@ -2858,6 +2862,26 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             result: update.result ?? existing?.task.result ?? null,
             completedAt: acpSubagentStatusIsTerminal(taskStatus) ? now : null,
             updatedAt: now,
+          };
+          const progress = acpSubagentStatusIsTerminal(taskStatus)
+            ? undefined
+            : update.progress === undefined
+              ? existing?.task.progress
+              : (update.progress?.trim() ?? undefined) || undefined;
+          const reasoningEffort = update.reasoningEffort?.trim();
+          const { progress: _previousProgress, ...taskWithoutProgress } = baseTask;
+          const task: OrchestrationV2Subagent = {
+            ...taskWithoutProgress,
+            ...(progress === undefined ? {} : { progress }),
+            ...(reasoningEffort
+              ? {
+                  modelSelection: {
+                    instanceId: baseTask.providerInstanceId,
+                    model: baseTask.model ?? context.input.modelSelection.model,
+                    options: [{ id: "reasoningEffort", value: reasoningEffort }],
+                  },
+                }
+              : {}),
           };
           const subagent: ActiveAcpSubagent = existing ?? {
             task,
