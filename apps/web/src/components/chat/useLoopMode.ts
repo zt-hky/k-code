@@ -214,6 +214,7 @@ export function useLoopMode(input: LoopModeInput) {
     store.advance(routeThreadKey, latestRun.runId);
     void resend(current.prompt);
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a run settling is a server event no handler in this view causes; the loop answers it with the next turn
   useEffect(() => {
     if (action.type === "resend" && !canResend) return;
     runLoopAction();
