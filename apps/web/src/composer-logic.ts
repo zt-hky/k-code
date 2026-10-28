@@ -17,12 +17,18 @@ import {
 
 import { resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
 
-export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
+export type ComposerTriggerKind =
+  | "path"
+  | "pull-request"
+  | "slash-command"
+  | "slash-argument"
+  | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default";
 export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
+  command?: string;
   query: string;
   rangeStart: number;
   rangeEnd: number;
@@ -281,7 +287,16 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
     };
   }
   if (!token.startsWith("@")) {
-    return null;
+    const lineStart = text.lastIndexOf("\n", tokenStart - 1) + 1;
+    const commandMatch = /^\/([A-Za-z0-9][\w:.-]*) +$/.exec(text.slice(lineStart, tokenStart));
+    if (!commandMatch) return null;
+    return {
+      kind: "slash-argument",
+      command: commandMatch[1]!,
+      query: token,
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
   }
 
   return {

@@ -234,6 +234,23 @@ describe("composerSubmissionIntentForKey", () => {
 });
 
 describe("detectComposerTrigger", () => {
+  it("detects slash command arguments after the command and a space", () => {
+    expect(detectComposerTrigger("/fast o", 7)).toEqual({
+      kind: "slash-argument",
+      command: "fast",
+      query: "o",
+      rangeStart: 6,
+      rangeEnd: 7,
+    });
+    expect(detectComposerTrigger("/fast ", 6)).toMatchObject({
+      kind: "slash-argument",
+      command: "fast",
+      query: "",
+    });
+    expect(detectComposerTrigger("/fast", 5)?.kind).toBe("slash-command");
+    expect(detectComposerTrigger("hello world", 11)).toBeNull();
+  });
+
   it.each([
     ["Run /tmp/build.sh", "Run /tmp/build.sh".length],
     ["/etc/hosts", "/etc/hosts".length],
@@ -258,11 +275,11 @@ describe("detectComposerTrigger", () => {
     (text) => expect(detectComposerTrigger(text, text.length)).toBeNull(),
   );
 
-  it("does not keep a subcommand trigger active after /model arguments", () => {
+  it("treats /model arguments as slash-argument triggers that never match a menu", () => {
     const text = "/model spark";
     const trigger = detectComposerTrigger(text, text.length);
 
-    expect(trigger).toBeNull();
+    expect(trigger).toMatchObject({ kind: "slash-argument", command: "model", query: "spark" });
   });
 
   it.each([

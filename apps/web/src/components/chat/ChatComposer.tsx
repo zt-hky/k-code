@@ -1129,7 +1129,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     questionAttachmentTarget,
   });
 
-  const composerMenuOpen = Boolean(composerTrigger);
+  const composerMenuOpen =
+    composerTrigger !== null &&
+    (composerTrigger.kind !== "slash-argument" || composerMenuItems.length > 0);
   const composerMenuSearchKey = composerTrigger
     ? `${composerSuggestionListId}:${composerTrigger.kind}:${composerTrigger.query.trim().toLowerCase()}`
     : null;
@@ -1892,6 +1894,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       const replacement = `/${item.command.name} `;
+      const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+        snapshot.value,
+        trigger.rangeEnd,
+        replacement,
+      );
+      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+        expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
+      });
+      if (applied) {
+        setComposerHighlightedItemId(null);
+      }
+      return;
+    }
+    if (item.type === "slash-argument") {
+      const replacement = `${item.value} `;
       const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
         snapshot.value,
         trigger.rangeEnd,
