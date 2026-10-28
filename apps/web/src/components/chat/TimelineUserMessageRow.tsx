@@ -16,10 +16,6 @@ import { serverEnvironment } from "../../state/server";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { memo, use, useState, type ReactNode } from "react";
 import {
-  createMessageAttachmentPreviewProjector,
-  selectMessageImageResources,
-} from "../../session-logic";
-import {
   type ChatFileAttachment,
   isFileAttachment,
   isImageAttachment,
@@ -38,18 +34,14 @@ import {
 } from "lucide-react";
 import { Link as LinkIconNode } from "lucide";
 import { Button, InlineButton } from "../ui/button";
-import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
-import { AttachmentImage } from "../media/AttachmentImage";
+import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import {
   buildAttachmentVideoAsset,
   buildAttachmentVideoPreview,
   buildExpandedImagePreview,
 } from "./ExpandedImagePreview";
-import {
-  SNAP_SHOT_ATTACHMENT_FRAME_CLASS,
-  SnapShotAttachmentDetails,
-} from "./SnapShotAttachmentDetails";
+import { MessageImageGridView, useMessageImagePreviews } from "./MessageImageGrid";
 import { GuestMessageName, guestBubbleClassName } from "./guestMessageStyle";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
@@ -292,19 +284,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const ctx = use(TimelineRowCtx);
   const { onImageExpand, onFileOpen } = ctx;
   const senderThreadId = row.message.senderThreadId;
-  const resources = selectMessageImageResources(row.message.attachments);
-  const previewUrls = useAssetUrls(ctx.activeThreadEnvironmentId, resources);
-  const [projectPreviews] = useState(createMessageAttachmentPreviewProjector);
-  const previewUrlsById = new Map(
-    resources.flatMap((resource, index) => {
-      const url = previewUrls[index];
-      return url ? [[resource.attachmentId, url] as const] : [];
-    }),
-  );
-  const messageWithPreviews = projectPreviews(row.message, (attachment) =>
-    previewUrlsById.get(attachment.id),
-  );
-  const userImages = (messageWithPreviews.attachments ?? []).filter(isImageAttachment);
+  const userImages = useMessageImagePreviews(ctx.activeThreadEnvironmentId, row.message);
   const userFiles = (row.message.attachments ?? []).filter(isFileAttachment);
   const userVideos = userFiles.filter(isVideoAttachment);
   const userAudio = userFiles.filter(
@@ -502,53 +482,11 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             )}
           >
             {(regularImages.length > 0 || userVideos.length > 0) && (
-              <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
-                {regularImages.map((image) => (
-                  <div
-                    key={image.id}
-                    className={cn(
-                      "bg-background/70",
-                      image.source?.kind === "snap-shot" && image.previewUrl
-                        ? cn(SNAP_SHOT_ATTACHMENT_FRAME_CLASS, "col-span-2")
-                        : "aspect-[4/3] overflow-hidden rounded-lg border border-border/80",
-                    )}
-                  >
-                    {image.previewUrl ? (
-                      <button
-                        type="button"
-                        className="block h-full w-full cursor-zoom-in"
-                        aria-label={`Preview ${image.name}`}
-                        onClick={() => {
-                          const preview = buildExpandedImagePreview(regularImages, image.id);
-                          if (!preview) return;
-                          ctx.onImageExpand(preview);
-                        }}
-                      >
-                        {/* Isolate the thumbnail raster from nearby activity repaints in Chromium. */}
-                        <AttachmentImage
-                          name={image.name}
-                          mimeType={image.mimeType}
-                          src={image.previewUrl}
-                          alt={image.name}
-                          decoding="async"
-                          loading="lazy"
-                          className="block size-full transform-gpu object-cover"
-                        />
-                      </button>
-                    ) : (
-                      <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-2xs text-muted-foreground/70">
-                        {image.name}
-                      </div>
-                    )}
-                    {image.previewUrl && image.source?.kind === "snap-shot" ? (
-                      <SnapShotAttachmentDetails source={image.source} />
-                    ) : null}
-                  </div>
-                ))}
+              <MessageImageGridView images={regularImages} onImageExpand={ctx.onImageExpand}>
                 {userVideos.map((file) => (
                   <UserVideoAttachment key={file.id} file={file} />
                 ))}
-              </div>
+              </MessageImageGridView>
             )}
             {userAudio.length > 0 ? (
               <div className="mb-2 flex max-w-full flex-col gap-1">

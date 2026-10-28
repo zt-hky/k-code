@@ -72,6 +72,7 @@ import {
 } from "@t3tools/provider-grok/testing";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { makeTurnInput } from "./AcpAdapterV2.testkit.ts";
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import {
@@ -7813,6 +7814,354 @@ describe("AcpAdapterV2", () => {
           "Direct Stop must not carry a stopped subagent into the follow-up run",
         );
       }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+});
+
+const ONE_PIXEL_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+describe("AcpAdapterV2 steering, usage, images and request cancellation", () => {
+  const openHarness = Effect.fnUntraced(function* (input: {
+    readonly name: string;
+    readonly runtimeMode?: "approval-required" | "full-access";
+    readonly environment?: Readonly<Record<string, string>>;
+    readonly flavor?: Partial<AcpAdapterV2Flavor>;
+    readonly wrapRuntime?: Parameters<typeof makeMockRuntime>[0]["wrapRuntime"];
+  }) {
+    const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const idAllocator = yield* IdAllocator.IdAllocatorV2;
+    const path = yield* Path.Path;
+    const mockAgentPath = yield* path.fromFileUrl(
+      new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+    );
+    const protocolEvents = yield* Queue.bounded<EffectAcpProtocol.AcpProtocolLogEvent>(256);
+    const instanceId = ProviderInstanceId.make(`acp-test-${input.name}`);
+    const adapter = yield* makeAcpAdapterV2({
+      instanceId,
+      selfInvocation: yield* resolveSelfInvocation(),
+      flavor: {
+        driver: ACP_TEST_DRIVER,
+        capabilities: AcpProviderCapabilitiesV2,
+        interruptPromptOnCancel: true,
+        ...input.flavor,
+        makeRuntime: makeMockRuntime({
+          childProcessSpawner,
+          mockAgentPath,
+          protocolEvents,
+          ...(input.environment === undefined ? {} : { environment: input.environment }),
+          ...(input.wrapRuntime === undefined ? {} : { wrapRuntime: input.wrapRuntime }),
+        }),
+      },
+    });
+    const threadId = ThreadId.make(`thread-acp-${input.name}`);
+    const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+      runtimeMode: input.runtimeMode ?? "full-access",
+      interactionMode: "default",
+      cwd: process.cwd(),
+    });
+    const modelSelection = { instanceId, model: "default" } as const;
+    const runtime = yield* adapter.openSession({
+      threadId,
+      providerSessionId: ProviderSessionId.make(`provider-session-acp-${input.name}`),
+      modelSelection,
+      runtimePolicy,
+    });
+    const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+    yield* runtime.events.pipe(
+      Stream.runForEach((event) => Queue.offer(events, event)),
+      Effect.forkScoped,
+    );
+    const providerThread = yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+    const turnInput = makeTurnInput({
+      threadId,
+      providerThread,
+      instanceId,
+      runtimePolicy,
+      now: yield* DateTime.now,
+    });
+    const providerTurnId = idAllocator.derive.providerTurn({
+      driver: ACP_TEST_DRIVER,
+      nativeTurnId: acpScopedNativeId(instanceId, "mock-session-1:turn:1"),
+    });
+    const startHangingTurn = Effect.gen(function* () {
+      const turnFiber = yield* runtime.startTurn(turnInput).pipe(Effect.forkScoped);
+      yield* Stream.fromQueue(protocolEvents).pipe(
+        Stream.filter(
+          (event) =>
+            event.direction === "outgoing" && rawProtocolMethod(event) === "session/prompt",
+        ),
+        Stream.runHead,
+      );
+      return turnFiber;
+    });
+    const steer = (text: string, turnId = providerTurnId) =>
+      runtime.steerTurn({
+        threadId,
+        runId: turnInput.runId,
+        providerThread,
+        providerTurnId: turnId,
+        message: { ...turnInput.message, text },
+      });
+    const stopHangingTurn = (
+      turnFiber: Fiber.Fiber<unknown, ProviderAdapter.ProviderAdapterV2Error>,
+    ) =>
+      runtime
+        .interruptTurn({ providerThread, providerTurnId })
+        .pipe(Effect.andThen(Fiber.join(turnFiber)));
+    const collectUntilTerminal = Effect.gen(function* () {
+      const collected: Array<ProviderAdapter.ProviderAdapterV2Event> = [];
+      while (true) {
+        const event = yield* Queue.take(events);
+        collected.push(event);
+        if (event.type === "turn.terminal") return collected;
+      }
+    });
+    return {
+      runtime,
+      events,
+      turnInput,
+      providerTurnId,
+      staleProviderTurnId: idAllocator.derive.providerTurn({
+        driver: ACP_TEST_DRIVER,
+        nativeTurnId: acpScopedNativeId(instanceId, "mock-session-1:turn:99"),
+      }),
+      startHangingTurn,
+      steer,
+      stopHangingTurn,
+      collectUntilTerminal,
+    };
+  });
+
+  const steeringFlavor = { supportsSessionSteering: true } as const;
+
+  it.live("delivers a steer through _session/steering when the agent advertises it", () =>
+    Effect.gen(function* () {
+      const harness = yield* openHarness({
+        name: "steer-injected",
+        environment: { T3_ACP_HANG_PROMPT_FOREVER: "1", T3_ACP_SESSION_STEERING: "injected" },
+        flavor: steeringFlavor,
+      });
+      const turnFiber = yield* harness.startHangingTurn;
+      assert.isTrue(harness.runtime.providerSession.capabilities.turns.supportsActiveSteering);
+      yield* harness.steer("steer me");
+      while (true) {
+        const event = yield* Queue.take(harness.events);
+        if (
+          event.type === "turn_item.updated" &&
+          event.turnItem.type === "assistant_message" &&
+          event.turnItem.text === "steered: steer me"
+        ) {
+          break;
+        }
+      }
+      yield* harness.stopHangingTurn(turnFiber);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live.each(["promptRequired", "failed"] as const)(
+    "fails a steer when the agent answers %s",
+    (outcome) =>
+      Effect.gen(function* () {
+        const harness = yield* openHarness({
+          name: `steer-${outcome}`,
+          environment: { T3_ACP_HANG_PROMPT_FOREVER: "1", T3_ACP_SESSION_STEERING: outcome },
+          flavor: steeringFlavor,
+        });
+        const turnFiber = yield* harness.startHangingTurn;
+        const error = yield* harness.steer("steer me").pipe(Effect.flip);
+        assert.instanceOf(error, ProviderAdapter.ProviderAdapterSteerRunError);
+        yield* harness.stopHangingTurn(turnFiber);
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live("fails a steer aimed at a turn that is not active", () =>
+    Effect.gen(function* () {
+      const harness = yield* openHarness({
+        name: "steer-stale",
+        environment: { T3_ACP_HANG_PROMPT_FOREVER: "1", T3_ACP_SESSION_STEERING: "injected" },
+        flavor: steeringFlavor,
+      });
+      const turnFiber = yield* harness.startHangingTurn;
+      const error = yield* harness.steer("steer me", harness.staleProviderTurnId).pipe(Effect.flip);
+      assert.instanceOf(error, ProviderAdapter.ProviderAdapterSteerRunError);
+      yield* harness.stopHangingTurn(turnFiber);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live("keeps steering unsupported for a flavor that does not opt in", () =>
+    Effect.gen(function* () {
+      const harness = yield* openHarness({
+        name: "steer-not-opted-in",
+        environment: { T3_ACP_HANG_PROMPT_FOREVER: "1", T3_ACP_SESSION_STEERING: "injected" },
+      });
+      const turnFiber = yield* harness.startHangingTurn;
+      assert.isFalse(harness.runtime.providerSession.capabilities.turns.supportsActiveSteering);
+      const error = yield* harness.steer("steer me").pipe(Effect.flip);
+      assert.instanceOf(error, ProviderAdapter.ProviderAdapterSteerRunUnsupportedError);
+      yield* harness.stopHangingTurn(turnFiber);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live("reports the usage the agent returns for a prompt on the provider turn", () =>
+    Effect.gen(function* () {
+      const harness = yield* openHarness({
+        name: "turn-usage",
+        environment: { T3_ACP_TURN_USAGE: "1" },
+      });
+      yield* harness.runtime.startTurn(harness.turnInput);
+      const collected = yield* harness.collectUntilTerminal;
+      const tokenUsage = collected
+        .flatMap((event) =>
+          event.type === "provider_turn.updated" && event.providerTurn.tokenUsage !== undefined
+            ? [event.providerTurn.tokenUsage]
+            : [],
+        )
+        .at(-1);
+      assert.deepInclude(tokenUsage, {
+        inputTokens: 120,
+        outputTokens: 30,
+        cachedInputTokens: 40,
+        usedTokens: 150,
+      });
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  const imageChunkRuntime = (mimeType: string) => {
+    type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+    let handler: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
+    return (runtime: RuntimeService): RuntimeService => ({
+      ...runtime,
+      handleSessionUpdate: (next) =>
+        Effect.sync(() => {
+          handler = next;
+        }).pipe(Effect.andThen(runtime.handleSessionUpdate(next))),
+      prompt: () =>
+        Effect.gen(function* () {
+          assert.isDefined(handler);
+          yield* handler!({
+            sessionId: "mock-session-1",
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              messageId: "m1",
+              content: { type: "image", data: ONE_PIXEL_PNG_BASE64, mimeType },
+            },
+          });
+          yield* handler!({
+            sessionId: "mock-session-1",
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              messageId: "m1",
+              content: { type: "text", text: "done" },
+            },
+          });
+          return { stopReason: "end_turn" as const };
+        }),
+    });
+  };
+
+  const lastAssistantItem = (events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>) =>
+    events
+      .flatMap((event) =>
+        event.type === "turn_item.updated" && event.turnItem.type === "assistant_message"
+          ? [event.turnItem]
+          : [],
+      )
+      .at(-1);
+
+  it.live("stores an agent-generated image as an assistant message attachment", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const host = yield* ProviderHost.ProviderHost;
+      const harness = yield* openHarness({
+        name: "image-chunk",
+        wrapRuntime: imageChunkRuntime("image/png"),
+      });
+      yield* harness.runtime.startTurn(harness.turnInput);
+      const item = lastAssistantItem(yield* harness.collectUntilTerminal);
+      assert.equal(item?.text, "done");
+      const attachment = item?.attachments?.[0];
+      assert.equal(attachment?.type, "image");
+      assert.equal(attachment?.name, "image-1.png");
+      assert.isFalse(attachment?.id.endsWith("-png"));
+      assert.isTrue(
+        yield* fileSystem.exists(path.join(host.paths.attachmentsDir, attachment?.id ?? "missing")),
+      );
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live("keeps the placeholder text for an image type that cannot be stored", () =>
+    Effect.gen(function* () {
+      const harness = yield* openHarness({
+        name: "image-svg",
+        wrapRuntime: imageChunkRuntime("image/svg+xml"),
+      });
+      yield* harness.runtime.startTurn(harness.turnInput);
+      const item = lastAssistantItem(yield* harness.collectUntilTerminal);
+      assert.include(item?.text ?? "", "[ACP image (image/svg+xml)]");
+      assert.deepEqual(item?.attachments ?? [], []);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live("cancels a pending permission request when its handler is interrupted", () =>
+    Effect.gen(function* () {
+      type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+      let requestPermission: Parameters<RuntimeService["handleRequestPermission"]>[0] | undefined;
+      const harness = yield* openHarness({
+        name: "cancel-permission",
+        runtimeMode: "approval-required",
+        environment: { T3_ACP_HANG_PROMPT_FOREVER: "1" },
+        wrapRuntime: (runtime) => ({
+          ...runtime,
+          handleRequestPermission: (handler) =>
+            Effect.sync(() => {
+              requestPermission = handler;
+            }).pipe(Effect.andThen(runtime.handleRequestPermission(handler))),
+        }),
+      });
+      const turnFiber = yield* harness.startHangingTurn;
+      if (requestPermission === undefined) {
+        return yield* Effect.die("ACP runtime must register a permission handler");
+      }
+      const permissionFiber = yield* requestPermission(
+        {
+          sessionId: "mock-session-1",
+          toolCall: { toolCallId: "cancel-permission-tool", title: "Cancel me" },
+          options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }],
+        },
+        { requestId: "cancel-permission-request", method: "session/request_permission" },
+      ).pipe(Effect.forkScoped);
+      while (true) {
+        const event = yield* Queue.take(harness.events);
+        if (event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending") {
+          break;
+        }
+      }
+      yield* Fiber.interrupt(permissionFiber);
+      const cancelled = new Set<string>();
+      while (cancelled.size < 3) {
+        const event = yield* Queue.take(harness.events);
+        if (
+          event.type === "runtime_request.updated" &&
+          event.runtimeRequest.status === "cancelled"
+        ) {
+          cancelled.add("runtime_request");
+        } else if (
+          event.type === "node.updated" &&
+          event.node.runtimeRequestId !== null &&
+          event.node.status === "cancelled"
+        ) {
+          cancelled.add("node");
+        } else if (
+          event.type === "turn_item.updated" &&
+          event.turnItem.type === "approval_request" &&
+          event.turnItem.status === "cancelled"
+        ) {
+          cancelled.add("turn_item");
+        }
+      }
+      yield* harness.stopHangingTurn(turnFiber);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 });
 

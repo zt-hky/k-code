@@ -1,17 +1,34 @@
+import {
+  ChatAttachmentId,
+  isProviderSendTurnSupportedImageMimeType,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+} from "@t3tools/contracts";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { ProviderCredentialError } from "@t3tools/provider-core/server/errors";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Base64 from "effect/encoding/Base64";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
-import { resolveAttachmentPath } from "../attachmentStore.ts";
+import {
+  chatAttachmentStableKey,
+  createDeterministicAttachmentId,
+  resolveAttachmentPath,
+} from "../attachmentStore.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as DocumentText from "./DocumentText.ts";
 import * as ProviderCredentialStore from "./ProviderCredentialStore.ts";
+
+const IMAGE_EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+};
 
 export const layer = Layer.effect(
   ProviderHost.ProviderHost,
@@ -39,6 +56,41 @@ export const layer = Layer.effect(
       shouldRunBackgroundWork: backgroundPolicy.shouldRunScopeWork,
       resolveAttachmentPath: (attachment) =>
         resolveAttachmentPath({ attachmentsDir: config.attachmentsDir, attachment }),
+      persistImageAttachment: Effect.fn("ProviderHost.persistImageAttachment")(
+        function* (input) {
+          if (!isProviderSendTurnSupportedImageMimeType(input.mimeType)) return null;
+          const bytes = yield* Effect.fromResult(Base64.decode(input.base64));
+          if (bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) return null;
+          const rawId = createDeterministicAttachmentId(
+            input.threadId,
+            chatAttachmentStableKey(input.messageId, input.index, bytes),
+          );
+          if (rawId === null) return null;
+          const persisted = {
+            type: "image" as const,
+            id: ChatAttachmentId.make(rawId),
+            name: `image-${input.index + 1}.${IMAGE_EXTENSION_BY_MIME[input.mimeType.toLowerCase()] ?? "png"}`,
+            mimeType: input.mimeType.toLowerCase(),
+            sizeBytes: bytes.byteLength,
+          };
+          const filePath = resolveAttachmentPath({
+            attachmentsDir: config.attachmentsDir,
+            attachment: persisted,
+          });
+          if (filePath === null) return null;
+          yield* fileSystem.writeFile(filePath, bytes);
+          return persisted;
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.catch((cause) =>
+              Effect.logWarning("Could not persist agent-produced image", {
+                threadId: input.threadId,
+                cause,
+              }).pipe(Effect.as(null)),
+            ),
+          ),
+      ),
       // DocumentText owns the path-resolution span.
       resolveExtractedTextPath: Effect.fnUntraced(
         function* (path) {

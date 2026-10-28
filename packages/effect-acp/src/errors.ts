@@ -383,6 +383,14 @@ export class AcpRequestError extends Schema.TaggedError<AcpRequestError>()("AcpR
     });
   }
 
+  static requestCancelled(method?: string) {
+    return new AcpRequestError({
+      code: -32800,
+      errorMessage: "Request cancelled",
+      ...(method !== undefined ? { method } : {}),
+    });
+  }
+
   static invalidParams(message = "Invalid params", data?: unknown) {
     return new AcpRequestError({
       code: -32602,
