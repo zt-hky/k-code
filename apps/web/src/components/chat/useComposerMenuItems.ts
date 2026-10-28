@@ -222,6 +222,13 @@ export function useComposerMenuItems({
           label: "/model",
           description: "Switch response model for this thread",
         },
+        {
+          id: "slash:loop",
+          type: "slash-command",
+          command: "loop",
+          label: "/loop",
+          description: "Repeat the next message after each turn",
+        },
         ...(planModeUiEnabled
           ? ([
               {

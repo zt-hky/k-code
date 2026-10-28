@@ -352,7 +352,9 @@ import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
-import { branchMismatchBannerItem } from "./chat/ThreadActivityBanners";
+import { branchMismatchBannerItem, loopNowItem } from "./chat/ThreadActivityBanners";
+import { useLoopMode } from "./chat/useLoopMode";
+import { useLoopModeStore } from "./chat/loopModeStore";
 import { ThreadNow } from "./chat/ThreadNow";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
@@ -1776,6 +1778,7 @@ export default function ChatView(props: ChatViewProps) {
       !readEnvironmentScope(activeThread.environmentId, AuthOrchestrationOperateScope)
     )
       return;
+    useLoopModeStore.getState().disarm(routeThreadKey);
     const result = await interruptThreadTurn({
       environmentId,
       input: { threadId: activeThread.id },
@@ -2807,7 +2810,28 @@ export default function ChatView(props: ChatViewProps) {
     handleInteractionModeChange,
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
+    latestRunId: activeLatestRun?.runId ?? null,
   });
+  const { loop, stopLoop } = useLoopMode({
+    environmentId,
+    routeThreadKey,
+    activeThread,
+    isServerThread,
+    latestRun: activeLatestRun,
+    hasPendingRequest: pendingApprovals.length > 0 || pendingUserInputs.length > 0,
+    isSendBusy,
+    isConnecting,
+    composerRef,
+    beginLocalDispatch,
+    resetLocalDispatch,
+    runtimeMode,
+    localCheckoutBranchMismatch,
+    setOptimisticUserMessages,
+    setThreadError,
+    anchorNewTurn,
+    persistThreadSettingsForNextTurn,
+  });
+  const loopNow = loop ? loopNowItem({ threadKey: routeThreadKey, loop, onStop: stopLoop }) : null;
   const onImplementPlanInNewThreadStable = useStableCallback(onImplementPlanInNewThread);
 
   const onWorktreeSetupWorkLocally = () => {
@@ -2934,6 +2958,7 @@ export default function ChatView(props: ChatViewProps) {
     childInputNow !== null ||
     backgroundWorkNow !== null ||
     goalNow !== null ||
+    loopNow !== null ||
     shownThreadSyncPhase !== null;
   const queuedRunCount = serverProjection ? getUserQueuedThreadRuns(serverProjection).length : 0;
   // The queue control is mounted for every server thread but joins the footer only while it shows
@@ -2977,6 +3002,7 @@ export default function ChatView(props: ChatViewProps) {
           work={backgroundWorkNow}
           syncPhase={shownThreadSyncPhase}
           goal={goalNow}
+          loop={loopNow}
         />
         {threadStatusLine}
         {pendingGuestMessageCount > 0 && isServerThread && activeThread ? (

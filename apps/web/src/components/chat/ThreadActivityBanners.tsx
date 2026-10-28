@@ -15,6 +15,7 @@ import {
   CircleDashedIcon,
   GitBranchIcon,
   MessageCircleIcon,
+  RepeatIcon,
   ShieldQuestionIcon,
   TargetIcon,
   TerminalIcon,
@@ -25,7 +26,9 @@ import { cn } from "~/lib/utils";
 import { Button, InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
+import { loopTitle, type LoopState } from "./loopMode.logic";
 import type { ThreadNowItem } from "./ThreadNow";
+import { truncate } from "@t3tools/shared/String";
 
 /** Subagents waiting on the user, unless the parent is itself waiting on them. */
 export function childInputNowItem(input: {
@@ -101,6 +104,27 @@ export function goalNowItem(input: {
           Clear
         </InlineButton>
       </>
+    ),
+  };
+}
+
+/** A loop that has its prompt, for the end of the timeline. */
+export function loopNowItem(input: {
+  readonly threadKey: string;
+  readonly loop: LoopState;
+  readonly onStop: () => void;
+}): ThreadNowItem | null {
+  const { loop } = input;
+  if (loop.prompt === null) return null;
+  return {
+    id: `loop:${input.threadKey}`,
+    icon: <RepeatIcon />,
+    title: loopTitle(loop),
+    description: truncate(loop.prompt.text.trim().split("\n")[0] ?? "", 80),
+    actions: (
+      <InlineButton tone="muted" onClick={input.onStop}>
+        Stop loop
+      </InlineButton>
     ),
   };
 }

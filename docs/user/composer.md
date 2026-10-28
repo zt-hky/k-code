@@ -262,6 +262,20 @@ its progress.
   stop the turn only when it is working on the goal. Other goal commands wait for
   the turn to end.
 
+## Loop
+
+Loop repeats a message after each turn, with any provider. Choose **Loop** in the
+composer controls and pick how many runs, or send `/loop` for until stopped or
+`/loop 5` for five runs. The next message you send becomes the loop prompt, and
+it is sent again each time the thread's turn completes. A line at the end of the
+thread shows the run count with **Stop loop**.
+
+- `/loop` again, or choosing **Off**, turns the loop off. Attachments are not
+  repeated, only the text and its context.
+- The loop runs on this device, in the thread you have open. It stops when a
+  turn fails, is interrupted, or you press Stop, and waits while an approval or
+  question is open.
+
 ## Context in your message
 
 Context you attach lands where your cursor is, as a chip inside your text: a terminal excerpt,
