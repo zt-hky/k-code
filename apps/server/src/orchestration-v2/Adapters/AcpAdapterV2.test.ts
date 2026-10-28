@@ -1071,6 +1071,44 @@ describe("AcpAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.live("compacts omp threads with its native /compact command", () =>
+    Effect.gen(function* () {
+      const { runtime, providerThread } = yield* makeOmpPlanHarness("compact", "default", {});
+      yield* runtime.events.pipe(
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runDrain,
+      );
+      assert.isDefined(runtime.compactThread);
+      const instanceId = ProviderInstanceId.make("omp-compact");
+      yield* runtime.compactThread!(
+        makeTurnInput({
+          threadId: ThreadId.make("omp-compact-thread"),
+          providerThread,
+          instanceId,
+          runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            cwd: process.cwd(),
+          }),
+          now: yield* DateTime.now,
+          ordinal: 1,
+          messageText: "/compact",
+        }),
+      );
+      const events = Array.from(
+        yield* runtime.events.pipe(
+          Stream.takeUntil((event) => event.type === "turn.terminal"),
+          Stream.runCollect,
+        ),
+      );
+      assert.isTrue(
+        events.some(
+          (event) => event.type === "turn_item.updated" && event.turnItem.type === "compaction",
+        ),
+      );
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.live("keeps omp's plan approval gate as a user question outside plan mode", () =>
     Effect.gen(function* () {
       const { runtime } = yield* makeOmpPlanHarness("default-gate", "default", {
