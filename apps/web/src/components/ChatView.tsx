@@ -2909,7 +2909,7 @@ export default function ChatView(props: ChatViewProps) {
     latestRun: activeLatestRun,
     hasPendingRequest: pendingApprovals.length > 0 || pendingUserInputs.length > 0,
     isSendBusy,
-    isConnecting,
+    isConnecting: phase === "connecting",
     composerRef,
     beginLocalDispatch,
     resetLocalDispatch,

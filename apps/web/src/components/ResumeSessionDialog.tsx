@@ -167,7 +167,6 @@ function ResumeSessionContent(props: {
     }
   });
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Fetch each agent's native sessions and projects from the server when the dialog opens or the supporting instances change.
   useEffect(() => {
     loadFirstPages(instanceKey);
   }, [instanceKey, loadFirstPages]);

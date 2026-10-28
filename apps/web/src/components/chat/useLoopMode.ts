@@ -16,11 +16,9 @@ import { useEffect, type Dispatch, type SetStateAction } from "react";
 import { newMessageId } from "~/lib/utils";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import type { ComposerHandleRef } from "../../composerHandleContext";
-import { environmentServerConfigsAtom } from "../../state/server";
 import { readEnvironmentScope } from "../../state/session";
 import { threadEnvironment } from "../../state/threads";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
-import { appAtomRegistry } from "../../rpc/atomRegistry";
 import type { ChatMessage } from "../../types";
 import {
   formatOutgoingPrompt,
@@ -129,10 +127,6 @@ export function useLoopMode(input: LoopModeInput) {
     const message = withMessageContext({
       text,
       context: prompt.context,
-      // Read at dispatch time: a server reconnect between runs can change it.
-      supportsInlineMessageContext:
-        appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment
-          .capabilities.inlineMessageContext === true,
     });
 
     sendInFlightRef.current = true;
@@ -220,7 +214,6 @@ export function useLoopMode(input: LoopModeInput) {
     store.advance(routeThreadKey, latestRun.runId);
     void resend(current.prompt);
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- a run settling is a server event no handler in this view causes; the loop answers it with the next turn
   useEffect(() => {
     if (action.type === "resend" && !canResend) return;
     runLoopAction();
