@@ -247,6 +247,7 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
           planApprovalElicitation: extractOmpPlanApprovalElicitation,
           interactionModeOptionIds: [OMP_MODE_OPTION_ID],
           supportsSessionSteering: true,
+          supportsCompaction: true,
           extractSubagentUpdate: extractOmpSubagentUpdate,
           rewriteUserText: (text: string) =>
             Effect.succeed(rewriteOmpSkillMentions(text, ompSkillNames)),
