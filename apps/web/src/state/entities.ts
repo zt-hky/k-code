@@ -26,6 +26,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
+import type { ThreadTurnSubagents } from "@t3tools/client-runtime/state/thread-subagents";
 import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentProjects } from "./projects";
@@ -65,6 +66,9 @@ const EMPTY_VISIBLE_TURN_ITEMS_ATOM = Atom.make(EMPTY_VISIBLE_TURN_ITEMS).pipe(
 const EMPTY_CHECKPOINT_SUMMARIES_ATOM = Atom.make<ReadonlyArray<ThreadCheckpointSummary>>(
   Object.freeze([]),
 ).pipe(Atom.withLabel("web-thread-checkpoint-summaries:empty"));
+const EMPTY_TURN_SUBAGENTS_ATOM = Atom.make<ThreadTurnSubagents | null>(null).pipe(
+  Atom.withLabel("web-thread-turn-subagents:empty"),
+);
 const EMPTY_LAST_VISITED_AT_ATOM = Atom.make<DateTime.Utc | null>(null).pipe(
   Atom.withLabel("web-thread-last-visited:empty"),
 );
@@ -230,6 +234,12 @@ export function useThreadCheckpointSummaries(
     ref === null
       ? EMPTY_CHECKPOINT_SUMMARIES_ATOM
       : environmentThreadDetails.checkpointSummariesAtom(ref),
+  );
+}
+
+export function useThreadTurnSubagents(ref: ScopedThreadRef | null): ThreadTurnSubagents | null {
+  return useAtomValue(
+    ref === null ? EMPTY_TURN_SUBAGENTS_ATOM : environmentThreadDetails.turnSubagentsAtom(ref),
   );
 }
 

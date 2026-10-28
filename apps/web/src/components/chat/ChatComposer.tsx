@@ -379,6 +379,8 @@ export interface ChatComposerProps {
   isPreparingWorktree: boolean;
   isCompacting: boolean;
   bannerItems: readonly ComposerBannerStackItem[];
+  /** Docked cards (tasks, subagents) above the composer; hidden while an approval or question is open. */
+  workPanels?: React.ReactNode;
   resumeCompactionTokens: number | null;
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
@@ -3161,6 +3163,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       <ComposerBanner.Dock>
         <ComposerBanner.Column>
           <ComposerBannerStack items={shelfItems} />
+          {hasBlockingComposerTopDrawer ? null : props.workPanels}
           {showComposerTopDrawer ? (
             <ComposerBanner.Attachment>
               <ComposerBanner.Root data-chat-composer-top-drawer="true" variant="info">
