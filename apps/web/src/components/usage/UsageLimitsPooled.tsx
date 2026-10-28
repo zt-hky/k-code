@@ -570,7 +570,8 @@ function PoolWindowCard({
 
 function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: number }) {
   const color = barColor(pool.driver);
-  const label = providerClients.get(pool.driver)?.label ?? String(pool.driver);
+  const driverLabel = providerClients.get(pool.driver)?.label ?? String(pool.driver);
+  const label = pool.group ? `${pool.group.label} · ${driverLabel}` : driverLabel;
   const windows = displayLimitWindows(pool);
   return (
     <section className="flex flex-col gap-3">
@@ -617,8 +618,8 @@ export function UsageLimitsPooled({
   const externalLinks = collectExternalUsageLinks(presentations);
   const cursorPromptAt =
     Math.max(
-      pools.findIndex((pool) => pool.driver === "codex"),
-      pools.findIndex((pool) => pool.driver === "claudeAgent"),
+      pools.findIndex((pool) => !pool.group && pool.driver === "codex"),
+      pools.findIndex((pool) => !pool.group && pool.driver === "claudeAgent"),
     ) + 1;
   return (
     <div className="flex flex-col gap-8">
@@ -629,7 +630,7 @@ export function UsageLimitsPooled({
       ) : null}
       <SegmentPopoverContext value={segmentPopover}>
         {pools.map((pool, index) => (
-          <Fragment key={pool.driver}>
+          <Fragment key={`${pool.group?.key ?? ""}:${pool.driver}`}>
             {index === cursorPromptAt ? cursorPrompt : null}
             <PoolSection pool={pool} now={now} />
           </Fragment>

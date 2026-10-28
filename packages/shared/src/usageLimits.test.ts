@@ -1428,23 +1428,32 @@ describe("hub provider usage accounts", () => {
     usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 40 }] },
   });
 
-  it("pools hub accounts and merges one that is also a native login", () => {
+  it("pools hub accounts apart from native logins, even for the same account", () => {
     const env = EnvironmentId.make("env");
     const presentations = new Map([
       [env, { entry: { target: { label: "Laptop" } }, serverConfig: { providers: [hub, native] } }],
     ]);
     const accounts = collectLimitAccounts(presentations);
-    expect(accounts.map((account) => account.driver)).toEqual([claude, "antigravity"]);
+    expect(accounts.map((account) => account.driver)).toEqual([claude, claude, "antigravity"]);
     expect(accounts[0]).toMatchObject({
       key: "env:claude",
       sourceLabel: null,
       environments: [{ environmentId: env, label: "Laptop" }],
     });
-    expect(accounts[1]).toMatchObject({
+    expect(accounts[0]?.group).toBeUndefined();
+    expect(accounts[2]).toMatchObject({
       sourceLabel: "Oh My Pi",
+      group: { label: "Oh My Pi" },
       displayName: "google-antigravity · acct-2",
       redeem: null,
     });
+    expect(
+      collectLimitPools(accounts, now).map((pool) => [pool.group?.label, pool.driver]),
+    ).toEqual([
+      [undefined, claude],
+      ["Oh My Pi", claude],
+      ["Oh My Pi", "antigravity"],
+    ]);
   });
 
   it("keeps hub-only accounts when no native login exists and lists unavailable ones as notices", () => {
