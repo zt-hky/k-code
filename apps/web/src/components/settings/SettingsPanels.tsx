@@ -534,6 +534,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
       ? ["Add project base directory"]
       : []),
+    ...(settings.vscodeOpenMode !== DEFAULT_UNIFIED_SETTINGS.vscodeOpenMode
+      ? ["VS Code opens in"]
+      : []),
+    ...(settings.vscodeWebUrl !== DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl ? ["VS Code web URL"] : []),
     ...(settings.remoteOpenSshHost !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost
       ? ["SSH host"]
       : []),
@@ -654,6 +658,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       remoteOpenSshHost: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost,
+      vscodeOpenMode: DEFAULT_UNIFIED_SETTINGS.vscodeOpenMode,
+      vscodeWebUrl: DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl,
       remoteOpenSshUser: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
@@ -1576,7 +1582,70 @@ export function ThreadsSettingsPanel() {
         />
       </SettingsSection>
 
-      <SettingsSection id="remote-editor" title="Open in editor over SSH">
+      <SettingsSection id="remote-editor" title="Open in editor">
+        <SettingsRow
+          {...searchableSetting("vscode-open-mode")}
+          description="Open VS Code as the desktop app, or in the browser through VS Code for the Web on this environment. Saved per device."
+          resetAction={
+            settings.vscodeOpenMode !== DEFAULT_UNIFIED_SETTINGS.vscodeOpenMode ? (
+              <SettingResetButton
+                label="VS Code opens in"
+                onClick={() =>
+                  updateSettings({ vscodeOpenMode: DEFAULT_UNIFIED_SETTINGS.vscodeOpenMode })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="w-full sm:w-40">
+              <Select
+                value={settings.vscodeOpenMode}
+                onValueChange={(value) => {
+                  if (value === "desktop" || value === "web") {
+                    updateSettings({ vscodeOpenMode: value });
+                  }
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="VS Code opens in">
+                  <SelectValue>
+                    {settings.vscodeOpenMode === "web" ? "Browser" : "Desktop app"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="desktop">Desktop app</SelectItem>
+                  <SelectItem value="web">Browser</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["vscodeWebUrl"]}
+          {...searchableSetting("vscode-web-url")}
+          description="Address of VS Code for the Web running on this environment, such as code serve-web or code-server. Browser mode needs it."
+          resetAction={
+            settings.vscodeWebUrl !== DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl ? (
+              <SettingResetButton
+                label="VS Code web URL"
+                onClick={() =>
+                  updateSettings({ vscodeWebUrl: DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl })
+                }
+              />
+            ) : null
+          }
+          control={
+            <DraftInput
+              size="sm"
+              className="w-full sm:w-72"
+              value={settings.vscodeWebUrl}
+              onCommit={(next) => updateSettings({ vscodeWebUrl: next })}
+              placeholder="https://code.example.com"
+              spellCheck={false}
+              aria-label="VS Code web URL"
+            />
+          }
+        />
         <SettingsRow
           serverScoped
           settingKeys={["remoteOpenSshHost"]}

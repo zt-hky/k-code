@@ -644,6 +644,19 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "vscode-open-mode",
+    title: "VS Code opens in",
+    to: "/settings/threads",
+    searchTerms: ["open in editor vscode web browser desktop app code serve-web code-server"],
+  },
+  {
+    id: "vscode-web-url",
+    title: "VS Code web URL",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    searchTerms: ["open in editor vscode web browser code serve-web code-server address"],
+  },
+  {
     id: "remote-open-ssh-host",
     title: "SSH host",
     to: "/settings/threads",

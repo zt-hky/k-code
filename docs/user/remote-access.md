@@ -237,8 +237,14 @@ On a remote environment, **Open in** builds a VS Code, Cursor, Zed, or JetBrains
 link that connects to the host over SSH, so the device you are using needs an
 SSH key the host accepts. T3 Code picks the host's Tailscale or local network
 name automatically. To use a specific IP or user instead, set **SSH host** and
-**SSH user** in **Settings → Threads → Open in editor over SSH**. The host field
+**SSH user** in **Settings → Threads → Open in editor**. The host field
 also accepts `user@host`.
+
+VS Code can also open in the browser instead. Run VS Code for the Web on the
+host, for example `code serve-web` or code-server, behind your own auth such as
+Cloudflare Access, and put its address in **VS Code web URL**. Then set **VS
+Code opens in** to **Browser** on each device that should use it; the choice is
+saved per device. A file opens its folder.
 
 ## Browser on a remote environment
 

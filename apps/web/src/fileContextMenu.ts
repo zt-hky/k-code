@@ -17,6 +17,7 @@ import { useAtomCommand } from "./state/use-atom-command";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { toastManager } from "./components/ui/toast";
 import { useAtomValue } from "@effect/atom-react";
+import { useVscodeWebOpener } from "./remoteOpen";
 
 export type FileContextMenuAction =
   | "reveal-in-folder"
@@ -89,8 +90,13 @@ function buildFileContextMenuItems(input: {
 export function useFileContextMenu(environmentId: EnvironmentId | null) {
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, { reportFailure: false });
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
+  const openVscodeWeb = useVscodeWebOpener(environmentId);
 
-  const availableEditors = serverConfig?.availableEditors ?? [];
+  const hostEditors = serverConfig?.availableEditors ?? [];
+  const availableEditors =
+    openVscodeWeb !== null && !hostEditors.includes("vscode")
+      ? [...hostEditors, "vscode" as const]
+      : hostEditors;
   const capabilities: FileContextMenuCapabilities = {
     // WSL can reveal in Windows Explorer despite reporting Linux; use server wording.
     revealLabel:
@@ -101,7 +107,7 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
           ? revealInFileExplorerLabelForOs(serverConfig.environment.platform.os)
           : revealInFileExplorerLabelForKind(serverConfig.shellRevealInFileManagerKind)
         : undefined,
-    canOpenDefault: availableEditors.includes("file-manager"),
+    canOpenDefault: hostEditors.includes("file-manager"),
     editorIds: availableEditors,
   };
 
@@ -118,6 +124,7 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
         ? ("file-manager" as const)
         : (action.slice("editor:".length) as EditorId);
     if (action !== "open" && !reveal && !capabilities.editorIds.includes(editor)) return;
+    if (editor === "vscode" && openVscodeWeb?.(absolutePath, true)) return;
 
     const result = await openInEditor({
       environmentId,
