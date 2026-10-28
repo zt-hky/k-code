@@ -159,6 +159,7 @@ const decodeSessionUpdate = Schema.decodeUnknownEffect(
 const decodeElicitationComplete = Schema.decodeUnknownEffect(
   AcpSchema.CompleteElicitationNotification,
 );
+const decodeCancelRequest = Schema.decodeUnknownEffect(AcpSchema.CancelRequestNotification);
 const parserFactory = RpcSerialization.ndJsonRpc();
 // ndJsonRpc skips lines that are not JSON. A malformed agent line has to end the
 // session, so frames are split here and each one goes through the strict codec.
@@ -240,6 +241,8 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
 ): Effect.fn.Return<AcpPatchedProtocol, never, Scope.Scope> {
   const parser = makeStrictNdJsonRpcParser();
   const serverQueue = yield* Queue.unbounded<RpcMessage.FromClientEncoded>();
+  const inboundServerRequests = new Map<string, RpcMessage.RequestEncoded["id"]>();
+  const cancelledInbound = new Set<string>();
   const clientQueue = yield* Queue.unbounded<RpcMessage.FromServerEncoded>();
   const notificationQueue = yield* Queue.sliding<AcpIncomingNotification>(
     MAX_BUFFERED_RAW_NOTIFICATIONS,
@@ -444,6 +447,8 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       return [
         Effect.gen(function* () {
           yield* Queue.offer(disconnects, 0);
+          inboundServerRequests.clear();
+          cancelledInbound.clear();
           const error = yield* classify();
           yield* Deferred.fail(terminationFailure, error);
           yield* failAllExtPending(error);
@@ -552,6 +557,17 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     );
   };
 
+  const cancelInboundServerRequest = Effect.fn("cancelInboundServerRequest")(function* (
+    params: AcpSchema.CancelRequestNotification,
+  ) {
+    if (params.requestId === null) return;
+    const identity = acpRequestIdentity(params.requestId);
+    const rawId = inboundServerRequests.get(identity);
+    if (rawId === undefined) return;
+    cancelledInbound.add(identity);
+    yield* Queue.offer(serverQueue, { _tag: "Interrupt", requestId: rawId });
+  });
+
   const handleRequestEncoded = (message: RpcMessage.RequestEncoded) => {
     if (message.id === "") {
       if (message.tag === CLIENT_METHODS.session_update) {
@@ -577,6 +593,14 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
             onFailure: dropUndecodableNotification(method),
             onSuccess: (params) =>
               dispatchNotification({ _tag: "ElicitationComplete", method, params }),
+          }),
+        );
+      }
+      if (message.tag === "$/cancel_request") {
+        return decodeCancelRequest(message.payload).pipe(
+          Effect.matchEffect({
+            onFailure: dropUndecodableNotification("$/cancel_request"),
+            onSuccess: cancelInboundServerRequest,
           }),
         );
       }
@@ -618,7 +642,15 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       );
     }
 
-    return observeIncoming.pipe(Effect.andThen(Queue.offer(serverQueue, message)), Effect.asVoid);
+    return observeIncoming.pipe(
+      Effect.andThen(
+        Effect.suspend(() => {
+          inboundServerRequests.set(acpRequestIdentity(message.id), message.id);
+          return Queue.offer(serverQueue, message);
+        }),
+      ),
+      Effect.asVoid,
+    );
   };
 
   const forwardToRpcClient = (
@@ -894,6 +926,34 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     codecFor: parserFactory.codecFor,
   });
 
+  const settleInboundServerRequest = (
+    response: RpcMessage.FromServerEncoded,
+  ): RpcMessage.FromServerEncoded => {
+    if (response._tag !== "Exit") return response;
+    const identity = acpRequestIdentity(response.requestId);
+    inboundServerRequests.delete(identity);
+    if (!cancelledInbound.delete(identity)) return response;
+    if (
+      response.exit._tag !== "Failure" ||
+      response.exit.cause.length === 0 ||
+      !response.exit.cause.every((entry) => entry._tag === "Interrupt")
+    ) {
+      return response;
+    }
+    return {
+      ...response,
+      exit: {
+        _tag: "Failure",
+        cause: [
+          {
+            _tag: "Fail",
+            error: AcpError.AcpRequestError.requestCancelled().toProtocolError(),
+          },
+        ],
+      },
+    };
+  };
+
   const serverProtocol = RpcServer.Protocol.of({
     run: Effect.fnUntraced(function* (f) {
       return yield* Stream.fromQueue(serverQueue).pipe(
@@ -903,7 +963,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     }),
     disconnects,
     send: Effect.fnUntraced(function* (_clientId, response) {
-      return yield* offerOutgoing(response).pipe(
+      return yield* offerOutgoing(settleInboundServerRequest(response)).pipe(
         Effect.tapError((error) =>
           response._tag === "Exit" && options.onOutgoingResponseFailure !== undefined
             ? options.onOutgoingResponseFailure(acpRequestIdentity(response.requestId), error)

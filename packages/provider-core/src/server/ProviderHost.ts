@@ -1,6 +1,7 @@
 import type {
   BackgroundScope,
   ChatAttachment,
+  ChatImageAttachment,
   ServerSettings,
   ServerSettingsError,
 } from "@t3tools/contracts";
@@ -47,6 +48,14 @@ export class ProviderHost extends Context.Service<
     /** Absolute attachment path, or null if the ID does not resolve inside attachmentsDir. */
     readonly resolveAttachmentPath: (attachment: ChatAttachment) => string | null;
     readonly resolveExtractedTextPath?: (path: string) => Effect.Effect<string | undefined>;
+    /** Writes an agent-produced image into attachmentsDir; null when invalid, oversized or unwritable. */
+    readonly persistImageAttachment?: (input: {
+      readonly threadId: string;
+      readonly messageId: string;
+      readonly index: number;
+      readonly mimeType: string;
+      readonly base64: string;
+    }) => Effect.Effect<ChatImageAttachment | null>;
     readonly credentials: (
       namespace: string,
       bindingId: string,

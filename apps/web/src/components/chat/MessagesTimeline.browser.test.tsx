@@ -783,6 +783,32 @@ describe("MessagesTimeline attachments", () => {
     });
     await vi.waitFor(() => expect(one!.isConnected).toBe(false));
   });
+
+  it("shows an agent-generated image under the assistant reply", async () => {
+    const src =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    await using screen = await renderTimeline([
+      message(
+        "",
+        {
+          role: "assistant",
+          attachments: [
+            {
+              type: "image",
+              id: "generated-image",
+              name: "image-1.png",
+              mimeType: "image/png",
+              sizeBytes: 70,
+              previewUrl: src,
+            },
+          ],
+        },
+        "assistant-image",
+      ),
+    ]);
+    await vi.waitFor(() => expect(screen.buttons(/Preview image-1\.png/)).toHaveLength(1));
+    expect(screen.text()).not.toContain("(empty response)");
+  });
 });
 
 describe("MessagesTimeline thread find", () => {

@@ -42,6 +42,11 @@ const completeFirstPromptOnCancel = process.env.T3_ACP_COMPLETE_FIRST_PROMPT_ON_
 const floodStderr = process.env.T3_ACP_FLOOD_STDERR === "1";
 const hangPromptForever = process.env.T3_ACP_HANG_PROMPT_FOREVER === "1";
 const emitTrackedToolCallKindThenHang = process.env.T3_ACP_EMIT_TRACKED_TOOL_CALL_KIND_THEN_HANG;
+const sessionSteering = process.env.T3_ACP_SESSION_STEERING;
+const turnUsageFields =
+  process.env.T3_ACP_TURN_USAGE === "1"
+    ? { usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150, cachedReadTokens: 40 } }
+    : {};
 const clientFsProbePath = process.env.T3_ACP_CLIENT_FS_PROBE_PATH;
 const clientFsProbeLogPath = process.env.T3_ACP_CLIENT_FS_PROBE_LOG_PATH;
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -481,9 +486,10 @@ const program = Effect.gen(function* () {
           state: "idle",
           stopReason,
           ...(_meta === undefined ? {} : { _meta }),
+          ...turnUsageFields,
         },
       })
-      .pipe(Effect.as(_meta === undefined ? {} : { _meta }));
+      .pipe(Effect.as({ ...(_meta === undefined ? {} : { _meta }), ...turnUsageFields }));
 
   yield* agent.handleInitialize((request) =>
     Effect.gen(function* () {
@@ -499,7 +505,14 @@ const program = Effect.gen(function* () {
       return {
         protocolVersion: 2,
         info: { name: "t3-acp-mock-agent", version: "0.0.0" },
-        ...(omitInitializeModelState ? {} : { _meta: { modelState: modelState() } }),
+        ...(omitInitializeModelState && sessionSteering === undefined
+          ? {}
+          : {
+              _meta: {
+                ...(omitInitializeModelState ? {} : { modelState: modelState() }),
+                ...(sessionSteering === undefined ? {} : { steering: { supported: true } }),
+              },
+            }),
         capabilities: {
           session: {
             ...(supportsSessionLifecycle ? { fork: {}, additionalDirectories: {} } : {}),
@@ -661,21 +674,24 @@ const program = Effect.gen(function* () {
     }),
   );
 
-  yield* agent.handleListSessions((request) =>
-    Effect.gen(function* () {
-      yield* requireAuthentication();
-      return {
-        sessions: [
-          {
-            sessionId,
-            cwd: request.cwd ?? process.cwd(),
-            title: "Mock session",
-            updatedAt: "1970-01-01T00:00:00.000Z",
-          },
-        ],
-      };
-    }),
-  );
+  if (!omitSessionListHandler) {
+    yield* agent.handleListSessions((request) =>
+      Effect.gen(function* () {
+        yield* requireAuthentication();
+        return {
+          sessions: [
+            {
+              sessionId,
+              cwd: request.cwd ?? process.cwd(),
+              title: "Mock session",
+              updatedAt: "1970-01-01T00:00:00.000Z",
+              _meta: { messageCount: 3, size: 1024 },
+            },
+          ],
+        };
+      }),
+    );
+  }
 
   yield* agent.handleForkSession((request) =>
     Effect.gen(function* () {
@@ -783,6 +799,37 @@ const program = Effect.gen(function* () {
         });
       }
     }),
+  );
+
+  yield* agent.handleExtRequest(
+    "_session/steering",
+    Schema.Struct({ sessionId: Schema.String, prompt: Schema.Array(Schema.Unknown) }),
+    (params) =>
+      Effect.gen(function* () {
+        if (sessionSteering === undefined) {
+          return yield* AcpError.AcpRequestError.methodNotFound("_session/steering");
+        }
+        if (sessionSteering === "injected") {
+          const firstText = params.prompt.flatMap((block) =>
+            typeof block === "object" &&
+            block !== null &&
+            "type" in block &&
+            block.type === "text" &&
+            "text" in block &&
+            typeof block.text === "string"
+              ? [block.text]
+              : [],
+          )[0];
+          yield* agent.client.sessionUpdate({
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: `steered: ${firstText ?? ""}` },
+            },
+          });
+        }
+        return { outcome: sessionSteering };
+      }),
   );
 
   yield* agent.handlePrompt((request) =>

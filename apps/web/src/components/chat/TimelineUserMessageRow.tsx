@@ -16,10 +16,6 @@ import { serverEnvironment } from "../../state/server";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { memo, use, useState, type ReactNode } from "react";
 import {
-  createMessageAttachmentPreviewProjector,
-  selectMessageImageResources,
-} from "../../session-logic";
-import {
   type ChatFileAttachment,
   isFileAttachment,
   isImageAttachment,
@@ -38,18 +34,14 @@ import {
 } from "lucide-react";
 import { Link as LinkIconNode } from "lucide";
 import { Button, InlineButton } from "../ui/button";
-import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
-import { AttachmentImage } from "../media/AttachmentImage";
+import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import {
   buildAttachmentVideoAsset,
   buildAttachmentVideoPreview,
   buildExpandedImagePreview,
 } from "./ExpandedImagePreview";
-import {
-  SNAP_SHOT_ATTACHMENT_FRAME_CLASS,
-  SnapShotAttachmentDetails,
-} from "./SnapShotAttachmentDetails";
+import { MessageImageGridView, useMessageImagePreviews } from "./MessageImageGrid";
 import { GuestMessageName, guestBubbleClassName } from "./guestMessageStyle";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
@@ -80,10 +72,6 @@ import {
 } from "./TimelineRowParts";
 import { UserMessageContextReferenceChip } from "./UserMessageContextChips";
 import { resolvePreviewAnnotationImage } from "./TimelineUserMessageRow.logic";
-
-// Drawn inside the media so dark screenshots keep an edge on the dark background.
-const MEDIA_EDGE_CLASS_NAME =
-  "relative after:pointer-events-none after:absolute after:inset-0 after:z-10 after:rounded-[inherit] after:ring-1 after:ring-inset after:ring-black/9 dark:after:ring-white/12";
 
 const BUBBLE_CHIP_CLASS_NAME =
   "[&_[data-slot=context-chip]]:[--context-chip-ink:var(--context-chip-message,var(--context-chip-accent))]";
@@ -296,19 +284,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const ctx = use(TimelineRowCtx);
   const { onImageExpand, onFileOpen } = ctx;
   const senderThreadId = row.message.senderThreadId;
-  const resources = selectMessageImageResources(row.message.attachments);
-  const previewUrls = useAssetUrls(ctx.activeThreadEnvironmentId, resources);
-  const [projectPreviews] = useState(createMessageAttachmentPreviewProjector);
-  const previewUrlsById = new Map(
-    resources.flatMap((resource, index) => {
-      const url = previewUrls[index];
-      return url ? [[resource.attachmentId, url] as const] : [];
-    }),
-  );
-  const messageWithPreviews = projectPreviews(row.message, (attachment) =>
-    previewUrlsById.get(attachment.id),
-  );
-  const userImages = (messageWithPreviews.attachments ?? []).filter(isImageAttachment);
+  const userImages = useMessageImagePreviews(ctx.activeThreadEnvironmentId, row.message);
   const userFiles = (row.message.attachments ?? []).filter(isFileAttachment);
   const userVideos = userFiles.filter(isVideoAttachment);
   const userAudio = userFiles.filter(
@@ -527,95 +503,17 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             )}
           >
             {(regularImages.length > 0 || userVideos.length > 0) && (
-              <div
-                className={cn(
-                  "grid",
-                  !mediaOnly
-                    ? "mb-2 max-w-[210px] grid-cols-2 gap-2"
-                    : loneImage
-                      ? "max-w-full"
-                      : collage
-                        ? cn(
-                            MEDIA_EDGE_CLASS_NAME,
-                            "w-80 max-w-full gap-px overflow-hidden rounded-2xl bg-black/9 dark:bg-white/12",
-                            regularImages.length === 2
-                              ? "auto-rows-[12rem] grid-cols-2"
-                              : regularImages.length === 3
-                                ? "auto-rows-[calc(6rem-0.5px)] grid-cols-[3fr_2fr]"
-                                : "auto-rows-[6rem] grid-cols-2",
-                          )
-                        : "w-80 max-w-full grid-cols-2 gap-2",
-                )}
+              <MessageImageGridView
+                images={regularImages}
+                onImageExpand={ctx.onImageExpand}
+                mediaOnly={mediaOnly}
+                loneImage={loneImage}
+                collage={collage}
               >
-                {regularImages.map((image, index) => (
-                  <div
-                    key={image.id}
-                    className={cn(
-                      "bg-background/70",
-                      image.source?.kind === "snap-shot" && image.previewUrl
-                        ? cn(SNAP_SHOT_ATTACHMENT_FRAME_CLASS, "col-span-2")
-                        : loneImage
-                          ? cn(MEDIA_EDGE_CLASS_NAME, "overflow-hidden rounded-2xl")
-                          : collage
-                            ? cn(
-                                "overflow-hidden bg-background",
-                                regularImages.length === 3 && index === 0 && "row-span-2",
-                                regularImages.length > 3 &&
-                                  regularImages.length % 2 === 1 &&
-                                  index === regularImages.length - 1 &&
-                                  "col-span-2",
-                              )
-                            : "aspect-[4/3] overflow-hidden rounded-lg border border-border/80",
-                    )}
-                  >
-                    {image.previewUrl ? (
-                      <button
-                        type="button"
-                        className="block h-full w-full cursor-zoom-in"
-                        aria-label={`Preview ${image.name}`}
-                        onClick={() => {
-                          const preview = buildExpandedImagePreview(regularImages, image.id);
-                          if (!preview) return;
-                          ctx.onImageExpand(preview);
-                        }}
-                      >
-                        {/* Isolate the thumbnail raster from nearby activity repaints in Chromium. */}
-                        <AttachmentImage
-                          name={image.name}
-                          mimeType={image.mimeType}
-                          src={image.previewUrl}
-                          alt={image.name}
-                          decoding="async"
-                          loading="lazy"
-                          className={cn(
-                            "block transform-gpu",
-                            // A fixed height keeps the row from growing when the image loads.
-                            loneImage
-                              ? "h-48 w-auto min-w-24 max-w-full object-cover"
-                              : "size-full object-cover",
-                          )}
-                        />
-                      </button>
-                    ) : (
-                      <div
-                        className={cn(
-                          "flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-2xs text-muted-foreground/70",
-                          loneImage && "h-48 w-64 max-w-full",
-                          collage && "h-full",
-                        )}
-                      >
-                        {image.name}
-                      </div>
-                    )}
-                    {image.previewUrl && image.source?.kind === "snap-shot" ? (
-                      <SnapShotAttachmentDetails source={image.source} />
-                    ) : null}
-                  </div>
-                ))}
                 {userVideos.map((file) => (
                   <UserVideoAttachment key={file.id} file={file} />
                 ))}
-              </div>
+              </MessageImageGridView>
             )}
             {userAudio.length > 0 ? (
               <div className="mb-2 flex max-w-full flex-col gap-1">

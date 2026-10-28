@@ -1673,3 +1673,87 @@ it.effect("returns method-not-found when SDK elicitation has no question handler
     assert.equal(response.error.code, -32601);
   }).pipe(Effect.scoped),
 );
+
+const encoder = new TextEncoder();
+const wire = (value: unknown) => encoder.encode(`${JSON.stringify(value)}\n`);
+const permissionRequest = (id: number | string, title: string) =>
+  wire({
+    jsonrpc: "2.0",
+    id,
+    method: "session/request_permission",
+    params: {
+      sessionId: "session-1",
+      title,
+      subject: { type: "tool_call", toolCall: { toolCallId: `tool-${id}`, title } },
+      options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+    },
+  });
+const cancelRequest = (requestId: number | string) =>
+  wire({ jsonrpc: "2.0", method: "$/cancel_request", params: { requestId } });
+const decodeWireId = Schema.decodeEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      id: Schema.Union([Schema.String, Schema.Finite]),
+      error: Schema.optional(Schema.Struct({ code: Schema.Finite })),
+    }),
+  ),
+);
+
+const setup = Effect.gen(function* () {
+  const { stdio, input, output } = yield* makeInMemoryStdio();
+  const acp = yield* AcpClient.make(stdio);
+  const started = yield* Deferred.make<void>();
+  const interrupted = yield* Deferred.make<void>();
+  const gate = yield* Deferred.make<void>();
+  yield* acp.handleRequestPermission((request) =>
+    request.title === "wait"
+      ? Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Deferred.await(gate)),
+          Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+          Effect.as({ outcome: { outcome: "selected", optionId: "allow" } } as const),
+        )
+      : Effect.succeed({ outcome: { outcome: "selected", optionId: "allow" } } as const),
+  );
+  return { input, output, started, interrupted, gate };
+});
+
+it.effect.each([5, "perm-5"] as const)(
+  "interrupts a pending request and answers -32800 for id %s",
+  (id) =>
+    Effect.gen(function* () {
+      const { input, output, started, interrupted } = yield* setup;
+      yield* Queue.offer(input, permissionRequest(id, "wait"));
+      yield* Deferred.await(started);
+      yield* Queue.offer(input, cancelRequest(id));
+      yield* Deferred.await(interrupted);
+      const response = yield* decodeWireId(yield* Queue.take(output));
+      assert.equal(response.id, id);
+      assert.equal(response.error?.code, -32800);
+    }).pipe(Effect.scoped),
+);
+
+it.effect("ignores a cancel for an unknown request id", () =>
+  Effect.gen(function* () {
+    const { input, output } = yield* setup;
+    yield* Queue.offer(input, cancelRequest(99));
+    yield* Queue.offer(input, permissionRequest(6, "go"));
+    const response = yield* decodeWireId(yield* Queue.take(output));
+    assert.equal(response.id, 6);
+    assert.equal(response.error, undefined);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("sends only the normal result when the request was already answered", () =>
+  Effect.gen(function* () {
+    const { input, output } = yield* setup;
+    yield* Queue.offer(input, permissionRequest(7, "go"));
+    const first = yield* decodeWireId(yield* Queue.take(output));
+    assert.equal(first.id, 7);
+    assert.equal(first.error, undefined);
+    yield* Queue.offer(input, cancelRequest(7));
+    yield* Queue.offer(input, permissionRequest(8, "go"));
+    const second = yield* decodeWireId(yield* Queue.take(output));
+    assert.equal(second.id, 8);
+    assert.equal(second.error, undefined);
+  }).pipe(Effect.scoped),
+);
