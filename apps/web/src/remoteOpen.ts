@@ -225,14 +225,14 @@ export function buildVscodeWebUrl(
   return url.toString();
 }
 
-/** Opener for VS Code in the browser, or null when this device opens the desktop app. */
+/** Opener for "VS Code (Web)", or null when it is turned off or the environment has no URL. */
 export function useVscodeWebOpener(
   environmentId: EnvironmentId | null,
 ): ((absolutePath: string, isFile: boolean) => boolean) | null {
-  const mode = useClientSettings((settings) => settings.vscodeOpenMode);
+  const enabled = useClientSettings((settings) => settings.vscodeWebEnabled);
   const baseUrl =
     useAtomValue(serverEnvironment.configValueAtom(environmentId))?.settings.vscodeWebUrl ?? "";
-  if (mode !== "web" || baseUrl.length === 0) return null;
+  if (!enabled || baseUrl.length === 0) return null;
   return (absolutePath, isFile) => {
     const url = buildVscodeWebUrl(baseUrl, absolutePath, isFile);
     if (url === undefined) return false;

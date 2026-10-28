@@ -234,35 +234,21 @@ export const OpenInPicker = memo(function OpenInPicker({
   const remote = useRemoteOpenState(environmentId);
   const openVscodeWeb = useVscodeWebOpener(environmentId);
   const canOperateHost = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
-  const isHostEditorDenied =
-    remote.mode === "local-exec" && !canOperateHost && openVscodeWeb === null;
-  const canOpenEditor =
-    (remote.mode !== "remote-unavailable" || openVscodeWeb !== null) && !isHostEditorDenied;
-  const [menuOpen, setMenuOpen] = useComposerMenuState(isHostEditorDenied);
+  const isHostEditorDenied = remote.mode === "local-exec" && !canOperateHost;
+  const canOpenEditor = remote.mode !== "remote-unavailable" && !isHostEditorDenied;
+  const isMenuDenied = isHostEditorDenied && openVscodeWeb === null;
+  const [menuOpen, setMenuOpen] = useComposerMenuState(isMenuDenied);
   const remoteCapableEditors = useRemoteCapableEditors();
   const [remoteHintSeen, markRemoteHintSeen] = useRemoteOpenHint();
   const environmentLabel = useEnvironment(environmentId)?.label ?? "this machine";
   // Remote editors run on the viewing machine; only desktop can probe that PATH.
-  const hostEditors = remote.mode === "local-exec" ? availableEditors : remoteCapableEditors;
-  const effectiveEditors: ReadonlyArray<EditorId> =
-    openVscodeWeb === null
-      ? hostEditors
-      : remote.mode === "remote-unavailable"
-        ? ["vscode"]
-        : hostEditors.includes("vscode")
-          ? hostEditors
-          : [...hostEditors, "vscode"];
+  const effectiveEditors = remote.mode === "local-exec" ? availableEditors : remoteCapableEditors;
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(effectiveEditors);
 
   const openInEditor = async (editorId: EditorId | null): Promise<boolean> => {
     if (!openInCwd) return false;
     const editor = editorId ?? preferredEditor;
     if (!editor) return false;
-    if (editor === "vscode" && openVscodeWeb !== null) {
-      if (!openVscodeWeb(openInCwd, openInCwdIsFile === true)) return false;
-      setPreferredEditor(editor);
-      return true;
-    }
     if (remote.mode === "remote-unavailable") return false;
     if (remote.mode === "remote-links") {
       const url = buildRemoteOpenUrl({
@@ -300,15 +286,16 @@ export const OpenInPicker = memo(function OpenInPicker({
 
   const backgroundThread = use(BackgroundThreadContext);
   const options = resolveOpenInOptions(navigator.platform, effectiveEditors);
+  const vscodeWebOption =
+    openVscodeWeb === null ? null : resolveOpenInOptions(navigator.platform, ["vscode"])[0];
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
   const primaryLabel = isPanel ? `Open in ${primaryOption?.label ?? "editor"}` : "Open";
 
   const editorItems = (
     <>
-      {remote.mode === "remote-unavailable" && openVscodeWeb === null ? (
+      {remote.mode === "remote-unavailable" ? (
         <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
-          No SSH route to {environmentLabel}. Set an SSH host or VS Code web URL in Settings ›
-          Threads
+          No SSH route to {environmentLabel}. Set an SSH host in Settings › Threads
         </MenuItem>
       ) : (
         <>
@@ -344,6 +331,21 @@ export const OpenInPicker = memo(function OpenInPicker({
           )}
         </>
       )}
+      {vscodeWebOption && (
+        <MenuItem
+          density={presentation === "menu" ? "touch" : "default"}
+          disabled={!openInCwd}
+          onClick={() => {
+            if (openInCwd) openVscodeWeb?.(openInCwd, openInCwdIsFile === true);
+          }}
+        >
+          <vscodeWebOption.Icon
+            aria-hidden="true"
+            className={getOpenInIconClass(vscodeWebOption.kind)}
+          />
+          <MenuItemLabel>{vscodeWebOption.label} (Web)</MenuItemLabel>
+        </MenuItem>
+      )}
     </>
   );
   if (presentation === "menu") {
@@ -364,7 +366,7 @@ export const OpenInPicker = memo(function OpenInPicker({
           </MenuItem>
         )}
         <MenuSub>
-          <MenuSubTrigger density="touch" disabled={isHostEditorDenied}>
+          <MenuSubTrigger density="touch" disabled={isMenuDenied}>
             <SquareArrowOutUpRightIcon className="size-4" />
             <MenuItemLabel>Open in…</MenuItemLabel>
           </MenuSubTrigger>
@@ -430,7 +432,7 @@ export const OpenInPicker = memo(function OpenInPicker({
       )}
       <Menu open={menuOpen} onOpenChange={setMenuOpen}>
         <MenuTrigger
-          disabled={isHostEditorDenied}
+          disabled={isMenuDenied}
           render={
             <ThreadDetailsControl
               aria-label="Choose editor"

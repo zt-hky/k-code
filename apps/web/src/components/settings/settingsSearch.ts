@@ -644,8 +644,8 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
-    id: "vscode-open-mode",
-    title: "VS Code opens in",
+    id: "vscode-web-enabled",
+    title: "VS Code (Web)",
     to: "/settings/threads",
     searchTerms: ["open in editor vscode web browser desktop app code serve-web code-server"],
   },

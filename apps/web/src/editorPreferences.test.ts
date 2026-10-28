@@ -12,7 +12,6 @@ const state = vi.hoisted(() => ({
   run: vi.fn(),
   getPreference: vi.fn(),
   setPreference: vi.fn(),
-  openVscodeWeb: null as null | ((path: string, isFile: boolean) => boolean),
 }));
 
 vi.mock("react", () => ({ useCallback: (callback: unknown) => callback }));
@@ -27,7 +26,6 @@ vi.mock("./hooks/useLocalStorage", () => ({
   setLocalStorageItem: state.setPreference,
   useLocalStorage: vi.fn(),
 }));
-vi.mock("./remoteOpen", () => ({ useVscodeWebOpener: () => state.openVscodeWeb }));
 
 import { useOpenInPreferredEditor } from "./editorPreferences";
 
@@ -39,7 +37,6 @@ beforeEach(() => {
   state.run.mockReset().mockResolvedValue(AsyncResult.success(undefined));
   state.getPreference.mockReset().mockReturnValue(null);
   state.setPreference.mockReset();
-  state.openVscodeWeb = null;
 });
 
 it("does not use another environment's grant or change preferences when denied", async () => {
@@ -69,20 +66,4 @@ it("checks revocation and regrant when a retained editor callback is invoked", a
     input: { cwd: "/work/readme.md:5", editor: "vscode" },
   });
   expect(state.setPreference).toHaveBeenCalledTimes(1);
-});
-
-it("opens VS Code in the browser without a host editor or host grant", async () => {
-  const opened: Array<[string, boolean]> = [];
-  state.openVscodeWeb = (path, isFile) => {
-    opened.push([path, isFile]);
-    return true;
-  };
-  const open = useOpenInPreferredEditor(secondary, ["file-manager"]);
-  expect(await open("/work/src/readme.md")).toMatchObject({ _tag: "Success", value: "vscode" });
-  expect(await open("/work/logs")).toMatchObject({ _tag: "Success", value: "vscode" });
-  expect(opened).toEqual([
-    ["/work/src/readme.md", true],
-    ["/work/logs", false],
-  ]);
-  expect(state.run).not.toHaveBeenCalled();
 });

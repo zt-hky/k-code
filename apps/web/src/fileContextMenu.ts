@@ -24,6 +24,7 @@ export type FileContextMenuAction =
   | "open"
   /** Submenu parent; never the activated id. */
   | "open-with"
+  | "vscode-web"
   | `editor:${EditorId}`;
 
 export interface FileContextMenuTarget {
@@ -55,6 +56,7 @@ export interface FileContextMenuCapabilities {
   readonly revealLabel: string | undefined;
   readonly canOpenDefault: boolean;
   readonly editorIds: ReadonlyArray<EditorId>;
+  readonly vscodeWeb?: boolean;
 }
 
 function buildFileContextMenuItems(input: {
@@ -73,16 +75,17 @@ function buildFileContextMenuItems(input: {
       icon: "folder-tree",
     });
   }
-  const editorIds = input.capabilities.editorIds.filter((id) => id !== "file-manager");
-  if (editorIds.length > 0) {
-    items.push({
-      id: "open-with",
-      label: "Open with",
-      children: editorIds.map((editorId) => ({
-        id: `editor:${editorId}` as FileContextMenuAction,
-        label: EDITOR_LABEL_BY_ID.get(editorId) ?? editorId,
-      })),
-    });
+  const editorItems: ContextMenuItem<FileContextMenuAction>[] = input.capabilities.editorIds
+    .filter((id) => id !== "file-manager")
+    .map((editorId) => ({
+      id: `editor:${editorId}` as const,
+      label: EDITOR_LABEL_BY_ID.get(editorId) ?? editorId,
+    }));
+  if (input.capabilities.vscodeWeb === true) {
+    editorItems.push({ id: "vscode-web", label: `${EDITOR_LABEL_BY_ID.get("vscode")} (Web)` });
+  }
+  if (editorItems.length > 0) {
+    items.push({ id: "open-with", label: "Open with", children: editorItems });
   }
   return items;
 }
@@ -92,11 +95,7 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const openVscodeWeb = useVscodeWebOpener(environmentId);
 
-  const hostEditors = serverConfig?.availableEditors ?? [];
-  const availableEditors =
-    openVscodeWeb !== null && !hostEditors.includes("vscode")
-      ? [...hostEditors, "vscode" as const]
-      : hostEditors;
+  const availableEditors = serverConfig?.availableEditors ?? [];
   const capabilities: FileContextMenuCapabilities = {
     // WSL can reveal in Windows Explorer despite reporting Linux; use server wording.
     revealLabel:
@@ -107,8 +106,9 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
           ? revealInFileExplorerLabelForOs(serverConfig.environment.platform.os)
           : revealInFileExplorerLabelForKind(serverConfig.shellRevealInFileManagerKind)
         : undefined,
-    canOpenDefault: hostEditors.includes("file-manager"),
+    canOpenDefault: availableEditors.includes("file-manager"),
     editorIds: availableEditors,
+    vscodeWeb: openVscodeWeb !== null,
   };
 
   const activate = async (
@@ -118,13 +118,16 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
     const absolutePath = resolveFileContextMenuAbsolutePath(target);
     if (absolutePath === null || environmentId === null) return;
 
+    if (action === "vscode-web") {
+      openVscodeWeb?.(absolutePath, true);
+      return;
+    }
     const reveal = action === "reveal-in-folder";
     const editor =
       action === "open" || reveal
         ? ("file-manager" as const)
         : (action.slice("editor:".length) as EditorId);
     if (action !== "open" && !reveal && !capabilities.editorIds.includes(editor)) return;
-    if (editor === "vscode" && openVscodeWeb?.(absolutePath, true)) return;
 
     const result = await openInEditor({
       environmentId,

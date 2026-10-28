@@ -347,9 +347,6 @@ export type ModelPreferences = {
   readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
 };
 
-export const VscodeOpenMode = Schema.Literals(["desktop", "web"]);
-export type VscodeOpenMode = typeof VscodeOpenMode.Type;
-
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
@@ -372,9 +369,8 @@ export const ClientSettingsSchema = Schema.Struct({
   browserDefaultViewport: PreviewViewportSetting.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_BROWSER_VIEWPORT)),
   ),
-  vscodeOpenMode: VscodeOpenMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed("desktop" as const)),
-  ),
+  // Shows "VS Code (Web)" beside VS Code when the environment has a VS Code web URL.
+  vscodeWebEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   browserDefaultZoomFactor: PreviewZoomFactor.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PREVIEW_ZOOM_FACTOR)),
   ),
@@ -1790,7 +1786,7 @@ export const ClientSettingsPatch = Schema.Struct({
   panelAnimationDurationMs: Schema.optionalKey(PanelAnimationDurationMs),
   browserDefaultViewport: Schema.optionalKey(PreviewViewportSetting),
   browserDefaultZoomFactor: Schema.optionalKey(PreviewZoomFactor),
-  vscodeOpenMode: Schema.optionalKey(VscodeOpenMode),
+  vscodeWebEnabled: Schema.optionalKey(Schema.Boolean),
   browserDefaultAppearance: Schema.optionalKey(PreviewAppearancePreference),
   browserRecordingFrameRate: Schema.optionalKey(BrowserRecordingFrameRate),
   browserRecordingShowKeyPresses: Schema.optionalKey(Schema.Boolean),
