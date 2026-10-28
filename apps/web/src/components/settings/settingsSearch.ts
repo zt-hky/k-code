@@ -646,6 +646,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["open in editor vscode remote ssh username login"],
   },
   {
+    id: "reveal-account-emails",
+    title: "Show account emails",
+    to: "/settings/general",
+    searchTerms: ["blur redact hide reveal email address usage limits provider account privacy"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",

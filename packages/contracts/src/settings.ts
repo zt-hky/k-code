@@ -369,6 +369,7 @@ export const ClientSettingsSchema = Schema.Struct({
   browserDefaultViewport: PreviewViewportSetting.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_BROWSER_VIEWPORT)),
   ),
+  revealAccountEmails: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Shows "VS Code (Web)" beside VS Code when the environment has a VS Code web URL.
   vscodeWebEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   browserDefaultZoomFactor: PreviewZoomFactor.pipe(
@@ -1677,6 +1678,7 @@ export const ClientSettingsPatch = Schema.Struct({
   browserDefaultViewport: Schema.optionalKey(PreviewViewportSetting),
   browserDefaultZoomFactor: Schema.optionalKey(PreviewZoomFactor),
   vscodeWebEnabled: Schema.optionalKey(Schema.Boolean),
+  revealAccountEmails: Schema.optionalKey(Schema.Boolean),
   browserDefaultAppearance: Schema.optionalKey(PreviewAppearancePreference),
   browserRecordingFrameRate: Schema.optionalKey(BrowserRecordingFrameRate),
   browserRecordingShowKeyPresses: Schema.optionalKey(Schema.Boolean),

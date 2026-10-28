@@ -512,6 +512,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.remoteOpenSshUser !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser
       ? ["SSH user"]
       : []),
+    ...(settings.revealAccountEmails !== DEFAULT_UNIFIED_SETTINGS.revealAccountEmails
+      ? ["Show account emails"]
+      : []),
     ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
       ? ["Unpin confirmation"]
       : []),
@@ -631,6 +634,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       remoteOpenSshUser: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
+      revealAccountEmails: DEFAULT_UNIFIED_SETTINGS.revealAccountEmails,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
       confirmQuit: DEFAULT_UNIFIED_SETTINGS.confirmQuit,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
@@ -893,6 +897,31 @@ export function GeneralSettingsPanel() {
                 updateSettings({ confirmThreadUnpin: Boolean(checked) })
               }
               aria-label="Confirm thread unpinning"
+            />
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("reveal-account-emails")}
+          description="Show account emails in usage limits and provider settings without clicking the blurred text. Saved per device."
+          resetAction={
+            settings.revealAccountEmails !== DEFAULT_UNIFIED_SETTINGS.revealAccountEmails ? (
+              <SettingResetButton
+                label="show account emails"
+                onClick={() =>
+                  updateSettings({
+                    revealAccountEmails: DEFAULT_UNIFIED_SETTINGS.revealAccountEmails,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.revealAccountEmails}
+              onCheckedChange={(checked) =>
+                updateSettings({ revealAccountEmails: Boolean(checked) })
+              }
+              aria-label="Show account emails"
             />
           }
         />

@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { useClientSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -31,7 +32,9 @@ export function RedactedSensitiveText(props: {
   readonly hideTooltip: string;
   readonly className?: string;
 }) {
-  const [revealed, setRevealed] = useState(false);
+  const [clicked, setClicked] = useState(false);
+  const alwaysReveal = useClientSettings((settings) => settings.revealAccountEmails);
+  const revealed = alwaysReveal || clicked;
   const value = props.value?.trim();
   const redacted = value ? redactedPlaceholder(value) : "";
 
@@ -48,7 +51,7 @@ export function RedactedSensitiveText(props: {
               revealed ? "text-muted-foreground" : "select-none text-muted-foreground blur-xs",
               props.className,
             )}
-            onClick={() => setRevealed((current) => !current)}
+            onClick={() => setClicked((current) => !current)}
             aria-label={props.ariaLabel}
           >
             {revealed ? value : redacted}

@@ -171,6 +171,8 @@ export interface LimitAccount {
     readonly label: string;
   }>;
   readonly sourceLabel: string | null;
+  /** Accounts a harness reports through its own login (e.g. Oh My Pi) pool apart from native logins. */
+  readonly group?: { readonly key: string; readonly label: string };
   readonly redeem: {
     readonly environmentId: EnvironmentId;
     readonly input: ProviderConsumeResetCreditInput;
@@ -271,8 +273,9 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
       for (const account of provider.usageLimitAccounts ?? []) {
         if (limitsNotice(account.usageLimits) !== null) continue;
         const key = `${environmentId}:${provider.instanceId}:${account.id}`;
-        merge(resolveKey(hubAccountReport(account)) ?? key, {
+        merge(key, {
           key,
+          group: { key: `${environmentId}:${provider.instanceId}`, label: sourceLabel },
           driver: account.driver,
           displayName: account.email ? null : hubAccountLabel(account),
           email: account.email,
@@ -378,6 +381,7 @@ export interface LimitPoolWindow {
 
 export interface LimitPool {
   readonly driver: ServerProvider["driver"];
+  readonly group?: { readonly key: string; readonly label: string };
   readonly accounts: readonly LimitAccount[];
   readonly windows: readonly LimitPoolWindow[];
 }
@@ -413,13 +417,16 @@ export function collectLimitPools(
   accounts: readonly LimitAccount[],
   now: number,
 ): readonly LimitPool[] {
-  const byDriver = new Map<ServerProvider["driver"], LimitAccount[]>();
+  const byPool = new Map<string, LimitAccount[]>();
   for (const account of accounts) {
-    const list = byDriver.get(account.driver);
+    const poolId = `${account.group?.key ?? ""}\0${account.driver}`;
+    const list = byPool.get(poolId);
     if (list) list.push(account);
-    else byDriver.set(account.driver, [account]);
+    else byPool.set(poolId, [account]);
   }
-  return [...byDriver].map(([driver, members]) => {
+  return [...byPool.values()].map((members) => {
+    const driver = members[0]!.driver;
+    const group = members[0]!.group;
     const orderWindow = members
       .flatMap((account) => account.limits.windows)
       .sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind])[0];
@@ -438,7 +445,12 @@ export function collectLimitPools(
         accountSortName(left).localeCompare(accountSortName(right)) ||
         left.key.localeCompare(right.key),
     );
-    return { driver, accounts: sorted, windows: poolWindows(sorted, now) };
+    return {
+      driver,
+      ...(group ? { group } : {}),
+      accounts: sorted,
+      windows: poolWindows(sorted, now),
+    };
   });
 }
 
