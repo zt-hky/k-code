@@ -20,6 +20,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Path from "effect/Path";
+import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
@@ -35,7 +36,12 @@ import {
   type ProviderInstance,
 } from "@t3tools/provider-core/server/driver";
 import { providerModelsFromSettings } from "@t3tools/provider-core/server/snapshotProbe";
-import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
+import {
+  enrichProviderSnapshotWithVersionAdvisory,
+  makeManualOnlyProviderMaintenanceCapabilities,
+} from "@t3tools/provider-core/server/maintenanceResolver";
+import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
+import { ompMaintenance } from "./ompMaintenance.ts";
 import {
   haveProviderSnapshotSettingsChanged,
   makeProviderSnapshotSettingsSource,
@@ -466,7 +472,11 @@ export const checkAcpRegistryProviderReadiness = Effect.fn(
     : snapshot;
 });
 
-export type AcpRegistryDriverEnv = AcpRegistryAdapterV2DriverEnv | ProviderHost.ProviderHost;
+export type AcpRegistryDriverEnv =
+  | AcpRegistryAdapterV2DriverEnv
+  | ProviderHost.ProviderHost
+  | ProviderLatestVersions.ProviderLatestVersions
+  | HttpClient.HttpClient;
 
 export const AcpRegistryDriver: ProviderDriver<
   AcpRegistrySettings,
@@ -507,6 +517,8 @@ export const AcpRegistryDriver: ProviderDriver<
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const hostEnvironment = yield* HostProcess.Environment;
     const host = yield* ProviderHost.ProviderHost;
+    const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
+    const httpClient = yield* HttpClient.HttpClient;
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -688,17 +700,38 @@ export const AcpRegistryDriver: ProviderDriver<
       }
       return { provider: enriched, generation: cacheState.generation };
     });
+    const ompInstallation = ompMaintenance({
+      executable: effectiveConfig.commandPath || "omp",
+      env: processEnvironment,
+      spawner,
+    });
+    const withOmpVersionAdvisory = (
+      provider: ServerProvider,
+      enableProviderUpdateChecks: boolean,
+    ) =>
+      registryAgentId(effectiveConfig) === OMP_AGENT_ID
+        ? enrichProviderSnapshotWithVersionAdvisory(provider, ompInstallation, {
+            enableProviderUpdateChecks,
+          }).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
+            Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
+          )
+        : Effect.succeed(provider);
     const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
     const snapshot = yield* makeManagedServerProvider<
       ProviderSnapshotSettings<AcpRegistrySettings>
     >({
-      resolveMaintenance: () => Effect.succeed(MAINTENANCE),
+      resolveMaintenance: () =>
+        Effect.succeed(
+          registryAgentId(effectiveConfig) === OMP_AGENT_ID ? ompInstallation : MAINTENANCE,
+        ),
       getSettings: snapshotSettings.getSettings,
       streamSettings: snapshotSettings.streamSettings,
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
       initialSnapshot: () => checkProvider,
       checkProvider,
       enrichSnapshot: Effect.fn("enrichSnapshot")(function ({
+        settings,
         snapshot,
         getSnapshot,
         publishSnapshot,
@@ -722,7 +755,12 @@ export const AcpRegistryDriver: ProviderDriver<
                   Ref.get(enrichmentCache).pipe(
                     Effect.flatMap((current) =>
                       current.generation === generation
-                        ? withLiveRuntimeState(provider).pipe(Effect.flatMap(publishSnapshot))
+                        ? withLiveRuntimeState(provider).pipe(
+                            Effect.flatMap((live) =>
+                              withOmpVersionAdvisory(live, settings.enableProviderUpdateChecks),
+                            ),
+                            Effect.flatMap(publishSnapshot),
+                          )
                         : Effect.void,
                     ),
                   ),

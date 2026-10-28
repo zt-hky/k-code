@@ -328,7 +328,7 @@ export function parseHomebrewLatestVersion(
   return version === "latest" ? null : version;
 }
 
-const runProbe = Effect.fn("runProbe")(function* (
+export const runMaintenanceProbe = Effect.fn("runMaintenanceProbe")(function* (
   command: string,
   args: ReadonlyArray<string>,
   env: NodeJS.ProcessEnv,
@@ -396,7 +396,7 @@ const resolvePnpmGlobalLatestVersion = Effect.fn("resolvePnpmGlobalLatestVersion
   const pnpmPath = yield* resolveCommandPath("pnpm");
   if (!pnpmPath) return null;
   // Silent reporting keeps project package-manager warnings out of the JSON.
-  const outdated = yield* runProbe(
+  const outdated = yield* runMaintenanceProbe(
     pnpmPath,
     ["outdated", "-g", "--reporter=silent", "--format", "json", packageName],
     {},
@@ -410,7 +410,7 @@ const resolvePnpmGlobalLatestVersion = Effect.fn("resolvePnpmGlobalLatestVersion
   const latest = nonEmptyString(outdatedEntries[packageName]?.latest);
   if (latest) return latest;
   // An empty result means the installed version is still the eligible release.
-  const listed = yield* runProbe(
+  const listed = yield* runMaintenanceProbe(
     pnpmPath,
     ["ls", "-g", "--reporter=silent", "--depth", "0", "--json", packageName],
     {},
@@ -498,7 +498,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   }
   if (commandPaths.some(isPnpmGlobalCommandPath)) {
     // pnpm 10 skips unapproved scripts; the approval flag requires 10.4+.
-    const pnpmVersion = yield* runProbe("pnpm", ["--version"], context.env);
+    const pnpmVersion = yield* runMaintenanceProbe("pnpm", ["--version"], context.env);
     const allowBuild =
       pnpmVersion !== null && satisfiesSemverRange(pnpmVersion, ">=10.4.0")
         ? [`--allow-build=${packageName}`]
@@ -598,7 +598,9 @@ export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProv
     if (!brewPath) {
       return null;
     }
-    const brewPrefix = nonEmptyString(yield* runProbe(brewPath, ["--prefix"], context.env));
+    const brewPrefix = nonEmptyString(
+      yield* runMaintenanceProbe(brewPath, ["--prefix"], context.env),
+    );
     const realBrewPrefix = brewPrefix
       ? yield* fileSystem.realPath(brewPrefix).pipe(Effect.orElseSucceed(() => brewPrefix))
       : null;
@@ -620,7 +622,7 @@ export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProv
       updateCommand: ["brew", ...args].join(" "),
       // Brew's release can lag npm; only its own channel can say what upgrade installs.
       latestVersion: null,
-      lookupLatestVersion: runProbe(
+      lookupLatestVersion: runMaintenanceProbe(
         brewPath,
         ["info", "--json=v2", homebrew.name],
         context.env,
