@@ -7385,6 +7385,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const instructionState = {
             interactionMode: turnInput.runtimePolicy.interactionMode,
             hasT3Mcp: (yield* readMcpContext(turnInput.threadId)).servers.length > 0,
+            model: turnInput.modelSelection.model,
           } satisfies T3AcpInstructionState;
           const previousInstructionState = (yield* Ref.get(promptInstructionStates)).get(sessionId);
           const compactionMarker = (yield* Ref.get(compactionMarkers)).get(sessionId);
@@ -7405,7 +7406,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             resolveAttachmentPath: host.resolveAttachmentPath,
             resolveExtractedTextPath: host.resolveExtractedTextPath,
           });
-          const isNativeSlashCommand = userText.trimStart().startsWith("/");
           const text = t3AcpPromptWithInstructions({
             prompt: messageText,
             state: instructionState,
@@ -7413,6 +7413,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               ? {}
               : { previousState: previousInstructionState }),
           });
+          const injectsInstructions = text !== messageText;
           const prompt = yield* messagePromptBlocks(text, turnInput.message.attachments);
           if (prompt.length === 0) {
             return yield* new ProviderAdapter.ProviderAdapterProtocolError({
@@ -7420,7 +7421,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               detail: "ACP turn requires non-empty text or attachments",
             });
           }
-          if (!isNativeSlashCommand) {
+          if (injectsInstructions) {
             prompt.push({
               type: "text",
               text: buildRuntimeInstructions({
@@ -7431,7 +7432,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           }
           return {
             prompt,
-            instructionState: text === messageText ? undefined : instructionState,
+            instructionState: injectsInstructions ? instructionState : undefined,
             compactionMarker,
           };
         });
