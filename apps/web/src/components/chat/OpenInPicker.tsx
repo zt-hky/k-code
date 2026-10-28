@@ -290,7 +290,7 @@ export const OpenInPicker = memo(function OpenInPicker({
     <>
       {remote.mode === "remote-unavailable" ? (
         <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
-          No SSH route to {environmentLabel}
+          No SSH route to {environmentLabel}. Set an SSH host in Settings › Threads
         </MenuItem>
       ) : (
         <>

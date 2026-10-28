@@ -141,6 +141,52 @@ describe("resolveRemoteOpenState", () => {
       ).toEqual({ mode: "remote-unavailable" });
     }
   });
+
+  it.each([
+    {
+      configuredSsh: { host: "100.64.0.7", username: "kyle" },
+      expected: "vscode://vscode-remote/ssh-remote+kyle%40100.64.0.7/work/project",
+    },
+    {
+      configuredSsh: { host: "deploy@100.64.0.7", username: "" },
+      expected: "vscode://vscode-remote/ssh-remote+deploy%40100.64.0.7/work/project",
+    },
+    {
+      configuredSsh: { host: "100.64.0.7", username: "" },
+      expected: "vscode://vscode-remote/ssh-remote+admin-user%40100.64.0.7/work/project",
+    },
+  ])(
+    "prefers the configured SSH host $configuredSsh.host over advertised hosts",
+    ({ configuredSsh, expected }) => {
+      const state = resolveRemoteOpenState({
+        target: new RelayConnectionTarget({ environmentId, label: "server" }),
+        sshTarget: null,
+        configuredSsh,
+        isDesktopRenderer: false,
+        remoteOpenTargets: [
+          { kind: "tailscale", host: "server.tail1234.ts.net", username: "admin-user" },
+        ],
+      });
+      if (state.mode !== "remote-links") throw new Error("Expected a remote link");
+      expect(
+        buildRemoteOpenUrl({ editor: "vscode", ...state.host, absolutePath: "/work/project" }),
+      ).toBe(expected);
+    },
+  );
+
+  it("opens over a configured SSH host when the environment advertises none", () => {
+    const state = resolveRemoteOpenState({
+      target: new RelayConnectionTarget({ environmentId, label: "sol" }),
+      sshTarget: null,
+      configuredSsh: { host: "10.0.0.5", username: "kyle" },
+      isDesktopRenderer: false,
+      remoteOpenTargets: [],
+    });
+    expect(state).toEqual({
+      mode: "remote-links",
+      host: { kind: "configured", host: "10.0.0.5", username: "kyle" },
+    });
+  });
 });
 
 describe("buildRemoteOpenUrl", () => {

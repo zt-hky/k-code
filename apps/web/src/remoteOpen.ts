@@ -16,7 +16,7 @@ import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { environmentPresentations } from "~/state/presentation";
 
 export interface RemoteOpenHost {
-  readonly kind: "ssh-alias" | RemoteOpenTarget["kind"];
+  readonly kind: "ssh-alias" | "configured" | RemoteOpenTarget["kind"];
   readonly host: string;
   readonly username?: string;
 }
@@ -48,9 +48,26 @@ function parseHostname(url: string): string | null {
   }
 }
 
+/** Username precedence: explicit, then `user@` in the destination, then the fallback. */
+function sshHost(
+  kind: RemoteOpenHost["kind"],
+  destination: string,
+  username: string | undefined,
+  fallbackUsername?: string,
+): RemoteOpenHost {
+  const userSeparator = destination.lastIndexOf("@");
+  const host = userSeparator === -1 ? destination : destination.slice(userSeparator + 1);
+  const resolvedUsername =
+    username ||
+    (userSeparator === -1 ? undefined : destination.slice(0, userSeparator)) ||
+    fallbackUsername;
+  return { kind, host, ...(resolvedUsername ? { username: resolvedUsername } : {}) };
+}
+
 export function resolveRemoteOpenState(input: {
   readonly target: ConnectionTarget | null;
   readonly sshTarget: { readonly alias: string; readonly username: string | null } | null;
+  readonly configuredSsh?: { readonly host: string; readonly username: string } | undefined;
   readonly remoteOpenTargets: ReadonlyArray<RemoteOpenTarget> | undefined;
   readonly isDesktopRenderer: boolean;
 }): RemoteOpenState {
@@ -72,22 +89,24 @@ export function resolveRemoteOpenState(input: {
   }
 
   if (input.sshTarget !== null && input.sshTarget.alias.length > 0) {
-    const { alias } = input.sshTarget;
-    const userSeparator = alias.lastIndexOf("@");
-    const host = userSeparator === -1 ? alias : alias.slice(userSeparator + 1);
-    const username =
-      input.sshTarget.username?.trim() ||
-      (userSeparator === -1 ? null : alias.slice(0, userSeparator));
     return {
       mode: "remote-links",
-      host: {
-        kind: "ssh-alias",
-        host,
-        ...(username === null ? {} : { username }),
-      },
+      host: sshHost("ssh-alias", input.sshTarget.alias, input.sshTarget.username?.trim()),
     };
   }
   const advertised = input.remoteOpenTargets?.[0];
+  const configuredHost = input.configuredSsh?.host.trim() ?? "";
+  if (configuredHost.length > 0) {
+    return {
+      mode: "remote-links",
+      host: sshHost(
+        "configured",
+        configuredHost,
+        input.configuredSsh?.username.trim(),
+        advertised?.username,
+      ),
+    };
+  }
   if (advertised !== undefined) {
     return { mode: "remote-links", host: advertised };
   }
@@ -118,6 +137,14 @@ const remoteOpenResolutionAtom = Atom.family((environmentId: EnvironmentId) =>
         target: entry.target,
         sshTarget:
           profile !== null && profile._tag === "SshConnectionProfile" ? profile.target : null,
+        ...(presentation?.serverConfig?.settings === undefined
+          ? {}
+          : {
+              configuredSsh: {
+                host: presentation.serverConfig.settings.remoteOpenSshHost,
+                username: presentation.serverConfig.settings.remoteOpenSshUser,
+              },
+            }),
         remoteOpenTargets: presentation?.serverConfig?.remoteOpenTargets,
         isDesktopRenderer: window.desktopBridge !== undefined,
       }),

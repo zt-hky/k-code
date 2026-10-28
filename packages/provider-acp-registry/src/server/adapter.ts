@@ -236,6 +236,12 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     capabilities: AcpProviderCapabilitiesV2,
     customModels: readCustomModelEntries(options.settings.customModels).map((entry) => entry.slug),
     promptFailure: (cause) => acpRegistryPromptFailure(registryAgentId, cause),
+    instructionSections: {
+      interactionMode: options.settings.instructionInteractionMode,
+      t3Tools: options.settings.instructionT3Tools,
+      runtimeInfo: options.settings.instructionRuntimeInfo,
+      pullRequestLinking: options.settings.instructionPullRequestLinking,
+    },
     ...(registryAgentId === "factory-droid"
       ? { extractElicitationForm: extractDroidElicitationForm }
       : {}),

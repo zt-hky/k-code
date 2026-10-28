@@ -231,6 +231,15 @@ again on its next connect.
 For Antigravity's Google callback on a remote host, see
 [remote sign-in](./providers-antigravity.md#sign-in-from-a-remote-device).
 
+## Open files in your editor from another device
+
+On a remote environment, **Open in** builds a VS Code, Cursor, Zed, or JetBrains
+link that connects to the host over SSH, so the device you are using needs an
+SSH key the host accepts. T3 Code picks the host's Tailscale or local network
+name automatically. To use a specific IP or user instead, set **SSH host** and
+**SSH user** in **Settings → Threads → Open in editor over SSH**. The host field
+also accepts `user@host`.
+
 ## Browser on a remote environment
 
 Browser tabs belong to the environment, so you and your agents see the same

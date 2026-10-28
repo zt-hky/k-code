@@ -91,6 +91,14 @@ is running update the picker without waiting for another provider probe.
 Slash commands the agent provides appear under **Provider** in the `/` menu while a session is
 running. Commands the agent names with a `$` prefix appear in T3 Code's `$` skill menu instead.
 
+## T3 Code instructions
+
+ACP has no system prompt, so T3 Code adds its instructions to the first message of a thread, and
+again after the mode or model changes or the context is compacted. Turn off any kind you don't need
+in the agent's provider settings: interaction mode, T3 tools, runtime info, and pull request
+linking. With all four off, messages reach the agent exactly as you typed them. Agents without
+their own plan mode rely on the interaction mode instructions to stay read-only in Plan.
+
 ## Native sessions
 
 When an agent advertises ACP session listing and import support, choose **Resume session…** from a
