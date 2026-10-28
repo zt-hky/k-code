@@ -27,6 +27,10 @@ import {
   getProviderSkillsForSlashMenu,
   getProviderSlashCommandsForSlashMenu,
 } from "@t3tools/client-runtime/providerSkills";
+import {
+  parseSlashCommandArgumentOptions,
+  searchSlashCommandArgumentOptions,
+} from "./slashCommandArguments";
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useThreadShells } from "~/state/entities";
 import { useEnvironmentIdentities, useEnvironmentMachines } from "~/state/environments";
@@ -272,6 +276,23 @@ export function useComposerMenuItems({
         composerTrigger.rangeStart === 0,
       );
       return searchSlashCommandItems(slashCommandItems, query);
+    }
+    if (composerTrigger.kind === "slash-argument") {
+      const commandName = composerTrigger.command?.toLowerCase();
+      const command = selectedProviderSlashCommands.find(
+        (candidate) => candidate.name.toLowerCase() === commandName,
+      );
+      if (!command) return [];
+      return searchSlashCommandArgumentOptions(
+        parseSlashCommandArgumentOptions(command.input?.hint),
+        composerTrigger.query,
+      ).map((value) => ({
+        id: `slash-argument:${command.name}:${value}`,
+        type: "slash-argument" as const,
+        value,
+        label: value,
+        description: command.description ?? command.input?.hint ?? "",
+      }));
     }
     if (composerTrigger.kind === "skill") {
       return searchProviderSkills(selectedProviderSkills, composerTrigger.query).map((skill) => ({

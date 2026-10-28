@@ -61,6 +61,13 @@ export type ComposerCommandItem =
     }
   | {
       id: string;
+      type: "slash-argument";
+      value: string;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
       type: "skill";
       provider: ProviderDriverKind;
       skill: ServerProviderSkill;
@@ -262,6 +269,7 @@ const LISTBOX_LABEL_BY_TRIGGER: Record<ComposerTriggerKind, string> = {
   path: "Files and folders",
   "pull-request": "Pull requests",
   "slash-command": "Commands",
+  "slash-argument": "Command arguments",
   skill: "Skills",
 };
 
