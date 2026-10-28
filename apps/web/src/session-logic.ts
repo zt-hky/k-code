@@ -5,6 +5,7 @@ import {
   type OrchestrationV2Checkpoint,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2PlanArtifact,
+  type OrchestrationV2PlanStep,
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2RunAttempt,
   type OrchestrationV2TurnItem,
@@ -288,6 +289,39 @@ export function findLatestProposedPlan(
     )
     .at(-1);
   return plan === undefined ? null : toLatestProposedPlanState(projection, plan);
+}
+
+export interface LatestTodoListState {
+  readonly planId: PlanId;
+  readonly runId: RunId | null;
+  readonly explanation: string | undefined;
+  readonly steps: ReadonlyArray<OrchestrationV2PlanStep>;
+}
+
+/** The newest todo list, preferring the latest run's. Hidden once that run settles with nothing left to do. */
+export function findLatestTodoList(
+  projection: ThreadStructure | null,
+  latestRunId: RunId | string | null | undefined,
+  latestRunSettled: boolean,
+): LatestTodoListState | null {
+  if (projection === null) return null;
+  const lists = projection.plans.filter((plan) => plan.kind === "todo_list");
+  const ofLatestRun = latestRunId ? lists.filter((plan) => plan.runId === latestRunId) : [];
+  const plan = [...(ofLatestRun.length > 0 ? ofLatestRun : lists)]
+    .toSorted(
+      (left, right) =>
+        planItemTime(projection, left).localeCompare(planItemTime(projection, right)) ||
+        left.id.localeCompare(right.id),
+    )
+    .at(-1);
+  if (plan === undefined || plan.steps.length === 0) return null;
+  if (latestRunSettled && plan.steps.every((step) => step.status === "completed")) return null;
+  return {
+    planId: plan.id,
+    runId: plan.runId,
+    explanation: plan.explanation,
+    steps: plan.steps,
+  };
 }
 
 export function hasActionableProposedPlan(plan: LatestProposedPlanState | null): boolean {

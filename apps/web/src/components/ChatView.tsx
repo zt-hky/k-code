@@ -134,6 +134,7 @@ import {
   deriveActiveWorkStartedAt,
   deriveCanInterruptRunningThread,
   findLatestProposedPlan,
+  findLatestTodoList,
   findRevertCheckpoint,
   hasActionableProposedPlan,
   isLatestRunSettled,
@@ -308,6 +309,7 @@ import { useIncrementalTimelineEntries } from "../hooks/useIncrementalTimelineEn
 import { useRightPanelSurfaceClose } from "../hooks/useRightPanelSurfaceClose";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { modelFallbackBannerItem } from "./chat/ComposerUsageLimits";
+import { ThreadWorkPanelsDock } from "./chat/ThreadWorkPanels";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
 import {
@@ -1351,6 +1353,11 @@ export default function ChatView(props: ChatViewProps) {
     }
     return findLatestProposedPlan(serverProjection, activeLatestRun?.runId ?? null);
   })();
+  const threadTodoList = findLatestTodoList(
+    serverProjection,
+    activeLatestRun?.runId ?? null,
+    latestRunSettled,
+  );
   const showPlanFollowUpPrompt = shouldShowPlanFollowUpPrompt({
     pendingUserInputCount: pendingUserInputs.length,
     interactionMode,
@@ -3543,6 +3550,15 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               isPreparingWorktree={isPreparingWorktree && !sendQueuesBehindSetup}
                               bannerItems={isDraftHeroState ? [] : composerBannerItems}
+                              workPanels={
+                                isServerThread ? (
+                                  <ThreadWorkPanelsDock
+                                    threadRef={routeThreadRef}
+                                    todoList={threadTodoList}
+                                    onOpenSubagent={onOpenRelatedThreadStable}
+                                  />
+                                ) : null
+                              }
                               resumeCompactionTokens={resumeCompactionTokens}
                               keepFullHistory={keepFullHistory}
                               onToggleKeepFullHistory={toggleKeepFullHistoryStable}

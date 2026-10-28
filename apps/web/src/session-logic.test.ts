@@ -14,6 +14,7 @@ import {
   TurnItemId,
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2ExecutionNode,
+  type OrchestrationV2PlanArtifact,
   type OrchestrationV2RunAttempt,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
@@ -29,6 +30,7 @@ import {
   deriveRevertTurnCountByUserMessageId,
   derivePhase,
   isLatestRunSettled,
+  findLatestTodoList,
   selectHandoffImageResources,
   selectMessageImageResources,
   createMessageAttachmentPreviewProjector,
@@ -1786,4 +1788,58 @@ it("renders automatic completion as a work entry instead of a user bubble", () =
       ],
     })[0]?.kind,
   ).toBe("message");
+});
+
+describe("findLatestTodoList", () => {
+  const todo = (
+    id: string,
+    runId: string | null,
+    statuses: ReadonlyArray<"pending" | "running" | "completed">,
+  ): OrchestrationV2PlanArtifact => ({
+    id: PlanId.make(id),
+    threadId: ThreadId.make("thread-test"),
+    runId: runId === null ? null : RunId.make(runId),
+    nodeId: NodeId.make(`node-${id}`),
+    status: "active",
+    kind: "todo_list",
+    steps: statuses.map((status, index) => ({
+      id: `${id}-${index}`,
+      text: `Step ${index}`,
+      status,
+    })),
+  });
+  const projectionWith = (plans: ReadonlyArray<OrchestrationV2PlanArtifact>) => ({
+    ...makeThreadProjectionFixture(),
+    plans,
+  });
+
+  it("prefers the latest run's list over a list from an earlier run", () => {
+    const projection = projectionWith([
+      todo("plan-z", "run-1", ["running"]),
+      todo("plan-a", "run-2", ["pending", "pending"]),
+    ]);
+    expect(findLatestTodoList(projection, RunId.make("run-2"), false)?.planId).toBe("plan-a");
+  });
+
+  it("falls back to the newest list when the latest run has none", () => {
+    const projection = projectionWith([todo("plan-1", "run-1", ["running"])]);
+    expect(findLatestTodoList(projection, RunId.make("run-2"), false)?.planId).toBe("plan-1");
+  });
+
+  it("hides a list that is fully completed once the run settles", () => {
+    const projection = projectionWith([todo("plan-1", "run-1", ["completed", "completed"])]);
+    expect(findLatestTodoList(projection, RunId.make("run-1"), true)).toBeNull();
+    expect(findLatestTodoList(projection, RunId.make("run-1"), false)?.steps).toHaveLength(2);
+  });
+
+  it("keeps an unfinished list visible after the run settles", () => {
+    const projection = projectionWith([todo("plan-1", "run-1", ["completed", "pending"])]);
+    expect(findLatestTodoList(projection, RunId.make("run-1"), true)?.planId).toBe("plan-1");
+  });
+
+  it("returns null without a projection, a list, or steps", () => {
+    expect(findLatestTodoList(null, null, false)).toBeNull();
+    expect(findLatestTodoList(projectionWith([]), null, false)).toBeNull();
+    expect(findLatestTodoList(projectionWith([todo("plan-1", null, [])]), null, false)).toBeNull();
+  });
 });

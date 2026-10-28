@@ -18,6 +18,7 @@ When upstream changes a registration point below, keep upstream's shape and re-a
 - `apps/web/src/components/chat/sessionPin.ts` — `/session pin` from the usage panel.
 - `apps/web/src/components/chat/MessageImageGrid.tsx` — the image grid shared by user and assistant rows.
 - `apps/web/src/components/chat/slashCommandArguments.ts` (+ test) — choices parsed from a command's `input.hint`.
+- `apps/web/src/components/chat/ThreadWorkPanels.tsx` (+ logic, tests) — the Tasks and Subagents cards above the composer.
 
 ## Upstream registration points
 
@@ -30,6 +31,7 @@ When upstream changes a registration point below, keep upstream's shape and re-a
 - `apps/server/src/ws.ts`, `auth/RpcAuthorization.ts`, `observability/RpcInstrumentation.ts`, `packages/client-runtime/src/state/server.ts` — one handler, scope, span and atom per new RPC.
 - `apps/web/src/composer-logic.ts`, `components/chat/ComposerCommandMenu.tsx`, `useComposerMenuItems.ts`, `ChatComposer.tsx` — the `slash-argument` trigger.
 - `apps/web/src/components/chat/TimelineAssistantRows.tsx`, `TimelineUserMessageRow.tsx` — mount `MessageImageGrid`.
+- `apps/web/src/components/chat/ChatComposer.tsx` (`workPanels` prop), `ChatView.tsx` (mounts `ThreadWorkPanelsDock`), `session-logic.ts` (`findLatestTodoList`), `state/entities.ts` (`useThreadTurnSubagents`) — the work panels.
 - `apps/web/src/components/settings/AcpSessionManagementSection.tsx` — mounts the extensions section and shows message counts.
 - `packages/shared/src/usageLimits.ts`, `apps/web/src/components/usage/*`, `apps/mobile/src/features/usage/usageProviders.ts` — hub accounts in usage views.
 - `apps/server/scripts/acp-mock-agent.ts` — `T3_ACP_SESSION_STEERING`, `T3_ACP_TURN_USAGE`, omp plan approval, `session/list` `_meta`.
