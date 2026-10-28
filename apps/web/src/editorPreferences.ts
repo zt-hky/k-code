@@ -17,7 +17,6 @@ import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "./hoo
 import { shellEnvironment } from "./state/shell";
 import { useAtomCommand } from "./state/use-atom-command";
 import { readEnvironmentScope } from "./state/session";
-import { useVscodeWebOpener } from "./remoteOpen";
 
 const LAST_EDITOR_KEY = "t3code:last-editor";
 
@@ -72,7 +71,6 @@ export function useOpenInPreferredEditor(
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
     reportFailure: false,
   });
-  const openVscodeWeb = useVscodeWebOpener(environmentId);
   type OpenInEditorError = AtomCommandFailure<Awaited<ReturnType<typeof openInEditor>>>;
 
   return async (
@@ -94,16 +92,6 @@ export function useOpenInPreferredEditor(
           }),
         ),
       );
-    }
-    if (openVscodeWeb !== null) {
-      const preferred = resolveAndPersistPreferredEditor(
-        availableEditors.includes("vscode") ? availableEditors : [...availableEditors, "vscode"],
-      );
-      // Callers pass files and folders alike; a dotted last segment is treated as a file.
-      const isFile = /\/[^/]*[^/.][^/]*\.[^/.]+$/.test(targetPath.replaceAll("\\", "/"));
-      if (preferred === "vscode" && openVscodeWeb(targetPath, isFile)) {
-        return AsyncResult.success(preferred);
-      }
     }
     if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
       return AsyncResult.failure(

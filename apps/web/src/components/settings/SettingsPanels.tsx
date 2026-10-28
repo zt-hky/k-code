@@ -502,8 +502,8 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
       ? ["Add project base directory"]
       : []),
-    ...(settings.vscodeOpenMode !== DEFAULT_UNIFIED_SETTINGS.vscodeOpenMode
-      ? ["VS Code opens in"]
+    ...(settings.vscodeWebEnabled !== DEFAULT_UNIFIED_SETTINGS.vscodeWebEnabled
+      ? ["VS Code (Web)"]
       : []),
     ...(settings.vscodeWebUrl !== DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl ? ["VS Code web URL"] : []),
     ...(settings.remoteOpenSshHost !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost
@@ -626,7 +626,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       remoteOpenSshHost: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost,
-      vscodeOpenMode: DEFAULT_UNIFIED_SETTINGS.vscodeOpenMode,
+      vscodeWebEnabled: DEFAULT_UNIFIED_SETTINGS.vscodeWebEnabled,
       vscodeWebUrl: DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl,
       remoteOpenSshUser: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
@@ -1552,46 +1552,31 @@ export function ThreadsSettingsPanel() {
 
       <SettingsSection id="remote-editor" title="Open in editor">
         <SettingsRow
-          {...searchableSetting("vscode-open-mode")}
-          description="Open VS Code as the desktop app, or in the browser through VS Code for the Web on this environment. Saved per device."
+          {...searchableSetting("vscode-web-enabled")}
+          description='Show "VS Code (Web)" next to VS Code in Open in menus, opening VS Code for the Web at the URL below. Saved per device.'
           resetAction={
-            settings.vscodeOpenMode !== DEFAULT_UNIFIED_SETTINGS.vscodeOpenMode ? (
+            settings.vscodeWebEnabled !== DEFAULT_UNIFIED_SETTINGS.vscodeWebEnabled ? (
               <SettingResetButton
-                label="VS Code opens in"
+                label="VS Code (Web)"
                 onClick={() =>
-                  updateSettings({ vscodeOpenMode: DEFAULT_UNIFIED_SETTINGS.vscodeOpenMode })
+                  updateSettings({ vscodeWebEnabled: DEFAULT_UNIFIED_SETTINGS.vscodeWebEnabled })
                 }
               />
             ) : null
           }
           control={
-            <div className="w-full sm:w-40">
-              <Select
-                value={settings.vscodeOpenMode}
-                onValueChange={(value) => {
-                  if (value === "desktop" || value === "web") {
-                    updateSettings({ vscodeOpenMode: value });
-                  }
-                }}
-              >
-                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="VS Code opens in">
-                  <SelectValue>
-                    {settings.vscodeOpenMode === "web" ? "Browser" : "Desktop app"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectPopup align="end" alignItemWithTrigger={false}>
-                  <SelectItem value="desktop">Desktop app</SelectItem>
-                  <SelectItem value="web">Browser</SelectItem>
-                </SelectPopup>
-              </Select>
-            </div>
+            <Switch
+              checked={settings.vscodeWebEnabled}
+              onCheckedChange={(checked) => updateSettings({ vscodeWebEnabled: Boolean(checked) })}
+              aria-label="Show VS Code (Web)"
+            />
           }
         />
         <SettingsRow
           serverScoped
           settingKeys={["vscodeWebUrl"]}
           {...searchableSetting("vscode-web-url")}
-          description="Address of VS Code for the Web running on this environment, such as code serve-web or code-server. Browser mode needs it."
+          description='Address of VS Code for the Web running on this environment, such as code serve-web or code-server. "VS Code (Web)" appears only when this is set.'
           resetAction={
             settings.vscodeWebUrl !== DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl ? (
               <SettingResetButton

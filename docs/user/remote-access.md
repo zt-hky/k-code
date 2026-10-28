@@ -240,11 +240,11 @@ name automatically. To use a specific IP or user instead, set **SSH host** and
 **SSH user** in **Settings → Threads → Open in editor**. The host field
 also accepts `user@host`.
 
-VS Code can also open in the browser instead. Run VS Code for the Web on the
-host, for example `code serve-web` or code-server, behind your own auth such as
-Cloudflare Access, and put its address in **VS Code web URL**. Then set **VS
-Code opens in** to **Browser** on each device that should use it; the choice is
-saved per device. A file opens its folder.
+VS Code can also open in the browser. Run VS Code for the Web on the host, for
+example `code serve-web` or code-server, behind your own auth such as Cloudflare
+Access, and put its address in **VS Code web URL**. **Open in** menus then show
+**VS Code (Web)** next to **VS Code**; turn it off per device with the **VS Code
+(Web)** switch. A file opens its folder.
 
 ## Browser on a remote environment
 
