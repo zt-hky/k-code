@@ -347,6 +347,9 @@ export type ModelPreferences = {
   readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
 };
 
+export const VscodeOpenMode = Schema.Literals(["desktop", "web"]);
+export type VscodeOpenMode = typeof VscodeOpenMode.Type;
+
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
@@ -368,6 +371,9 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   browserDefaultViewport: PreviewViewportSetting.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_BROWSER_VIEWPORT)),
+  ),
+  vscodeOpenMode: VscodeOpenMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed("desktop" as const)),
   ),
   browserDefaultZoomFactor: PreviewZoomFactor.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PREVIEW_ZOOM_FACTOR)),
@@ -1254,6 +1260,8 @@ export const ServerSettings = Schema.Struct({
   // SSH route for remote "Open in" editor links; empty keeps the detected Tailscale/mDNS route.
   remoteOpenSshHost: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   remoteOpenSshUser: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // VS Code for the Web on this environment, opened with `?folder=<path>`; empty disables web mode.
+  vscodeWebUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -1582,6 +1590,7 @@ export const ServerSettingsPatch = Schema.Struct({
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   remoteOpenSshHost: Schema.optionalKey(TrimmedString),
   remoteOpenSshUser: Schema.optionalKey(TrimmedString),
+  vscodeWebUrl: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   threadTitleInstructions: Schema.optionalKey(TrimmedString),
   branchNamingMode: Schema.optionalKey(BranchNamingMode),
@@ -1671,6 +1680,7 @@ export const ClientSettingsPatch = Schema.Struct({
   panelAnimationDurationMs: Schema.optionalKey(PanelAnimationDurationMs),
   browserDefaultViewport: Schema.optionalKey(PreviewViewportSetting),
   browserDefaultZoomFactor: Schema.optionalKey(PreviewZoomFactor),
+  vscodeOpenMode: Schema.optionalKey(VscodeOpenMode),
   browserDefaultAppearance: Schema.optionalKey(PreviewAppearancePreference),
   browserRecordingFrameRate: Schema.optionalKey(BrowserRecordingFrameRate),
   browserRecordingShowKeyPresses: Schema.optionalKey(Schema.Boolean),

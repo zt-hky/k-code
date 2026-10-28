@@ -6,7 +6,7 @@ import {
 import { buildRemoteOpenUrl, EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveRemoteOpenState } from "./remoteOpen";
+import { buildVscodeWebUrl, resolveRemoteOpenState } from "./remoteOpen";
 
 const environmentId = EnvironmentId.make("environment-1");
 
@@ -186,6 +186,43 @@ describe("resolveRemoteOpenState", () => {
       mode: "remote-links",
       host: { kind: "configured", host: "10.0.0.5", username: "kyle" },
     });
+  });
+});
+
+describe("buildVscodeWebUrl", () => {
+  it.each([
+    [
+      "https://code.example.com",
+      "/work/my project",
+      false,
+      "https://code.example.com/?folder=%2Fwork%2Fmy+project",
+    ],
+    [
+      "https://code.example.com/base/",
+      "/work/src/app.ts",
+      true,
+      "https://code.example.com/base/?folder=%2Fwork%2Fsrc",
+    ],
+    [
+      "https://code.example.com?tkn=1",
+      "/app.ts",
+      true,
+      "https://code.example.com/?tkn=1&folder=%2F",
+    ],
+    [
+      "https://code.example.com",
+      "C:\\Users\\theo\\repo",
+      false,
+      "https://code.example.com/?folder=C%3A%2FUsers%2Ftheo%2Frepo",
+    ],
+  ])("opens %s with %s", (baseUrl, path, isFile, expected) => {
+    expect(buildVscodeWebUrl(baseUrl, path, isFile)).toBe(expected);
+  });
+
+  it("refuses non-web base URLs", () => {
+    for (const baseUrl of ["", "code.example.com", "javascript:alert(1)"]) {
+      expect(buildVscodeWebUrl(baseUrl, "/work", false)).toBeUndefined();
+    }
   });
 });
 

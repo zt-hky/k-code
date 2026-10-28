@@ -14,6 +14,8 @@ import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { isLoopbackHostname } from "~/environments/primary/target";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { environmentPresentations } from "~/state/presentation";
+import { serverEnvironment } from "~/state/server";
+import { useClientSettings } from "~/hooks/useSettings";
 
 export interface RemoteOpenHost {
   readonly kind: "ssh-alias" | "configured" | RemoteOpenTarget["kind"];
@@ -202,6 +204,47 @@ export async function openRemoteEditorUrl(url: string): Promise<boolean> {
   }
   window.location.assign(url);
   return true;
+}
+
+/** VS Code for the Web opens folders only, so a file opens its parent folder. */
+export function buildVscodeWebUrl(
+  baseUrl: string,
+  absolutePath: string,
+  isFile: boolean,
+): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+  const posixPath = absolutePath.replaceAll("\\", "/");
+  const folder = isFile ? posixPath.slice(0, posixPath.lastIndexOf("/")) || "/" : posixPath;
+  url.searchParams.set("folder", folder);
+  return url.toString();
+}
+
+/** Opener for VS Code in the browser, or null when this device opens the desktop app. */
+export function useVscodeWebOpener(
+  environmentId: EnvironmentId | null,
+): ((absolutePath: string, isFile: boolean) => boolean) | null {
+  const mode = useClientSettings((settings) => settings.vscodeOpenMode);
+  const baseUrl =
+    useAtomValue(serverEnvironment.configValueAtom(environmentId))?.settings.vscodeWebUrl ?? "";
+  if (mode !== "web" || baseUrl.length === 0) return null;
+  return (absolutePath, isFile) => {
+    const url = buildVscodeWebUrl(baseUrl, absolutePath, isFile);
+    if (url === undefined) return false;
+    const bridge = window.desktopBridge;
+    if (bridge !== undefined) {
+      void bridge.openExternal(url);
+    } else {
+      // Synchronous so the click still counts as a user gesture for popup blockers.
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+    return true;
+  };
 }
 
 const REMOTE_OPEN_HINT_KEY = "t3code:remote-open-hint-seen";

@@ -17,6 +17,7 @@ import {
   useRemoteCapableEditors,
   useRemoteOpenHint,
   useRemoteOpenState,
+  useVscodeWebOpener,
 } from "../../remoteOpen";
 import { useEnvironment } from "../../state/environments";
 import { ChevronDownIcon, FolderClosedIcon, SquareArrowOutUpRightIcon } from "lucide-react";
@@ -231,21 +232,37 @@ export const OpenInPicker = memo(function OpenInPicker({
   const panelAnchorRef = useRef<HTMLDivElement | null>(null);
   const openInEditorMutation = useAtomCommand(shellEnvironment.openInEditor, "open in editor");
   const remote = useRemoteOpenState(environmentId);
+  const openVscodeWeb = useVscodeWebOpener(environmentId);
   const canOperateHost = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
-  const isHostEditorDenied = remote.mode === "local-exec" && !canOperateHost;
-  const canOpenEditor = remote.mode !== "remote-unavailable" && !isHostEditorDenied;
+  const isHostEditorDenied =
+    remote.mode === "local-exec" && !canOperateHost && openVscodeWeb === null;
+  const canOpenEditor =
+    (remote.mode !== "remote-unavailable" || openVscodeWeb !== null) && !isHostEditorDenied;
   const [menuOpen, setMenuOpen] = useComposerMenuState(isHostEditorDenied);
   const remoteCapableEditors = useRemoteCapableEditors();
   const [remoteHintSeen, markRemoteHintSeen] = useRemoteOpenHint();
   const environmentLabel = useEnvironment(environmentId)?.label ?? "this machine";
   // Remote editors run on the viewing machine; only desktop can probe that PATH.
-  const effectiveEditors = remote.mode === "local-exec" ? availableEditors : remoteCapableEditors;
+  const hostEditors = remote.mode === "local-exec" ? availableEditors : remoteCapableEditors;
+  const effectiveEditors: ReadonlyArray<EditorId> =
+    openVscodeWeb === null
+      ? hostEditors
+      : remote.mode === "remote-unavailable"
+        ? ["vscode"]
+        : hostEditors.includes("vscode")
+          ? hostEditors
+          : [...hostEditors, "vscode"];
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(effectiveEditors);
 
   const openInEditor = async (editorId: EditorId | null): Promise<boolean> => {
     if (!openInCwd) return false;
     const editor = editorId ?? preferredEditor;
     if (!editor) return false;
+    if (editor === "vscode" && openVscodeWeb !== null) {
+      if (!openVscodeWeb(openInCwd, openInCwdIsFile === true)) return false;
+      setPreferredEditor(editor);
+      return true;
+    }
     if (remote.mode === "remote-unavailable") return false;
     if (remote.mode === "remote-links") {
       const url = buildRemoteOpenUrl({
@@ -288,9 +305,10 @@ export const OpenInPicker = memo(function OpenInPicker({
 
   const editorItems = (
     <>
-      {remote.mode === "remote-unavailable" ? (
+      {remote.mode === "remote-unavailable" && openVscodeWeb === null ? (
         <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
-          No SSH route to {environmentLabel}. Set an SSH host in Settings › Threads
+          No SSH route to {environmentLabel}. Set an SSH host or VS Code web URL in Settings ›
+          Threads
         </MenuItem>
       ) : (
         <>
