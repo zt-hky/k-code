@@ -7,6 +7,8 @@ export const OMP_MODE_OPTION_ID = "mode";
 const OMP_PLAN_PATH = /(?:^|[\\/:])[^\\/:]*plan\.md$/i;
 const OMP_PLAN_LOCAL_PATH = /^local:\/\/.*plan\.md$/i;
 const OMP_PLAN_APPROVAL_MESSAGE = /^Approve plan "[^"]*" and start implementation\?/;
+// Explicit thinking levels omp may append to a resolved model string.
+const OMP_MODEL_THINKING_SUFFIX = /:(off|minimal|low|medium|high|xhigh|max|auto)$/;
 const OMP_APPROVE_VALUE = "Approve and execute";
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -100,10 +102,18 @@ export const extractOmpSubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractSu
       nonEmptyString(rawInput.agent) ??
       null)
     : (nonEmptyString(tool.title) ?? `${batch?.length ?? 0} agents`);
-  const model =
+  const agentProgress = progress.find((entry) => entry.status === "running") ?? progress[0];
+  const resolvedModel =
     nonEmptyString(results[0]?.resolvedModel) ??
-    nonEmptyString(progress[0]?.resolvedModel) ??
+    nonEmptyString(agentProgress?.resolvedModel) ??
     nonEmptyString(rawInput.model) ??
+    null;
+  // omp suffixes `resolvedModel` with `:<level>` when the level was set explicitly.
+  const model = resolvedModel?.replace(OMP_MODEL_THINKING_SUFFIX, "") ?? null;
+  const reasoningEffort =
+    nonEmptyString(results[0]?.resolvedThinkingLevel) ??
+    nonEmptyString(agentProgress?.resolvedThinkingLevel) ??
+    OMP_MODEL_THINKING_SUFFIX.exec(resolvedModel ?? "")?.[1] ??
     null;
 
   const status = ((): "running" | "failed" | "cancelled" | "completed" => {
@@ -135,6 +145,21 @@ export const extractOmpSubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractSu
       parts.length > 0 ? parts.join("\n\n") : (ompToolContentText(rawOutput?.content) ?? null);
   }
 
+  const currentTool = nonEmptyString(agentProgress?.currentTool);
+  const currentToolArgs = nonEmptyString(agentProgress?.currentToolArgs);
+  const activity =
+    status !== "running"
+      ? null
+      : currentTool !== undefined
+        ? currentToolArgs === undefined
+          ? currentTool
+          : `${currentTool}: ${currentToolArgs}`
+        : (nonEmptyString(agentProgress?.lastIntent) ??
+          nonEmptyString(
+            Array.isArray(agentProgress?.recentOutput) ? agentProgress.recentOutput[0] : undefined,
+          ) ??
+          null);
+
   return {
     nativeTaskId: tool.toolCallId,
     childSessionId: null,
@@ -143,5 +168,7 @@ export const extractOmpSubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractSu
     model,
     status,
     result,
+    progress: activity,
+    reasoningEffort,
   };
 };

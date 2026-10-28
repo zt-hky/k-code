@@ -83,6 +83,8 @@ describe("omp subagent extraction", () => {
       model: null,
       status: "running",
       result: null,
+      progress: null,
+      reasoningEffort: null,
     });
   });
 
@@ -109,6 +111,72 @@ describe("omp subagent extraction", () => {
       title: "2 agents",
       result: "a: one\n\nb: two",
     });
+  });
+
+  it("reports the running agent's current tool, model and thinking level", () => {
+    const update = extractOmpSubagentUpdate(
+      tool(
+        { tasks: [{ task: "x" }, { task: "y" }] },
+        {
+          rawOutput: {
+            details: {
+              progress: [
+                { status: "completed", resolvedModel: "anthropic/done" },
+                {
+                  status: "running",
+                  currentTool: "bash",
+                  currentToolArgs: "vp test run",
+                  lastIntent: "Running tests",
+                  resolvedModel: "anthropic/claude-sonnet-4-5:high",
+                  resolvedThinkingLevel: "high",
+                },
+              ],
+            },
+          },
+        },
+      ),
+    );
+    expect(update).toMatchObject({
+      status: "running",
+      model: "anthropic/claude-sonnet-4-5",
+      reasoningEffort: "high",
+      progress: "bash: vp test run",
+    });
+  });
+
+  it("falls back from current tool to intent to latest output and omits unreported effort", () => {
+    const running = (agent: object) =>
+      extractOmpSubagentUpdate(
+        tool(
+          { task: "x", solutionSpace: "s" },
+          { rawOutput: { details: { progress: [{ status: "running", ...agent }] } } },
+        ),
+      );
+    expect(running({ lastIntent: "Reading files", recentOutput: ["a"] })?.progress).toBe(
+      "Reading files",
+    );
+    expect(running({ recentOutput: ["newest", "older"] })).toMatchObject({
+      progress: "newest",
+      reasoningEffort: null,
+    });
+  });
+
+  it("drops progress once the task finishes", () => {
+    const update = extractOmpSubagentUpdate(
+      tool(
+        { task: "x", solutionSpace: "s" },
+        {
+          rawOutput: {
+            details: {
+              progress: [{ status: "running", currentTool: "bash" }],
+              results: [{ output: "done", exitCode: 0, resolvedThinkingLevel: "low" }],
+            },
+          },
+        },
+        "completed",
+      ),
+    );
+    expect(update).toMatchObject({ progress: null, result: "done", reasoningEffort: "low" });
   });
 
   it("maps aborted results to cancelled and nonzero exits to failed", () => {

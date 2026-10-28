@@ -53,8 +53,18 @@ function subagent(
 const turn = deriveThreadTurnSubagents({
   runs: [{ id: RunId.make("run-1"), status: "running" }] as never,
   subagents: [
-    subagent({ title: "Explorer", status: "running", progress: "Reading files" }),
-    subagent({ title: "Reviewer", status: "completed", result: "Looks fine" }),
+    subagent({
+      title: "Explorer",
+      status: "running",
+      progress: "bash: vp test run apps/web",
+      model: "gpt-5.5",
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5.5",
+        options: [{ id: "reasoningEffort", value: "high" }],
+      },
+    }),
+    subagent({ title: "Reviewer", status: "completed", result: "Looks fine", model: "gpt-5.4" }),
     subagent({ title: "Builder", status: "failed", result: "Build broke" }),
   ],
 });
@@ -110,10 +120,15 @@ it("lists working subagents, keeps settled ones collapsed, and opens a child thr
 
   await expect.element(screen.getByText("1/3")).toBeVisible();
   await expect.element(screen.getByText("Explorer")).toBeVisible();
+  await expect.element(screen.getByText(/GPT-5\.5/)).toBeVisible();
+  await expect.element(screen.getByText(/high/)).toBeVisible();
+  await expect.element(screen.getByText("bash: vp test run apps/web")).toBeVisible();
   expect(screen.container.textContent).not.toContain("Reviewer");
 
   await page.getByRole("button", { name: "Completed (2)" }).click();
   await expect.element(screen.getByText("Reviewer")).toBeVisible();
+  await expect.element(screen.getByText(/GPT-5\.4/)).toBeVisible();
+  await expect.element(screen.getByText("Looks fine")).toBeVisible();
   await expect.element(screen.getByText("Builder")).toBeVisible();
 
   await screen.getByRole("button", { name: "Open Explorer" }).click();

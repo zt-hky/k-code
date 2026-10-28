@@ -1,9 +1,14 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   formatSubagentDisplayTitle,
+  resolveSubagentMetadata,
   subagentDetailPreview,
 } from "@t3tools/client-runtime/state/subagent-display";
-import { projectedSubagentsToRuntime } from "@t3tools/client-runtime/state/subagentRuntime";
+import {
+  isTerminalSubagentStatus,
+  projectedSubagentsToRuntime,
+} from "@t3tools/client-runtime/state/subagentRuntime";
+import { getReasoningEffortOptionValue } from "@t3tools/client-runtime/state/thread-execution";
 import {
   resolveSubagentPillSegment,
   type ThreadTurnSubagents,
@@ -12,6 +17,7 @@ import type {
   OrchestrationV2PlanStep,
   OrchestrationV2Subagent,
   ScopedThreadRef,
+  ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -22,12 +28,14 @@ import {
   CircleIcon,
   CircleXIcon,
   ListTodoIcon,
+  TerminalIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import type { LatestTodoListState } from "../../session-logic";
 import { useThreadTurnSubagents } from "../../state/entities";
+import { useEnvironmentProviders } from "../../state/environments";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -167,6 +175,7 @@ function SubagentStatusIcon({ status }: { readonly status: OrchestrationV2Subage
 
 function SubagentRow(props: {
   readonly subagent: OrchestrationV2Subagent;
+  readonly providers: ReadonlyArray<ServerProvider> | undefined;
   readonly onOpen: (threadId: ThreadId) => void;
 }) {
   const { subagent } = props;
@@ -178,19 +187,37 @@ function SubagentRow(props: {
     result: subagent.result,
     progress: subagent.progress,
   });
+  const provider = props.providers?.find(
+    (candidate) => candidate.instanceId === subagent.providerInstanceId,
+  );
+  const model = subagent.model?.trim()
+    ? resolveSubagentMetadata({ model: subagent.model, provider }).modelLabel
+    : null;
+  const meta = [model, getReasoningEffortOptionValue(subagent.modelSelection)]
+    .filter(Boolean)
+    .join(" · ");
+  const runningTool = !isTerminalSubagentStatus(subagent.status) && subagent.progress;
   const { childThreadId } = subagent;
   const content = (
     <>
       <ComposerBanner.Icon>
         <SubagentStatusIcon status={subagent.status} />
       </ComposerBanner.Icon>
-      <ComposerBanner.Content>
-        <TruncatedText className="shrink-0 max-w-[60%]">{title}</TruncatedText>
+      <ComposerBanner.Content className="flex-col items-stretch gap-0">
+        <span className="flex min-w-0 items-center gap-1">
+          <TruncatedText className="shrink-0 max-w-[60%]">{title}</TruncatedText>
+          {meta ? (
+            <>
+              <ComposerBanner.Separator />
+              <TruncatedText className="text-muted-foreground">{meta}</TruncatedText>
+            </>
+          ) : null}
+        </span>
         {preview ? (
-          <>
-            <ComposerBanner.Separator />
-            <TruncatedText className="flex-1 text-muted-foreground">{preview}</TruncatedText>
-          </>
+          <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+            {runningTool ? <TerminalIcon aria-hidden className="size-3 shrink-0" /> : null}
+            <TruncatedText className="flex-1">{preview}</TruncatedText>
+          </span>
         ) : null}
       </ComposerBanner.Content>
       <ComposerBanner.Actions>
@@ -218,6 +245,7 @@ function SubagentRow(props: {
 
 function SubagentsCard(props: {
   readonly turn: ThreadTurnSubagents;
+  readonly providers: ReadonlyArray<ServerProvider> | undefined;
   readonly summary: string;
   readonly onOpenSubagent: (threadId: ThreadId) => void;
 }) {
@@ -241,6 +269,7 @@ function SubagentsCard(props: {
                   <SubagentRow
                     key={subagent.id}
                     subagent={subagent}
+                    providers={props.providers}
                     onOpen={props.onOpenSubagent}
                   />
                 ))}
@@ -267,6 +296,7 @@ function SubagentsCard(props: {
                         <SubagentRow
                           key={subagent.id}
                           subagent={subagent}
+                          providers={props.providers}
                           onOpen={props.onOpenSubagent}
                         />
                       ))}
@@ -285,6 +315,7 @@ function SubagentsCard(props: {
 export function ThreadWorkPanels(props: {
   readonly todoList: LatestTodoListState | null;
   readonly subagents: ThreadTurnSubagents | null;
+  readonly providers?: ReadonlyArray<ServerProvider> | undefined;
   readonly onOpenSubagent: (threadId: ThreadId) => void;
 }) {
   const pill = resolveSubagentPillSegment(props.subagents);
@@ -294,6 +325,7 @@ export function ThreadWorkPanels(props: {
       {props.subagents === null || pill === null ? null : (
         <SubagentsCard
           turn={props.subagents}
+          providers={props.providers}
           summary={pill.label}
           onOpenSubagent={props.onOpenSubagent}
         />
@@ -309,11 +341,13 @@ export function ThreadWorkPanelsDock(props: {
   readonly onOpenSubagent: (threadId: ThreadId) => void;
 }) {
   const subagents = useThreadTurnSubagents(props.threadRef);
+  const providers = useEnvironmentProviders().get(props.threadRef.environmentId);
   return (
     <ThreadWorkPanels
       key={scopedThreadKey(props.threadRef)}
       todoList={props.todoList}
       subagents={subagents}
+      providers={providers}
       onOpenSubagent={props.onOpenSubagent}
     />
   );
