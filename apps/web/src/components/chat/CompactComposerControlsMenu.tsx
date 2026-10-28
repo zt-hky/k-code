@@ -10,6 +10,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
+import { ComposerLoopOptions } from "./ComposerLoopControl";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { ComposerPermissionsSection, type RuntimeModeOption } from "./ComposerFooterControls";
@@ -19,6 +20,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   showInteractionModeToggle: boolean;
+  /** Set while the loop control is among the hidden blocks. */
+  loopThreadKey?: string | undefined;
   traitsMenuContent?: ReactNode;
   showPermissions?: boolean;
   size?: "sm" | "xs";
@@ -81,6 +84,13 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
               <MenuRadioItem value="plan">Plan</MenuRadioItem>
             </MenuRadioGroup>
             {props.showPermissions !== false ? <MenuDivider /> : null}
+          </>
+        ) : null}
+        {props.loopThreadKey !== undefined ? (
+          <>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Loop</div>
+            <ComposerLoopOptions threadKey={props.loopThreadKey} />
+            <MenuDivider />
           </>
         ) : null}
         {props.showPermissions === false ? null : (

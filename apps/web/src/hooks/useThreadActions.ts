@@ -47,6 +47,7 @@ import {
 import { useUiStateStore } from "../uiStateStore";
 import { clearThreadPreviewState } from "../previewStateStore";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
+import { useLoopModeStore } from "../components/chat/loopModeStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -392,6 +393,7 @@ export function useThreadActions() {
       markThreadVisited(scopedThreadKey(threadRef), wokeAt);
     }
     refreshArchivedThreadsForEnvironment(threadRef.environmentId);
+    useLoopModeStore.getState().disarm(scopedThreadKey(threadRef));
     opts.onArchived?.();
     showThreadUndoNotice({
       action: "Archived",
@@ -428,6 +430,7 @@ export function useThreadActions() {
       if (result._tag === "Success") {
         refreshArchivedThreadsForEnvironment(target.environmentId);
         clearThreadPreviewState(target);
+        useLoopModeStore.getState().disarm(scopedThreadKey(target));
       }
       return result;
     }
@@ -551,6 +554,7 @@ export function useThreadActions() {
     );
     clearTerminalUiState(threadRef);
     clearThreadPreviewState(threadRef);
+    useLoopModeStore.getState().disarm(scopedThreadKey(threadRef));
 
     if (shouldNavigateToFallback) {
       const fallbackThread = fallbackThreadId

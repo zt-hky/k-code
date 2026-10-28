@@ -94,6 +94,8 @@ import {
   referencedThreadContexts,
 } from "./composerSend.logic";
 import { usePlanFollowUpSend } from "./useProposedPlanSend";
+import { parseLoopSlashCommand } from "./loopMode.logic";
+import { applyLoopSlashCommand, useLoopModeStore } from "./loopModeStore";
 import { useMultipleModelSend } from "./useMultipleModelSend";
 import { type ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import {
@@ -246,6 +248,7 @@ interface ComposerSendInput {
     runtimeMode: RuntimeMode;
     interactionMode: ProviderInteractionMode;
   }) => Promise<AtomCommandResult<void, unknown>>;
+  readonly latestRunId: string | null;
 }
 
 /**
@@ -326,6 +329,7 @@ export function useComposerSend(input: ComposerSendInput) {
     handleInteractionModeChange,
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
+    latestRunId,
   } = input;
   const linkedEnvironments = useLinkedEnvironments(environmentId);
   const handleNewThread = useNewThreadHandler();
@@ -735,19 +739,28 @@ export function useComposerSend(input: ComposerSendInput) {
       }
       return;
     }
-    const standaloneSlashCommand =
-      sendInteractionModeEnabled &&
+    const draftIsPromptOnly =
       composerImages.length === 0 &&
       composerFiles.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
       composerPreviewAnnotations.length === 0 &&
       composerReviewComments.length === 0 &&
       composerThreadContexts.length === 0 &&
-      composerEnvironmentContexts.length === 0
+      composerEnvironmentContexts.length === 0;
+    const standaloneSlashCommand =
+      sendInteractionModeEnabled && draftIsPromptOnly
         ? parseStandaloneComposerSlashCommand(trimmed)
         : null;
     if (standaloneSlashCommand && multipleModelSelections === null) {
       handleInteractionModeChange(standaloneSlashCommand);
+      promptRef.current = "";
+      clearComposerDraftContent(composerDraftTarget);
+      composerRef.current?.resetCursorState();
+      return;
+    }
+    const loopCommand = draftIsPromptOnly ? parseLoopSlashCommand(trimmed) : null;
+    if (loopCommand && multipleModelSelections === null) {
+      applyLoopSlashCommand(routeThreadKey, loopCommand);
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -1129,6 +1142,28 @@ export function useComposerSend(input: ComposerSendInput) {
       });
       return;
     }
+    const loopCaptured =
+      messageTextForSend.trim() !== "" &&
+      useLoopModeStore.getState().capture(
+        routeThreadKey,
+        {
+          text: messageTextForSend,
+          context: buildMessageContext({
+            terminalContexts: composerTerminalContextsSnapshot,
+            reviewComments: composerReviewCommentsSnapshot,
+            previewAnnotations: composerPreviewAnnotationsSnapshot,
+            threadContexts: composerThreadContextsSnapshot,
+          }),
+        },
+        // A steering message joins the running run, so that run is the loop's first.
+        phase === "running" && dispatchMode === "steer" ? null : latestRunId,
+      );
+    if (loopCaptured && composerAttachmentsSnapshot.length > 0) {
+      toastManager.add({
+        type: "info",
+        title: "Loop repeats the message without its attachments",
+      });
+    }
     const optimisticAttachments = optimisticMessageAttachments(composerAttachmentsSnapshot);
     if (!shouldQueueBehindActiveRun) {
       anchorNewTurn(
@@ -1377,6 +1412,7 @@ export function useComposerSend(input: ComposerSendInput) {
     }
 
     if (failure !== null) {
+      if (loopCaptured) useLoopModeStore.getState().disarm(routeThreadKey);
       if (isLocalDraftThread && draftId && draftThread) {
         restoreFailedDraftThread(
           draftId,

@@ -3,6 +3,8 @@ import type { PromptUltrathink } from "./TraitsPicker";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { type AppModelOption } from "../../modelSelection";
 import { CircleAlertIcon } from "lucide-react";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { ComposerLoopControl } from "./ComposerLoopControl";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerControl } from "./ComposerControl";
 import {
@@ -202,6 +204,7 @@ export function ComposerControlsBar(props: {
     matchesDefault: permissionsChipHidden,
     hasTraits: providerTraitsPicker !== null,
     planModeUiEnabled,
+    hasLoop: true,
     collapsed: composerControlsCollapsed,
     measuredHiddenBlockCount,
   });
@@ -211,6 +214,7 @@ export function ComposerControlsBar(props: {
     hidden: composerControlsHidden || traitsBlockHidden,
     extraMenuOwnsModeShortcut: effortOwnsModeShortcut,
   });
+  const loopThreadKey = scopedThreadKey(routeThreadRef);
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -232,7 +236,7 @@ export function ComposerControlsBar(props: {
                 runtimeMode={compatibleRuntimeMode}
                 runtimeModeOptions={compatibleRuntimeModeOptions}
                 size={composerControlsCollapsed ? "xs" : "sm"}
-                hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+                hidden={composerControlsHidden || restingHiddenBlockCount > 1}
                 accessDisplay={accessDisplay}
                 emphasized={!accessMatchesDefault}
                 onToggleInteractionMode={toggleInteractionMode}
@@ -241,6 +245,16 @@ export function ComposerControlsBar(props: {
             ),
           },
         ]),
+    {
+      id: "loop",
+      content: (
+        <ComposerLoopControl
+          threadKey={loopThreadKey}
+          size={composerControlsCollapsed ? "xs" : "sm"}
+          hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+        />
+      ),
+    },
   ];
   // Its own element, so typing (which rebuilds the controls around it) leaves it cached.
   const composerModelPicker = (
@@ -348,6 +362,7 @@ export function ComposerControlsBar(props: {
             size={composerControlsCollapsed ? "xs" : "sm"}
             hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
             showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.includes("mode")}
+            loopThreadKey={hiddenRestingBlockIds.includes("loop") ? loopThreadKey : undefined}
             traitsMenuContent={
               hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
