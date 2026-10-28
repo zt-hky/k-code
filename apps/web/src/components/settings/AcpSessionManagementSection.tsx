@@ -23,6 +23,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { toastManager } from "../ui/toast";
 import { reportAcpFailure, useAcpNativeSessionCommands } from "../../hooks/useAcpNativeSessions";
 import { SettingsRow } from "./settingsLayout";
+import { AcpExtensionSourcesSection } from "./AcpExtensionSourcesSection";
 
 interface AcpSessionProject {
   readonly id: ProjectId;
@@ -100,6 +101,7 @@ export function AcpSessionManagementSection(props: {
     props.provider.auth.canLogout === true && !props.provider.setup?.canAuthenticate;
   const canDelete = props.provider.nativeSessions?.canDelete === true;
   const canConfigureProviders = props.provider.configurableProviders === true;
+  const canManageExtensions = props.provider.manageableExtensions === true;
   const projectOperationPending =
     loading ||
     importingSessionId !== null ||
@@ -107,7 +109,7 @@ export function AcpSessionManagementSection(props: {
     loadingProviders ||
     savingProviderId !== null;
 
-  if (!canList && !canLogout && !canConfigureProviders) return null;
+  if (!canList && !canLogout && !canConfigureProviders && !canManageExtensions) return null;
 
   const loadSessions = async (cursor?: string) => {
     if (projectId === null || loading) return;
@@ -370,6 +372,9 @@ export function AcpSessionManagementSection(props: {
                       </p>
                       <code className="block truncate text-3xs text-muted-foreground">
                         {session.sessionId}
+                        {session.messageCount === undefined
+                          ? ""
+                          : ` · ${session.messageCount} ${session.messageCount === 1 ? "message" : "messages"}`}
                       </code>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
@@ -571,6 +576,14 @@ export function AcpSessionManagementSection(props: {
             </div>
           ) : null}
         </div>
+      ) : null}
+      {canManageExtensions ? (
+        <AcpExtensionSourcesSection
+          key={projectId ?? "no-project"}
+          environmentId={props.environmentId}
+          instanceId={props.instanceId}
+          projectId={projectId}
+        />
       ) : null}
     </div>
   );

@@ -63,6 +63,12 @@ import {
   AcpRegistryListSessionsResult,
   AcpRegistryListProvidersInput,
   AcpRegistryListProvidersResult,
+  AcpRegistryListProjectsInput,
+  AcpRegistryListProjectsResult,
+  AcpRegistryListExtensionsInput,
+  AcpRegistryListExtensionsResult,
+  AcpRegistrySetExtensionSourceInput,
+  AcpRegistrySetExtensionSourceResult,
   AcpRegistryLogoutInput,
   AcpRegistryLogoutResult,
   AcpRegistryManagedBinaryUninstallInput,
@@ -505,6 +511,9 @@ export const WS_METHODS = {
   serverImportAcpRegistrySession: "server.importAcpRegistrySession",
   serverDeleteAcpRegistrySession: "server.deleteAcpRegistrySession",
   serverListAcpRegistryProviders: "server.listAcpRegistryProviders",
+  serverListAcpRegistryProjects: "server.listAcpRegistryProjects",
+  serverListAcpRegistryExtensions: "server.listAcpRegistryExtensions",
+  serverSetAcpRegistryExtensionSource: "server.setAcpRegistryExtensionSource",
   serverSetAcpRegistryProvider: "server.setAcpRegistryProvider",
   serverDisableAcpRegistryProvider: "server.disableAcpRegistryProvider",
   serverLogoutAcpRegistry: "server.logoutAcpRegistry",
@@ -858,6 +867,27 @@ const WsServerListAcpRegistryProvidersRpc = Rpc.make(WS_METHODS.serverListAcpReg
   success: AcpRegistryListProvidersResult,
   error: Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]),
 });
+
+const WsServerListAcpRegistryProjectsRpc = Rpc.make(WS_METHODS.serverListAcpRegistryProjects, {
+  payload: AcpRegistryListProjectsInput,
+  success: AcpRegistryListProjectsResult,
+  error: Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]),
+});
+
+const WsServerListAcpRegistryExtensionsRpc = Rpc.make(WS_METHODS.serverListAcpRegistryExtensions, {
+  payload: AcpRegistryListExtensionsInput,
+  success: AcpRegistryListExtensionsResult,
+  error: Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]),
+});
+
+const WsServerSetAcpRegistryExtensionSourceRpc = Rpc.make(
+  WS_METHODS.serverSetAcpRegistryExtensionSource,
+  {
+    payload: AcpRegistrySetExtensionSourceInput,
+    success: AcpRegistrySetExtensionSourceResult,
+    error: Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]),
+  },
+);
 
 const WsServerSetAcpRegistryProviderRpc = Rpc.make(WS_METHODS.serverSetAcpRegistryProvider, {
   payload: AcpRegistrySetProviderInput,
@@ -1955,6 +1985,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerImportAcpRegistrySessionRpc,
   WsServerDeleteAcpRegistrySessionRpc,
   WsServerListAcpRegistryProvidersRpc,
+  WsServerListAcpRegistryProjectsRpc,
+  WsServerListAcpRegistryExtensionsRpc,
+  WsServerSetAcpRegistryExtensionSourceRpc,
   WsServerSetAcpRegistryProviderRpc,
   WsServerDisableAcpRegistryProviderRpc,
   WsServerLogoutAcpRegistryRpc,

@@ -1,7 +1,13 @@
 import { useAtomValue } from "@effect/atom-react";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  findProjectByPath,
+  inferProjectTitleFromPath,
+} from "@t3tools/client-runtime/state/projects";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import {
+  AuthOrchestrationOperateScope,
+  type AcpRegistryNativeProject,
   type AcpRegistrySession,
   type EnvironmentId,
   type ProjectId,
@@ -9,7 +15,7 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
-import { HistoryIcon } from "lucide-react";
+import { FolderPlusIcon, HistoryIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -21,7 +27,11 @@ import {
 import { useStableCallback } from "../hooks/useStableCallback";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { primaryServerKeybindingsAtom, serverEnvironment } from "../state/server";
-import { useProject } from "../state/entities";
+import { useProject, useProjects, waitForProject } from "../state/entities";
+import { projectEnvironment } from "../state/projects";
+import { useAtomCommand } from "../state/use-atom-command";
+import { newProjectId } from "../lib/utils";
+import { useEnvironmentScope } from "~/state/session";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { buildThreadRouteParams } from "../threadRoutes";
 import {
@@ -31,7 +41,10 @@ import {
 } from "./CommandPalette.logic";
 import { CommandPaletteContent } from "./CommandPaletteContent";
 import { CommandPaletteResults } from "./CommandPaletteResults";
-import { resumeSessionDialogProjectAtom } from "./resumeSessionDialogState";
+import {
+  openResumeSessionDialog,
+  resumeSessionDialogProjectAtom,
+} from "./resumeSessionDialogState";
 import { Badge } from "./ui/badge";
 import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
 
@@ -43,7 +56,20 @@ type InstanceSessions =
       readonly nextCursor: string | null;
     };
 
+type InstanceProjects =
+  | { readonly status: "error"; readonly message: string }
+  | { readonly status: "ready"; readonly projects: ReadonlyArray<AcpRegistryNativeProject> };
+
 const SHORT_SESSION_ID_LENGTH = 8;
+const MAX_NATIVE_PROJECTS = 20;
+
+function sessionDescription(session: AcpRegistrySession): string {
+  const shortId = session.sessionId.slice(0, SHORT_SESSION_ID_LENGTH);
+  const count = session.messageCount;
+  return count === undefined
+    ? shortId
+    : `${shortId} · ${count} ${count === 1 ? "message" : "messages"}`;
+}
 
 function sessionUpdatedAtMs(session: AcpRegistrySession): number {
   const parsed = session.updatedAt === null ? Number.NaN : Date.parse(session.updatedAt);
@@ -62,13 +88,21 @@ function ResumeSessionContent(props: {
     serverEnvironment.importAcpRegistrySession.permissionAtom(environmentId),
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { listSessions, importSession } = useAcpNativeSessionCommands(environmentId);
+  const { listSessions, importSession, listProjects } = useAcpNativeSessionCommands(environmentId);
+  const createProject = useAtomCommand(projectEnvironment.create, { reportFailure: false });
+  const canCreateProject = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const [query, setQuery] = useState("");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
   const [byInstance, setByInstance] = useState<Readonly<Record<string, InstanceSessions>>>({});
+  const [projectsByInstance, setProjectsByInstance] = useState<
+    Readonly<Record<string, InstanceProjects>>
+  >({});
   const [loadingMore, setLoadingMore] = useState(false);
   const [resuming, setResuming] = useState(false);
   const instanceKey = instances.map((entry) => entry.instanceId).join("\n");
+  const environmentProjects = useProjects().filter(
+    (project) => project.environmentId === environmentId,
+  );
 
   const loadPage = async (instanceId: ProviderInstanceId, cursor?: string) => {
     const result = await listSessions({
@@ -105,13 +139,35 @@ function ResumeSessionContent(props: {
       },
     }));
   };
+  const loadProjects = async (instanceId: ProviderInstanceId) => {
+    const result = await listProjects({ instanceId });
+    if (result._tag === "Success") {
+      setProjectsByInstance((current) => ({
+        ...current,
+        [instanceId]: { status: "ready", projects: result.value.projects },
+      }));
+      return;
+    }
+    if (isAtomCommandInterrupted(result)) return;
+    setProjectsByInstance((current) => ({
+      ...current,
+      [instanceId]: {
+        status: "error",
+        message: acpFailureMessage(result) ?? "Could not list projects.",
+      },
+    }));
+  };
   const loadFirstPages = useStableCallback((keyedInstanceIds: string) => {
     for (const id of keyedInstanceIds.split("\n")) {
-      if (id.length > 0) void loadPage(ProviderInstanceId.make(id));
+      if (id.length === 0) continue;
+      const instanceId = ProviderInstanceId.make(id);
+      void loadPage(instanceId);
+      const entry = instances.find((candidate) => candidate.instanceId === instanceId);
+      if (entry?.snapshot.nativeSessions?.canListProjects === true) void loadProjects(instanceId);
     }
   });
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Fetch each agent's native sessions from the server when the dialog opens or the supporting instances change.
+  // oxlint-disable-next-line t3code/react-effect-budget -- Fetch each agent's native sessions and projects from the server when the dialog opens or the supporting instances change.
   useEffect(() => {
     loadFirstPages(instanceKey);
   }, [instanceKey, loadFirstPages]);
@@ -149,6 +205,28 @@ function ResumeSessionContent(props: {
       return;
     }
     reportAcpFailure("Could not resume session", result);
+  };
+
+  const addProject = async (cwd: string, title: string) => {
+    if (resuming) return;
+    const newId = newProjectId();
+    const created = await createProject({
+      environmentId,
+      input: {
+        projectId: newId,
+        title,
+        workspaceRoot: cwd,
+        createWorkspaceRootIfMissing: false,
+        defaultModelSelection: null,
+      },
+    });
+    if (created._tag === "Failure") {
+      reportAcpFailure("Could not add project", created);
+      return;
+    }
+    const projectRef = scopeProjectRef(environmentId, newId);
+    await waitForProject(projectRef);
+    openResumeSessionDialog(projectRef);
   };
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -195,7 +273,7 @@ function ResumeSessionContent(props: {
         value: `resume-session:${entry.instanceId}:${session.sessionId}`,
         searchTerms: [session.title ?? "", session.sessionId],
         title: session.title ?? "Untitled session",
-        description: session.sessionId.slice(0, SHORT_SESSION_ID_LENGTH),
+        description: sessionDescription(session),
         disabled: session.importedThreadId === null && !canImport,
         icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
         ...(session.importedThreadId === null
@@ -213,6 +291,61 @@ function ResumeSessionContent(props: {
         run: () => resume(entry.instanceId, session),
       }));
     if (items.length > 0) groups.push({ value: entry.instanceId, label, items });
+  }
+  for (const entry of instances) {
+    const state = projectsByInstance[entry.instanceId];
+    if (state === undefined) continue;
+    const label = `Projects in ${entry.displayName}`;
+    if (state.status === "error") {
+      groups.push({
+        value: `${entry.instanceId}:projects`,
+        label,
+        items: [
+          {
+            kind: "action",
+            value: `omp-project:${entry.instanceId}:status`,
+            searchTerms: [],
+            title: `Could not load ${entry.displayName} projects`,
+            description: state.message,
+            disabled: true,
+            icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+            run: async () => {},
+          },
+        ],
+      });
+      continue;
+    }
+    const projectItems = state.projects
+      .filter(
+        (project) =>
+          findProjectByPath(environmentProjects, project.cwd) === undefined &&
+          (normalizedQuery.length === 0 || project.cwd.toLowerCase().includes(normalizedQuery)),
+      )
+      .slice(0, MAX_NATIVE_PROJECTS)
+      .map((project): CommandPaletteActionItem => {
+        const title = inferProjectTitleFromPath(project.cwd);
+        return {
+          kind: "action",
+          value: `omp-project:${entry.instanceId}:${project.cwd}`,
+          searchTerms: [project.cwd, title],
+          title,
+          description: project.cwd,
+          disabled: !canCreateProject,
+          icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+          titleTrailingContent: (
+            <Badge size="sm" variant="secondary">
+              {project.sessionCount} {project.sessionCount === 1 ? "session" : "sessions"}
+            </Badge>
+          ),
+          ...(project.lastActivityAt === null
+            ? {}
+            : { timestamp: formatRelativeTimeLabel(project.lastActivityAt) }),
+          run: () => addProject(project.cwd, title),
+        };
+      });
+    if (projectItems.length > 0) {
+      groups.push({ value: `${entry.instanceId}:projects`, label, items: projectItems });
+    }
   }
   const hasMore = Object.values(byInstance).some(
     (state) => state.status === "ready" && state.nextCursor !== null,

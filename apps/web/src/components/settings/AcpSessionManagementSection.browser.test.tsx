@@ -18,6 +18,8 @@ const commands = vi.hoisted(() => ({
   setProvider: vi.fn(),
   disableProvider: vi.fn(),
   logout: vi.fn(),
+  listExtensions: vi.fn(),
+  setExtensionSource: vi.fn(),
 }));
 const grants = vi.hoisted(() => ({ scopes: new Set<string>() }));
 const dialogs = vi.hoisted(() => ({ confirm: vi.fn() }));
@@ -37,6 +39,8 @@ vi.mock(import("../../state/use-atom-command"), async (original) => {
     [serverEnvironment.setAcpRegistryProvider, commands.setProvider],
     [serverEnvironment.disableAcpRegistryProvider, commands.disableProvider],
     [serverEnvironment.logoutAcpRegistry, commands.logout],
+    [serverEnvironment.listAcpRegistryExtensions, commands.listExtensions],
+    [serverEnvironment.setAcpRegistryExtensionSource, commands.setExtensionSource],
   ]);
   return {
     ...(await original()),
@@ -168,4 +172,87 @@ it("rechecks task access after confirming deletion", async () => {
   });
   await screen.click("Delete");
   expect(commands.delete).not.toHaveBeenCalled();
+});
+
+const extensionProvider = {
+  ...provider,
+  manageableExtensions: true,
+} satisfies ServerProvider;
+
+it("lists extension sources and turns one off after confirmation", async () => {
+  setup();
+  commands.listExtensions.mockReset().mockResolvedValue({
+    _tag: "Success",
+    value: {
+      extensions: [
+        {
+          id: "skill:tdd",
+          kind: "skill",
+          displayName: "tdd",
+          sourceProvider: "claude",
+          sourceName: "Claude Code",
+          sourceLevel: "user",
+          state: "active",
+        },
+        {
+          id: "rule:style",
+          kind: "rule",
+          displayName: "style",
+          sourceProvider: "claude",
+          sourceName: "Claude Code",
+          sourceLevel: "user",
+          state: "shadowed",
+          shadowedBy: "project",
+        },
+        {
+          id: "tool:read",
+          kind: "tool",
+          displayName: "read",
+          sourceProvider: "native",
+          sourceName: "Built-in",
+          sourceLevel: "native",
+          state: "active",
+        },
+      ],
+    },
+  });
+  commands.setExtensionSource.mockReset().mockResolvedValue({
+    _tag: "Success",
+    value: { enabled: false },
+  });
+  await using screen = await render(
+    <AcpSessionManagementSection
+      environmentId={environmentId}
+      instanceId={instanceId}
+      provider={extensionProvider}
+      projects={[{ id: projectId, title: "Antigravity", workspaceRoot: session.cwd }]}
+      readOnly={false}
+    />,
+  );
+  const click = (label: string) =>
+    act(async () => {
+      const found = [...screen.container.querySelectorAll("button")].find(
+        (element) => element.textContent === label,
+      );
+      expect(found, `button ${label}`).toBeDefined();
+      found!.click();
+    });
+  await click("Show extensions");
+  expect(commands.listExtensions).toHaveBeenCalledWith({
+    environmentId,
+    input: { instanceId, projectId },
+  });
+  const switchFor = (name: string) =>
+    screen.container.querySelector<HTMLElement>(`[role="switch"][aria-label="${name}"]`)!;
+  expect(switchFor("Load extensions from Built-in").hasAttribute("data-disabled")).toBe(true);
+
+  await act(async () => switchFor("Load extensions from Claude Code").click());
+  expect(dialogs.confirm).toHaveBeenCalledWith(
+    "Stop loading 1 extensions from Claude Code? New Oh My Pi sessions start without them.",
+    { variant: "destructive" },
+  );
+  expect(commands.setExtensionSource).toHaveBeenCalledWith({
+    environmentId,
+    input: { instanceId, projectId, providerId: "claude", enabled: false },
+  });
 });

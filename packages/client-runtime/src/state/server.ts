@@ -1451,6 +1451,32 @@ export function createServerEnvironmentAtoms<R, E>(
           `${environmentId}:${input.instanceId}:${input.projectId}`,
       },
     }),
+    listAcpRegistryProjects: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:acp-registry:list-projects",
+      tag: WS_METHODS.serverListAcpRegistryProjects,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => `${environmentId}:${input.instanceId}`,
+      },
+    }),
+    listAcpRegistryExtensions: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:acp-registry:list-extensions",
+      tag: WS_METHODS.serverListAcpRegistryExtensions,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          `${environmentId}:${input.instanceId}:${input.projectId}`,
+      },
+    }),
+    setAcpRegistryExtensionSource: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:acp-registry:set-extension-source",
+      tag: WS_METHODS.serverSetAcpRegistryExtensionSource,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          `${environmentId}:${input.instanceId}:${input.projectId}:${input.providerId}`,
+      },
+    }),
     setAcpRegistryProvider: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:acp-registry:set-provider",
       tag: WS_METHODS.serverSetAcpRegistryProvider,

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { extractOmpPlanApprovalElicitation, extractOmpProposedPlanMarkdown } from "./ompAcp.ts";
+import {
+  extractOmpPlanApprovalElicitation,
+  extractOmpProposedPlanMarkdown,
+  extractOmpSubagentUpdate,
+} from "./ompAcp.ts";
 
 const approvalSchema = {
   type: "object",
@@ -59,5 +63,69 @@ describe("omp plan approval elicitation", () => {
         }),
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("omp subagent extraction", () => {
+  const tool = (rawInput: unknown, rest: Record<string, unknown> = {}, status = "in_progress") =>
+    ({ toolCallId: "t1", status, data: { rawInput, ...rest } }) as never;
+
+  it("treats a running single task as a running subagent", () => {
+    expect(
+      extractOmpSubagentUpdate(
+        tool({ task: "do it", solutionSpace: "one fix", name: "Fixer", agent: "task" }),
+      ),
+    ).toEqual({
+      nativeTaskId: "t1",
+      childSessionId: null,
+      prompt: "do it",
+      title: "Fixer",
+      model: null,
+      status: "running",
+      result: null,
+    });
+  });
+
+  it("completes a batch with agent-prefixed results", () => {
+    const update = extractOmpSubagentUpdate(
+      tool(
+        { tasks: [{ task: "x" }, { task: "y" }] },
+        {
+          rawOutput: {
+            details: {
+              results: [
+                { agent: "a", output: "one", exitCode: 0 },
+                { agent: "b", output: "two", exitCode: 0 },
+              ],
+            },
+          },
+        },
+        "completed",
+      ),
+    );
+    expect(update).toMatchObject({
+      status: "completed",
+      prompt: "1. x\n2. y",
+      title: "2 agents",
+      result: "a: one\n\nb: two",
+    });
+  });
+
+  it("maps aborted results to cancelled and nonzero exits to failed", () => {
+    const output = (result: object) => ({ rawOutput: { details: { results: [result] } } });
+    const input = { task: "x", solutionSpace: "s" };
+    expect(
+      extractOmpSubagentUpdate(tool(input, output({ aborted: true, exitCode: 1 }), "completed"))
+        ?.status,
+    ).toBe("cancelled");
+    expect(
+      extractOmpSubagentUpdate(tool(input, output({ exitCode: 1, output: "bad" }), "completed"))
+        ?.status,
+    ).toBe("failed");
+  });
+
+  it("ignores non-task tool input", () => {
+    expect(extractOmpSubagentUpdate(tool({ path: "a.ts" }))).toBeUndefined();
+    expect(extractOmpSubagentUpdate(tool({ tasks: [{ nope: 1 }] }))).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type {
   AcpRegistryImportSessionInput,
+  AcpRegistryListProjectsInput,
   AcpRegistryListSessionsInput,
   EnvironmentId,
   ScopedProjectRef,
@@ -63,10 +64,14 @@ export function useAcpNativeSessionCommands(environmentId: EnvironmentId) {
   const importSession = useAtomCommand(serverEnvironment.importAcpRegistrySession, {
     reportFailure: false,
   });
+  const projects = useAtomCommand(serverEnvironment.listAcpRegistryProjects, {
+    reportFailure: false,
+  });
   return {
     listSessions: (input: AcpRegistryListSessionsInput) => list({ environmentId, input }),
     importSession: (input: AcpRegistryImportSessionInput) =>
       importSession({ environmentId, input }),
+    listProjects: (input: AcpRegistryListProjectsInput) => projects({ environmentId, input }),
   };
 }
 

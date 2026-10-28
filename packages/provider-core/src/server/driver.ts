@@ -2,7 +2,10 @@
 import type {
   ProviderConsumeResetCreditOutcome,
   AcpRegistryListSessionsResult,
+  AcpRegistryListExtensionsResult,
+  AcpRegistryListProjectsResult,
   AcpRegistryListProvidersResult,
+  AcpRegistrySetExtensionSourceResult,
   AcpRegistryOperationError,
   AcpRegistrySetProviderInput,
   ProviderDriverKind,
@@ -74,6 +77,18 @@ export interface ProviderInstance {
       readonly cwd: string;
       readonly providerId: string;
     }) => Effect.Effect<void, AcpRegistryOperationError>;
+    readonly listProjects?: () => Effect.Effect<
+      AcpRegistryListProjectsResult,
+      AcpRegistryOperationError
+    >;
+    readonly listExtensions?: (
+      cwd: string,
+    ) => Effect.Effect<AcpRegistryListExtensionsResult, AcpRegistryOperationError>;
+    readonly setExtensionSource?: (input: {
+      readonly cwd: string;
+      readonly providerId: string;
+      readonly enabled: boolean;
+    }) => Effect.Effect<AcpRegistrySetExtensionSourceResult, AcpRegistryOperationError>;
   };
 }
 
