@@ -238,9 +238,11 @@ export const ServerProvider = Schema.Struct({
       canLoad: Schema.Boolean,
       canResume: Schema.Boolean,
       canDelete: Schema.optional(Schema.Boolean),
+      canListProjects: Schema.optional(Schema.Boolean),
     }),
   ),
   configurableProviders: Schema.optional(Schema.Boolean),
+  manageableExtensions: Schema.optional(Schema.Boolean),
   runtimePaths: Schema.optionalKey(
     Schema.Struct({
       homePath: TrimmedNonEmptyString,

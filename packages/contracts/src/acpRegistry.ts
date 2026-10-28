@@ -1,7 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ProjectId, ThreadId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "./baseSchemas.ts";
 import { ProviderOptionDescriptor } from "./model.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
@@ -157,6 +164,7 @@ export const AcpRegistrySession = Schema.Struct({
   title: Schema.NullOr(Schema.String.check(Schema.isMaxLength(1_024))),
   updatedAt: Schema.NullOr(Schema.String.check(Schema.isMaxLength(128))),
   importedThreadId: Schema.NullOr(ThreadId),
+  messageCount: Schema.optionalKey(NonNegativeInt),
 });
 export type AcpRegistrySession = typeof AcpRegistrySession.Type;
 
@@ -249,6 +257,60 @@ export type AcpRegistrySetProviderInput = typeof AcpRegistrySetProviderInput.Typ
 export const AcpRegistrySetProviderResult = Schema.Struct({ configured: Schema.Literal(true) });
 export type AcpRegistrySetProviderResult = typeof AcpRegistrySetProviderResult.Type;
 
+export const AcpRegistryNativeProject = Schema.Struct({
+  cwd: AcpRegistrySessionPath,
+  sessionCount: NonNegativeInt,
+  lastActivityAt: Schema.NullOr(IsoDateTime),
+  lastTitle: Schema.NullOr(Schema.String.check(Schema.isMaxLength(1_024))),
+});
+export type AcpRegistryNativeProject = typeof AcpRegistryNativeProject.Type;
+
+export const AcpRegistryListProjectsInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+});
+export type AcpRegistryListProjectsInput = typeof AcpRegistryListProjectsInput.Type;
+
+export const AcpRegistryListProjectsResult = Schema.Struct({
+  projects: Schema.Array(AcpRegistryNativeProject).check(Schema.isMaxLength(200)),
+});
+export type AcpRegistryListProjectsResult = typeof AcpRegistryListProjectsResult.Type;
+
+export const AcpRegistryExtension = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(512)),
+  kind: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  displayName: Schema.String.check(Schema.isMaxLength(256)),
+  description: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(1_024))),
+  sourceProvider: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  sourceName: Schema.String.check(Schema.isMaxLength(256)),
+  sourceLevel: Schema.Literals(["user", "project", "native"]),
+  state: Schema.Literals(["active", "disabled", "shadowed"]),
+  disabledReason: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+  shadowedBy: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
+});
+export type AcpRegistryExtension = typeof AcpRegistryExtension.Type;
+
+export const AcpRegistryListExtensionsInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  projectId: ProjectId,
+});
+export type AcpRegistryListExtensionsInput = typeof AcpRegistryListExtensionsInput.Type;
+
+export const AcpRegistryListExtensionsResult = Schema.Struct({
+  extensions: Schema.Array(AcpRegistryExtension).check(Schema.isMaxLength(500)),
+});
+export type AcpRegistryListExtensionsResult = typeof AcpRegistryListExtensionsResult.Type;
+
+export const AcpRegistrySetExtensionSourceInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  projectId: ProjectId,
+  providerId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  enabled: Schema.Boolean,
+});
+export type AcpRegistrySetExtensionSourceInput = typeof AcpRegistrySetExtensionSourceInput.Type;
+
+export const AcpRegistrySetExtensionSourceResult = Schema.Struct({ enabled: Schema.Boolean });
+export type AcpRegistrySetExtensionSourceResult = typeof AcpRegistrySetExtensionSourceResult.Type;
+
 export const AcpRegistryDisableProviderInput = Schema.Struct({
   instanceId: ProviderInstanceId,
   projectId: ProjectId,
@@ -332,6 +394,11 @@ export const AcpRegistryOperationErrorReason = Schema.Literals([
   "provider_configuration_failed",
   "unsupported_distribution",
   "unsupported_platform",
+  "projects_unsupported",
+  "projects_list_failed",
+  "extensions_unsupported",
+  "extensions_list_failed",
+  "extension_toggle_failed",
 ]);
 export type AcpRegistryOperationErrorReason = typeof AcpRegistryOperationErrorReason.Type;
 

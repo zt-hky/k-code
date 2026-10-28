@@ -10,7 +10,12 @@ import { page, userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../test/render";
 
-const commands = vi.hoisted(() => ({ list: vi.fn(), import: vi.fn() }));
+const commands = vi.hoisted(() => ({
+  list: vi.fn(),
+  import: vi.fn(),
+  projects: vi.fn(),
+  create: vi.fn(),
+}));
 
 vi.mock(import("../state/server"), async (original) => {
   const actual = await original();
@@ -25,7 +30,13 @@ vi.mock(import("../state/server"), async (original) => {
       version: "1.0.0",
       status: "ready",
       auth: { status: "authenticated" },
-      nativeSessions: { canList: true, canLoad: true, canResume: true, canDelete: false },
+      nativeSessions: {
+        canList: true,
+        canLoad: true,
+        canResume: true,
+        canDelete: false,
+        canListProjects: true,
+      },
       checkedAt: "2026-08-23T00:00:00.000Z",
       models: [],
       slashCommands: [],
@@ -45,8 +56,20 @@ vi.mock(import("../state/server"), async (original) => {
     },
   };
 });
+vi.mock(import("~/state/session"), async (original) => ({
+  ...(await original()),
+  useEnvironmentScope: (() => true) as never,
+}));
+vi.mock(import("../state/entities"), async (original) => ({
+  ...(await original()),
+  useProjects: (() => [
+    { environmentId: "env", id: "project-omp", workspaceRoot: "/work/current" },
+  ]) as never,
+  waitForProject: vi.fn(async () => undefined) as never,
+}));
 vi.mock(import("../state/use-atom-command"), async (original) => {
   const { serverEnvironment } = await import("../state/server");
+  const { projectEnvironment } = await import("../state/projects");
   return {
     ...(await original()),
     useAtomCommand: ((atom: unknown) =>
@@ -54,11 +77,17 @@ vi.mock(import("../state/use-atom-command"), async (original) => {
         ? commands.list
         : atom === serverEnvironment.importAcpRegistrySession
           ? commands.import
-          : vi.fn()) as never,
+          : atom === serverEnvironment.listAcpRegistryProjects
+            ? commands.projects
+            : atom === projectEnvironment.create
+              ? commands.create
+              : vi.fn()) as never,
   };
 });
 
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { ResumeSessionDialog } from "./ResumeSessionDialog";
+import { resumeSessionDialogProjectAtom } from "./resumeSessionDialogState";
 
 const environmentId = EnvironmentId.make("env");
 const projectId = ProjectId.make("project-omp");
@@ -69,6 +98,7 @@ const session = (
   title: string | null,
   updatedAt: string,
   importedThreadId: ThreadId | null = null,
+  messageCount?: number,
 ) => ({
   sessionId,
   cwd: "/workspace/omp",
@@ -76,14 +106,17 @@ const session = (
   title,
   updatedAt,
   importedThreadId,
+  ...(messageCount === undefined ? {} : { messageCount }),
 });
 
 function setup() {
+  commands.projects.mockReset().mockResolvedValue({ _tag: "Success", value: { projects: [] } });
+  commands.create.mockReset().mockResolvedValue({ _tag: "Success", value: undefined });
   commands.list.mockReset().mockResolvedValue({
     _tag: "Success",
     value: {
       sessions: [
-        session("aaaaaaaa-1111", "Fix flaky tests", "2026-08-20T00:00:00Z"),
+        session("aaaaaaaa-1111", "Fix flaky tests", "2026-08-20T00:00:00Z", null, 3),
         session("bbbbbbbb-2222", null, "2026-08-22T00:00:00Z"),
         session(
           "cccccccc-3333",
@@ -163,4 +196,61 @@ it("lists native sessions newest first, filters, resumes and opens already-bound
     environmentId,
     threadId: ThreadId.make("t-open"),
   });
+});
+
+it("offers agent projects not yet in T3 and adds one before reopening the dialog", async () => {
+  setup();
+  commands.projects.mockResolvedValue({
+    _tag: "Success",
+    value: {
+      projects: [
+        {
+          cwd: "/work/current",
+          sessionCount: 4,
+          lastActivityAt: "2026-08-22T00:00:00.000Z",
+          lastTitle: null,
+        },
+        {
+          cwd: "/work/new",
+          sessionCount: 2,
+          lastActivityAt: "2026-08-21T00:00:00.000Z",
+          lastTitle: "Ship it",
+        },
+      ],
+    },
+  });
+  await using _screen = await render(
+    <ResumeSessionDialog
+      environmentId={environmentId}
+      projectId={projectId}
+      projectName="omp"
+      open
+      onOpenChange={vi.fn()}
+      onOpenThread={vi.fn()}
+    />,
+  );
+
+  await expect.element(page.getByText("Projects in Oh My Pi")).toBeVisible();
+  await expect.element(page.getByText("/work/new")).toBeVisible();
+  await expect.element(page.getByText("/work/current")).not.toBeInTheDocument();
+  await expect.element(page.getByText("aaaaaaaa · 3 messages")).toBeVisible();
+  expect(commands.projects).toHaveBeenCalledWith({ environmentId, input: { instanceId } });
+
+  await userEvent.click(page.getByText("/work/new"));
+  await vi.waitFor(() => expect(commands.create).toHaveBeenCalledTimes(1));
+  expect(commands.create).toHaveBeenCalledWith({
+    environmentId,
+    input: expect.objectContaining({
+      title: "new",
+      workspaceRoot: "/work/new",
+      createWorkspaceRootIfMissing: false,
+      defaultModelSelection: null,
+    }),
+  });
+  await vi.waitFor(() =>
+    expect(appAtomRegistry.get(resumeSessionDialogProjectAtom)).toEqual({
+      environmentId,
+      projectId: commands.create.mock.calls[0]![0].input.projectId,
+    }),
+  );
 });

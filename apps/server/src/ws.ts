@@ -45,7 +45,10 @@ import {
   type AcpRegistryImportSessionInput,
   type AcpRegistryDeleteSessionInput,
   type AcpRegistryDisableProviderInput,
+  type AcpRegistryListExtensionsInput,
+  type AcpRegistryListProjectsInput,
   type AcpRegistryListProvidersInput,
+  type AcpRegistrySetExtensionSourceInput,
   type AcpRegistryListSessionsInput,
   type AcpRegistrySetProviderInput,
   OrchestrationGetFullThreadDiffError,
@@ -1650,6 +1653,53 @@ export const layerWsRpc = (
         return yield* manager.listProviders(project.workspaceRoot);
       });
 
+      const listAcpRegistryProjects = Effect.fn("ws.acpRegistry.listProjects")(function* (
+        input: AcpRegistryListProjectsInput,
+      ) {
+        const { manager } = yield* acpSessionManager(input.instanceId);
+        if (manager.listProjects === undefined) {
+          return yield* new AcpRegistryOperationError({
+            reason: "projects_unsupported",
+            message: "The ACP agent does not advertise project listing.",
+          });
+        }
+        return yield* manager.listProjects();
+      });
+
+      const listAcpRegistryExtensions = Effect.fn("ws.acpRegistry.listExtensions")(function* (
+        input: AcpRegistryListExtensionsInput,
+      ) {
+        const project = yield* acpRegistryProject(input.projectId);
+        const { manager } = yield* acpSessionManager(input.instanceId);
+        if (manager.listExtensions === undefined) {
+          return yield* new AcpRegistryOperationError({
+            reason: "extensions_unsupported",
+            message: "The ACP agent does not advertise extension management.",
+          });
+        }
+        return yield* manager.listExtensions(project.workspaceRoot);
+      });
+
+      const setAcpRegistryExtensionSource = Effect.fn("ws.acpRegistry.setExtensionSource")(
+        function* (input: AcpRegistrySetExtensionSourceInput) {
+          const project = yield* acpRegistryProject(input.projectId);
+          const { manager } = yield* acpSessionManager(input.instanceId);
+          if (manager.setExtensionSource === undefined) {
+            return yield* new AcpRegistryOperationError({
+              reason: "extensions_unsupported",
+              message: "The ACP agent does not advertise extension management.",
+            });
+          }
+          const result = yield* manager.setExtensionSource({
+            cwd: project.workspaceRoot,
+            providerId: input.providerId,
+            enabled: input.enabled,
+          });
+          yield* providerRegistry.refreshInstance(input.instanceId);
+          return result;
+        },
+      );
+
       const setAcpRegistryProvider = Effect.fn("ws.acpRegistry.setProvider")(function* (
         input: AcpRegistrySetProviderInput,
       ) {
@@ -2243,6 +2293,20 @@ export const layerWsRpc = (
             "provider.instance_id": input.instanceId,
             "project.id": input.projectId,
           }).pipe(Effect.andThen(listAcpRegistryProviders(input))),
+        [WS_METHODS.serverListAcpRegistryProjects]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+          }).pipe(Effect.andThen(listAcpRegistryProjects(input))),
+        [WS_METHODS.serverListAcpRegistryExtensions]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+          }).pipe(Effect.andThen(listAcpRegistryExtensions(input))),
+        [WS_METHODS.serverSetAcpRegistryExtensionSource]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+          }).pipe(Effect.andThen(setAcpRegistryExtensionSource(input))),
         [WS_METHODS.serverSetAcpRegistryProvider]: (input) =>
           Effect.annotateCurrentSpan({
             "provider.instance_id": input.instanceId,

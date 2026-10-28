@@ -49,7 +49,10 @@ import {
   deleteAcpRegistrySession,
   disableAcpRegistryProvider,
   listAcpRegistrySessions,
+  listAcpRegistryExtensions,
+  listAcpRegistryProjects,
   listAcpRegistryProviders,
+  setAcpRegistryExtensionSource,
   logoutAcpRegistry,
   probeAcpRegistryConfiguration,
   setAcpRegistryProvider,
@@ -249,8 +252,10 @@ function baseSnapshot(
             canLoad: input.probe.probe.sessionManagement.canLoad,
             canResume: input.probe.probe.sessionManagement.canResume,
             canDelete: input.probe.probe.sessionManagement.canDelete,
+            ...(agentId === OMP_AGENT_ID ? { canListProjects: true } : {}),
           },
           configurableProviders: input.probe.probe.sessionManagement.canConfigureProviders,
+          ...(agentId === OMP_AGENT_ID ? { manageableExtensions: true } : {}),
         }),
     slashCommands: input.probe?.slashCommands ?? [],
     skills: input.probe?.skills ?? [],
@@ -919,6 +924,49 @@ export const AcpRegistryDriver: ProviderDriver<
               providerId,
             }),
           ).pipe(Effect.tap(() => liveSnapshotSemaphore.withPermit(invalidateEnrichmentCache))),
+        ...(registryAgentId(effectiveConfig) === OMP_AGENT_ID
+          ? {
+              listProjects: () =>
+                provideAcpManagementServices(
+                  listAcpRegistryProjects({
+                    instanceId,
+                    settings: effectiveConfig,
+                    cwd: host.paths.cwd,
+                    environment: processEnvironment,
+                  }),
+                ),
+              listExtensions: (cwd: string) =>
+                provideAcpManagementServices(
+                  listAcpRegistryExtensions({
+                    instanceId,
+                    settings: effectiveConfig,
+                    cwd,
+                    environment: processEnvironment,
+                  }),
+                ),
+              setExtensionSource: ({
+                cwd,
+                providerId,
+                enabled,
+              }: {
+                readonly cwd: string;
+                readonly providerId: string;
+                readonly enabled: boolean;
+              }) =>
+                provideAcpManagementServices(
+                  setAcpRegistryExtensionSource({
+                    instanceId,
+                    settings: effectiveConfig,
+                    cwd,
+                    environment: processEnvironment,
+                    providerId,
+                    enabled,
+                  }),
+                ).pipe(
+                  Effect.tap(() => liveSnapshotSemaphore.withPermit(invalidateEnrichmentCache)),
+                ),
+            }
+          : {}),
         logout: (cwd) => {
           const logout = logoutAcpRegistry({
             instanceId,

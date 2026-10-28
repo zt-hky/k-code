@@ -1,5 +1,8 @@
 import {
+  AcpRegistryListExtensionsResult,
+  AcpRegistryListProjectsResult,
   AcpRegistryListProvidersResult,
+  AcpRegistrySetExtensionSourceResult,
   AcpRegistryOperationError,
   AcpRegistryListSessionsResult,
   AcpRegistryProbeResult,
@@ -19,6 +22,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -28,6 +32,12 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import { ompUsageToAccounts, OMP_USAGE_METHOD } from "./ompUsage.ts";
+import {
+  OMP_AGENT_ID,
+  OMP_EXTENSIONS_METHOD,
+  OMP_EXTENSIONS_TOGGLE_METHOD,
+  OMP_PROJECTS_LIST_METHOD,
+} from "./ompAcp.ts";
 import * as DateTime from "effect/DateTime";
 import {
   findModelConfigOption,
@@ -215,6 +225,7 @@ const emptyAcpRegistryAvailableCommands = (): AcpRegistryAvailableCommands => ({
 
 export function normalizeAcpRegistryCommands(
   commands: ReadonlyArray<EffectAcpSchema.AvailableCommand>,
+  agentId: string | undefined,
 ): AcpRegistryAvailableCommands {
   const seen = new Set<string>();
   const slashCommands: Array<ServerProviderSlashCommand> = [];
@@ -228,8 +239,13 @@ export function normalizeAcpRegistryCommands(
     seen.add(key);
     const description = boundedText(command.description, MAX_DESCRIPTION_LENGTH);
     const hint = command.input ? boundedText(command.input.hint, MAX_DESCRIPTION_LENGTH) : "";
-    if (name.startsWith("$")) {
-      const skillName = boundedOpaqueValue(name.slice(1), MAX_ID_LENGTH);
+    const skillPrefix = name.startsWith("$")
+      ? "$"
+      : agentId === OMP_AGENT_ID && name.startsWith("skill:")
+        ? "skill:"
+        : undefined;
+    if (skillPrefix !== undefined) {
+      const skillName = boundedOpaqueValue(name.slice(skillPrefix.length), MAX_ID_LENGTH);
       if (skillName === undefined) continue;
       skills.push({
         name: skillName,
@@ -410,10 +426,13 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
       yield* runtime.handleSessionUpdate((notification) => {
         const update = notification.update;
         return update.sessionUpdate === "available_commands_update"
-          ? Ref.set(commandsRef, normalizeAcpRegistryCommands(update.availableCommands)).pipe(
-              Effect.andThen(Deferred.succeed(commandsAdvertised, undefined)),
-              Effect.asVoid,
-            )
+          ? Ref.set(
+              commandsRef,
+              normalizeAcpRegistryCommands(
+                update.availableCommands,
+                input.settings.source === "local" ? undefined : input.settings.agentId,
+              ),
+            ).pipe(Effect.andThen(Deferred.succeed(commandsAdvertised, undefined)), Effect.asVoid)
           : Effect.void;
       });
       const startResult = yield* Effect.result(runtime.start());
@@ -541,6 +560,9 @@ function managementFailure(
     | "providers_list"
     | "providers_set"
     | "providers_disable"
+    | "projects_list"
+    | "extensions_list"
+    | "extensions_toggle"
     | "logout",
   error: EffectAcpErrors.AcpError | AcpRegistryOperationError,
 ): AcpRegistryOperationError {
@@ -567,6 +589,20 @@ function managementFailure(
         cause: error,
       });
     }
+    if (operation === "projects_list") {
+      return new AcpRegistryOperationError({
+        reason: "projects_unsupported",
+        message: "The ACP agent does not advertise project listing.",
+        cause: error,
+      });
+    }
+    if (operation.startsWith("extensions_")) {
+      return new AcpRegistryOperationError({
+        reason: "extensions_unsupported",
+        message: "The ACP agent does not advertise extension management.",
+        cause: error,
+      });
+    }
     return new AcpRegistryOperationError({
       reason: "logout_unsupported",
       message: "The ACP agent does not advertise logout.",
@@ -585,7 +621,19 @@ function managementFailure(
               reason: "provider_configuration_failed" as const,
               message: "Could not update the ACP provider configuration.",
             }
-          : undefined;
+          : operation === "projects_list"
+            ? { reason: "projects_list_failed" as const, message: "Could not list ACP projects." }
+            : operation === "extensions_list"
+              ? {
+                  reason: "extensions_list_failed" as const,
+                  message: "Could not list ACP extensions.",
+                }
+              : operation === "extensions_toggle"
+                ? {
+                    reason: "extension_toggle_failed" as const,
+                    message: "Could not update the ACP extension source.",
+                  }
+                : undefined;
   return failure === undefined
     ? classified
     : new AcpRegistryOperationError({ ...failure, cause: error });
@@ -600,6 +648,15 @@ export const listAcpRegistrySessions = Effect.fn("AcpRegistryProbe.listSessions"
       const sessionId = boundedOpaqueValue(session.sessionId, 1_024);
       const cwd = boundedOpaqueValue(session.cwd, 4_096);
       if (sessionId === undefined || cwd === undefined) return [];
+      const rawMessageCount = (
+        session._meta as { readonly messageCount?: unknown } | undefined | null
+      )?.messageCount;
+      const messageCount =
+        typeof rawMessageCount === "number" &&
+        Number.isSafeInteger(rawMessageCount) &&
+        rawMessageCount >= 0
+          ? rawMessageCount
+          : undefined;
       return [
         {
           sessionId,
@@ -619,6 +676,7 @@ export const listAcpRegistrySessions = Effect.fn("AcpRegistryProbe.listSessions"
               ? null
               : boundedText(session.updatedAt, 128) || null,
           importedThreadId: null,
+          ...(messageCount === undefined ? {} : { messageCount }),
         },
       ];
     });
@@ -719,6 +777,165 @@ export const listAcpRegistryProviders = Effect.fn("AcpRegistryProbe.listProvider
           ),
       }),
       Effect.mapError((error) => managementFailure("providers_list", error)),
+    ),
+);
+
+const OmpNativeProject = Schema.Struct({
+  cwd: Schema.String,
+  sessionCount: Schema.Number,
+  lastActivityAt: Schema.optional(Schema.NullOr(Schema.Number)),
+  lastTitle: Schema.optional(Schema.NullOr(Schema.String)),
+});
+const OmpProjectsResponse = Schema.Struct({ projects: Schema.Array(Schema.Unknown) });
+const decodeOmpNativeProject = Schema.decodeUnknownOption(OmpNativeProject);
+const decodeOmpProjectsResponse = Schema.decodeUnknownOption(OmpProjectsResponse);
+
+export const listAcpRegistryProjects = Effect.fn("AcpRegistryProbe.listProjects")(
+  function* (input: AcpRegistryManagementInput) {
+    const runtime = yield* makeAcpRegistryManagementRuntime(input);
+    yield* runtime.initialize();
+    const response = yield* runtime.request(OMP_PROJECTS_LIST_METHOD, {});
+    const entries = Option.getOrUndefined(decodeOmpProjectsResponse(response))?.projects ?? [];
+    const projects = entries.flatMap((entry) => {
+      const decoded = decodeOmpNativeProject(entry);
+      if (Option.isNone(decoded)) return [];
+      const cwd = boundedOpaqueValue(decoded.value.cwd, 4_096);
+      const { sessionCount, lastActivityAt: activityMs } = decoded.value;
+      if (cwd === undefined || !Number.isSafeInteger(sessionCount) || sessionCount < 0) return [];
+      const lastActivityAt =
+        activityMs == null
+          ? null
+          : Option.getOrNull(Option.map(DateTime.make(activityMs), DateTime.formatIso));
+      return [
+        {
+          cwd,
+          sessionCount,
+          lastActivityAt,
+          lastTitle: boundedText(decoded.value.lastTitle ?? "", 1_024) || null,
+        },
+      ];
+    });
+    return AcpRegistryListProjectsResult.make({
+      projects: projects
+        .toSorted((left, right) =>
+          (right.lastActivityAt ?? "").localeCompare(left.lastActivityAt ?? ""),
+        )
+        .slice(0, 200),
+    });
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.scoped,
+      Effect.timeoutOrElse({
+        duration: MANAGEMENT_TIMEOUT,
+        orElse: () =>
+          Effect.fail(
+            new AcpRegistryOperationError({
+              reason: "projects_list_failed",
+              message: "The ACP project list request timed out.",
+            }),
+          ),
+      }),
+      Effect.mapError((error) => managementFailure("projects_list", error)),
+    ),
+);
+
+const OmpOptionalText = Schema.optional(Schema.NullOr(Schema.String));
+const OmpExtension = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.String,
+  displayName: Schema.String,
+  description: OmpOptionalText,
+  source: Schema.Struct({
+    provider: Schema.String,
+    providerName: Schema.String,
+    level: Schema.Literals(["user", "project", "native"]),
+  }),
+  state: Schema.Literals(["active", "disabled", "shadowed"]),
+  disabledReason: OmpOptionalText,
+  shadowedBy: OmpOptionalText,
+});
+const OmpExtensionsResponse = Schema.Struct({ extensions: Schema.Array(Schema.Unknown) });
+const decodeOmpExtension = Schema.decodeUnknownOption(OmpExtension);
+const decodeOmpExtensionsResponse = Schema.decodeUnknownOption(OmpExtensionsResponse);
+
+export const listAcpRegistryExtensions = Effect.fn("AcpRegistryProbe.listExtensions")(
+  function* (input: AcpRegistryManagementInput) {
+    const runtime = yield* makeAcpRegistryManagementRuntime(input);
+    yield* runtime.initialize();
+    const response = yield* runtime.request(OMP_EXTENSIONS_METHOD, { cwd: input.cwd });
+    const entries = Option.getOrUndefined(decodeOmpExtensionsResponse(response))?.extensions ?? [];
+    const extensions = entries.flatMap((entry) => {
+      const decoded = decodeOmpExtension(entry);
+      if (Option.isNone(decoded)) return [];
+      const extension = decoded.value;
+      const id = boundedOpaqueValue(extension.id, 512);
+      const kind = boundedOpaqueValue(extension.kind, 64);
+      const sourceProvider = boundedOpaqueValue(extension.source.provider, 128);
+      if (id === undefined || kind === undefined || sourceProvider === undefined) return [];
+      const description = boundedText(extension.description ?? "", 1_024);
+      const disabledReason = boundedText(extension.disabledReason ?? "", 64);
+      const shadowedBy = boundedText(extension.shadowedBy ?? "", 512);
+      return [
+        {
+          id,
+          kind,
+          displayName: boundedText(extension.displayName, 256),
+          ...(description ? { description } : {}),
+          sourceProvider,
+          sourceName: boundedText(extension.source.providerName, 256),
+          sourceLevel: extension.source.level,
+          state: extension.state,
+          ...(disabledReason ? { disabledReason } : {}),
+          ...(shadowedBy ? { shadowedBy } : {}),
+        },
+      ];
+    });
+    return AcpRegistryListExtensionsResult.make({ extensions: extensions.slice(0, 500) });
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.scoped,
+      Effect.timeoutOrElse({
+        duration: MANAGEMENT_TIMEOUT,
+        orElse: () =>
+          Effect.fail(
+            new AcpRegistryOperationError({
+              reason: "extensions_list_failed",
+              message: "The ACP extension list request timed out.",
+            }),
+          ),
+      }),
+      Effect.mapError((error) => managementFailure("extensions_list", error)),
+    ),
+);
+
+export const setAcpRegistryExtensionSource = Effect.fn("AcpRegistryProbe.setExtensionSource")(
+  function* (
+    input: AcpRegistryManagementInput & { readonly providerId: string; readonly enabled: boolean },
+  ) {
+    const runtime = yield* makeAcpRegistryManagementRuntime(input);
+    yield* runtime.initialize();
+    yield* runtime.request(OMP_EXTENSIONS_TOGGLE_METHOD, {
+      providerId: input.providerId,
+      enabled: input.enabled,
+    });
+    return AcpRegistrySetExtensionSourceResult.make({ enabled: input.enabled });
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.scoped,
+      Effect.timeoutOrElse({
+        duration: MANAGEMENT_TIMEOUT,
+        orElse: () =>
+          Effect.fail(
+            new AcpRegistryOperationError({
+              reason: "extension_toggle_failed",
+              message: "The ACP extension update request timed out.",
+            }),
+          ),
+      }),
+      Effect.mapError((error) => managementFailure("extensions_toggle", error)),
     ),
 );
 

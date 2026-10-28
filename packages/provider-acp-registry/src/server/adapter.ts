@@ -10,9 +10,12 @@ import {
 } from "./devinAcp.ts";
 import { extractDroidElicitationForm } from "./droidAcp.ts";
 import { extractOmpAskElicitationForm, isOmpAskToolCall } from "./ompAsk.ts";
+import { makeAnsiFilter, type AnsiFilter } from "./ompAnsi.ts";
+import { rewriteOmpSkillMentions } from "./ompSkills.ts";
 import {
   extractOmpPlanApprovalElicitation,
   extractOmpProposedPlanMarkdown,
+  extractOmpSubagentUpdate,
   OMP_AGENT_ID,
   OMP_MODE_OPTION_ID,
 } from "./ompAcp.ts";
@@ -215,6 +218,19 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
       }
     : options;
   const copilotRouting = isCopilot ? makeCopilotSubagentRouting() : undefined;
+  const isOmp = registryAgentId === OMP_AGENT_ID;
+  let ompSkillNames: ReadonlySet<string> = new Set();
+  const ansiFilters = new Map<string, AnsiFilter>();
+  const onAvailableCommandsUpdate: AcpAdapterV2Flavor["onAvailableCommandsUpdate"] =
+    isOmp || runtimeCoordinator !== undefined
+      ? (commands) => {
+          const normalized = normalizeAcpRegistryCommands(commands, registryAgentId);
+          if (isOmp) ompSkillNames = new Set(normalized.skills.map((skill) => skill.name));
+          return runtimeCoordinator === undefined
+            ? Effect.void
+            : runtimeCoordinator.publishAvailableCommands(options.instanceId, normalized);
+        }
+      : undefined;
   const flavor: AcpAdapterV2Flavor = {
     driver: ACP_REGISTRY_PROVIDER,
     // Cancelling a Copilot prompt also kills the background agents it started.
@@ -229,13 +245,40 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     ...(registryAgentId === "factory-droid"
       ? { extractElicitationForm: extractDroidElicitationForm }
       : {}),
-    ...(registryAgentId === OMP_AGENT_ID
+    ...(isOmp
       ? {
           extractElicitationForm: extractOmpAskElicitationForm,
           isUserInputTool: isOmpAskToolCall,
           extractProposedPlanMarkdown: extractOmpProposedPlanMarkdown,
           planApprovalElicitation: extractOmpPlanApprovalElicitation,
           interactionModeOptionIds: [OMP_MODE_OPTION_ID],
+          supportsSessionSteering: true,
+          extractSubagentUpdate: extractOmpSubagentUpdate,
+          rewriteUserText: (text: string) =>
+            Effect.succeed(rewriteOmpSkillMentions(text, ompSkillNames)),
+          normalizeSessionUpdate: (notification) => {
+            const update = notification.update;
+            if (
+              (update.sessionUpdate !== "agent_message_chunk" &&
+                update.sessionUpdate !== "agent_thought_chunk") ||
+              update.content.type !== "text"
+            ) {
+              return notification;
+            }
+            const key = `${notification.sessionId}:${update.sessionUpdate}`;
+            let filter = ansiFilters.get(key);
+            if (filter === undefined) {
+              filter = makeAnsiFilter();
+              ansiFilters.set(key, filter);
+            }
+            return {
+              ...notification,
+              update: {
+                ...update,
+                content: { ...update.content, text: filter.push(update.content.text) },
+              },
+            };
+          },
         }
       : {}),
     ...(registryAgentId === "mistral-vibe"
@@ -269,14 +312,10 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
           extractSubagentUpdate: extractCopilotSubagentUpdate,
         }),
     makeRuntime: options.makeRuntime ?? makeAcpRegistryRuntime(runtimeOptions, catalog),
+    ...(onAvailableCommandsUpdate === undefined ? {} : { onAvailableCommandsUpdate }),
     ...(runtimeCoordinator === undefined
       ? {}
       : {
-          onAvailableCommandsUpdate: (commands) =>
-            runtimeCoordinator.publishAvailableCommands(
-              options.instanceId,
-              normalizeAcpRegistryCommands(commands),
-            ),
           onSessionConfigurationUpdate: (configOptions, modeState, modelState) =>
             runtimeCoordinator.publishLiveConfiguration(
               options.instanceId,

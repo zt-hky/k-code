@@ -35,6 +35,8 @@ function recordEffect(action: string) {
 }
 
 vi.mock("../components/CustomSnoozeDialog", () => ({ requestCustomSnooze: vi.fn() }));
+vi.mock("./useAcpNativeSessions", () => ({ readEnvironmentSupportsSessionResume: () => false }));
+vi.mock("../components/resumeSessionDialogState", () => ({ openResumeSessionDialog: vi.fn() }));
 vi.mock("react", () => ({
   useCallback: (callback: unknown) => callback,
   useMemo: (factory: () => unknown) => factory(),
