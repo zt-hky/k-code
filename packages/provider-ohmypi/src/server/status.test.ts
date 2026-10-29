@@ -174,6 +174,8 @@ describe("Oh My Pi snapshot", () => {
   it("treats a discovery with no models as signed out when sign-ins are unknown", () => {
     const snapshot = buildOhMyPiSnapshot({ ...base, install: installed, probe: probe([]) });
     expect(snapshot).toMatchObject({ status: "error", auth: { status: "unauthenticated" } });
+    // The UI prints auth.type next to "Not authenticated"; an internal id would leak into it.
+    expect(snapshot.auth.type).toBeUndefined();
     expect(snapshot.nativeSessions?.canList).toBe(true);
   });
 

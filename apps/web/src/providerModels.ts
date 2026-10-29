@@ -2,6 +2,7 @@ import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
+  PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
   type ModelCapabilities,
   type ProviderInstanceId,
@@ -16,11 +17,14 @@ const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 
 export function formatProviderDriverKindLabel(provider: ProviderDriverKind): string {
-  return provider
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return (
+    PROVIDER_DISPLAY_NAMES[provider] ??
+    provider
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[_-]+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+  );
 }
 
 export function getProviderModels(

@@ -318,7 +318,7 @@ export function OmpModelLoginSection(props: {
     ) : null;
 
   return (
-    <div className="grid gap-3 px-3 py-3 sm:px-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 px-3 py-3 sm:px-4">
       <div>
         <p className="text-xs font-medium text-foreground">Sign in to a model provider</p>
         <p className="text-xs text-muted-foreground">
@@ -328,7 +328,10 @@ export function OmpModelLoginSection(props: {
       </div>
 
       {panel === "active" && loginState !== null ? (
-        <div role="status" className="grid gap-3 rounded-md border border-border/60 p-3 text-xs">
+        <div
+          role="status"
+          className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-md border border-border/60 p-3 text-xs"
+        >
           <div className="flex items-center justify-between gap-2">
             <p className="flex min-w-0 items-center gap-2 font-medium text-foreground">
               <Spinner size="xs" tone="muted" />

@@ -40,7 +40,7 @@ export function ProviderWizardAuthenticationStep({
     <>
       <WizardPanel className="min-h-72">
         <SettingsGroup variant="plain">
-          {provider && (canAuthenticate || signedIn) ? (
+          {provider && provider.modelProviderLogin !== true && (canAuthenticate || signedIn) ? (
             <ProviderAuthenticationSection
               environmentId={environmentId}
               environmentLabel={environmentLabel}

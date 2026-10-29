@@ -246,7 +246,7 @@ export function buildOhMyPiSnapshot(input: OhMyPiSnapshotInput): ServerProvider 
       installed: true,
       version,
       status: "error",
-      auth: { status: "unauthenticated", type: "model_providers", canLogout: false },
+      auth: { status: "unauthenticated", canLogout: false },
       setup,
       message: SIGN_IN_MESSAGE,
       models: ompModelsFromDiscovery(input.probe?.probe, customModels),

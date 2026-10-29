@@ -1347,6 +1347,7 @@ function ProviderInstanceRow({
         ) : mode === "editor" &&
           !readOnly &&
           liveProvider &&
+          liveProvider.modelProviderLogin !== true &&
           (liveProvider.setup?.canAuthenticate ||
             (liveProvider.driver === "acpRegistry" && liveProvider.installed)) ? (
           <ProviderAuthenticationSection
