@@ -427,6 +427,10 @@
       "types": "./src/codexAuthCallback.ts",
       "import": "./src/codexAuthCallback.ts"
     },
+    "./localhostAuthRedirect": {
+      "types": "./src/localhostAuthRedirect.ts",
+      "import": "./src/localhostAuthRedirect.ts"
+    },
     "./codexAuthHandoff": {
       "types": "./src/codexAuthHandoff.ts",
       "import": "./src/codexAuthHandoff.ts"

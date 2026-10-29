@@ -2375,6 +2375,12 @@ export const layerWsRpc = (
             Effect.andThen(ompLogin(input.instanceId)),
             Effect.flatMap((login) => login.signOut(input.providerId)),
           ),
+        // The credentials are write-only secrets: they never reach a span attribute or a log.
+        [WS_METHODS.ompLoginImportCredentials]: (input) =>
+          Effect.annotateCurrentSpan({ "provider.instance_id": input.instanceId }).pipe(
+            Effect.andThen(ompLogin(input.instanceId)),
+            Effect.flatMap((login) => login.importCredentials(input.credentials)),
+          ),
         [WS_METHODS.ompLoginSubscribe]: (input) =>
           Stream.unwrap(ompLogin(input.instanceId).pipe(Effect.map((login) => login.state))),
         [WS_METHODS.serverLogoutAcpRegistry]: (input) =>

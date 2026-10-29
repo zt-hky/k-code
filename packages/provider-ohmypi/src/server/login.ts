@@ -21,10 +21,13 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import {
   makeOmpLoginScanner,
   type OmpLoginOutputEvent,
+  parseOmpImportFailure,
+  parseOmpImportSummary,
   parseOmpLoginFailure,
   parseOmpLoginProviders,
   parseOmpLogoutCredentialIds,
 } from "./loginOutput.ts";
+import { withLoginFlow } from "./loginFlows.ts";
 import { OmpProcessError, spawnOmp, withOmpRpc, type OmpSpawn } from "./process.ts";
 
 const FLOW_TIMEOUT = Duration.minutes(10);
@@ -33,6 +36,8 @@ const RPC_TIMEOUT = Duration.seconds(60);
 const PROMPT_SETTLE = Duration.millis(150);
 const CREDENTIAL_CHECK_TIMEOUT = Duration.seconds(15);
 const MAX_FAILURE_MESSAGE = 1_024;
+const IMPORT_TIMEOUT = Duration.seconds(60);
+const MAX_IMPORT_OUTPUT = 8_192;
 
 interface ActiveFlow {
   readonly flowId: string;
@@ -261,7 +266,7 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
     listProviders: Effect.suspend(() =>
       rpc("login_list_failed", "Listing Oh My Pi providers timed out.", (spawn) =>
         withOmpRpc(spawn, (call) => call({ type: "get_login_providers" })).pipe(
-          Effect.map(parseOmpLoginProviders),
+          Effect.map((data) => parseOmpLoginProviders(data).map(withLoginFlow)),
         ),
       ),
     ),
@@ -364,6 +369,59 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
       );
       yield* options.onCredentialsChanged;
       return result;
+    }),
+    importCredentials: Effect.fn("OmpLogin.importCredentials")(function* (credentials: string) {
+      if (credentials.trim() === "") {
+        return yield* failure("login_import_failed", "There are no sign-ins to copy.");
+      }
+      const spawn = yield* options.resolveSpawn;
+      // The credentials go to the child's stdin and nowhere else: not an argument, not a log.
+      const outcome = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const child = yield* spawnOmp(spawn, ["auth", "import", "-"]);
+          const stdout = yield* child.stdout.pipe(
+            Stream.runFold(
+              () => "",
+              (all, chunk) => (all.length < MAX_IMPORT_OUTPUT ? all + chunk : all),
+            ),
+            Effect.forkScoped,
+          );
+          const stderr = yield* child.stderr.pipe(
+            Stream.runFold(
+              () => "",
+              (all, chunk) => (all.length < MAX_IMPORT_OUTPUT ? all + chunk : all),
+            ),
+            Effect.forkScoped,
+          );
+          yield* child.write(credentials);
+          yield* child.endInput;
+          const exitCode = yield* child.exitCode;
+          return {
+            exitCode,
+            stdout: yield* Fiber.join(stdout),
+            stderr: yield* Fiber.join(stderr),
+          };
+        }),
+      ).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.catchTags({
+          OmpProcessError: (error) => Effect.fail(failure("login_import_failed", error.detail)),
+        }),
+        Effect.timeoutOrElse({
+          duration: IMPORT_TIMEOUT,
+          orElse: () =>
+            Effect.fail(failure("login_import_failed", "Copying the sign-ins timed out.")),
+        }),
+      );
+      if (outcome.exitCode !== 0) {
+        return yield* failure(
+          "login_import_failed",
+          parseOmpImportFailure(outcome.stderr) ?? "Oh My Pi could not read those sign-ins.",
+        );
+      }
+      const summary = parseOmpImportSummary(outcome.stdout);
+      if (summary.imported > 0) yield* options.onCredentialsChanged;
+      return summary;
     }),
     state: SubscriptionRef.changes(state),
   } satisfies ProviderModelLogin;

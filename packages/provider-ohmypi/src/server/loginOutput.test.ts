@@ -2,6 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   makeOmpLoginScanner,
+  parseOmpImportFailure,
+  parseOmpImportSummary,
   parseOmpLoginFailure,
   parseOmpLoginProviders,
   parseOmpLogoutCredentialIds,
@@ -192,5 +194,31 @@ describe("parseOmpLoginFailure", () => {
   it("returns plain reasons unchanged and ignores other stderr", () => {
     expect(parseOmpLoginFailure("Login failed: port 1455 is in use\n")).toBe("port 1455 is in use");
     expect(parseOmpLoginFailure("something else\n")).toBeNull();
+  });
+});
+
+describe("omp auth import output", () => {
+  it("reads the count and providers from omp's summary line", () => {
+    expect(parseOmpImportSummary("Imported 1 credential(s) for synthetic.\n")).toEqual({
+      imported: 1,
+      providerIds: ["synthetic"],
+    });
+    expect(
+      parseOmpImportSummary("Imported 3 credential(s) for openai-codex, anthropic.\n"),
+    ).toEqual({
+      imported: 3,
+      providerIds: ["openai-codex", "anthropic"],
+    });
+    expect(parseOmpImportSummary("No credentials to import.\n")).toEqual({
+      imported: 0,
+      providerIds: [],
+    });
+  });
+
+  it("keeps stderr's first line as the reason", () => {
+    expect(parseOmpImportFailure("error: stdin: credentials[0] has no provider.\n")).toBe(
+      "stdin: credentials[0] has no provider.",
+    );
+    expect(parseOmpImportFailure("")).toBeNull();
   });
 });

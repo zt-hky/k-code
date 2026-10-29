@@ -15,7 +15,15 @@ import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { canSubmitPrompt, loginFlowStep, visibleLoginProviders } from "./ompModelLogin";
+import {
+  canSubmitPrompt,
+  loginFlowStep,
+  isServiceSignedIn,
+  loginWays,
+  preferredLoginProvider,
+  signedInServices,
+  visibleLoginProviders,
+} from "./ompModelLogin";
 import type { SettingsTarget } from "./settings-environment-filter";
 
 /** Signs Oh My Pi in to the model providers it supports, on the environment that runs it. */
@@ -126,20 +134,25 @@ export function OmpModelLoginAccount(props: {
 
   function signOut(provider: OmpLoginProvider) {
     void run(async () => {
-      const result = await signOutLogin({
-        environmentId,
-        input: { instanceId, providerId: provider.providerId },
-      });
-      if (result._tag === "Success") {
-        setNote(
-          result.value.remainingSource === undefined
-            ? null
-            : `${provider.name} is still signed in via ${result.value.remainingSource}.`,
-        );
-        void refreshProviders(target);
-        void loadProviders();
+      const signedInWays = loginWays(provider, providers ?? []).filter((way) => way.authenticated);
+      let remainingSource: string | undefined;
+      let last: Awaited<ReturnType<typeof signOutLogin>> | undefined;
+      for (const way of signedInWays.length > 0 ? signedInWays : [provider]) {
+        last = await signOutLogin({
+          environmentId,
+          input: { instanceId, providerId: way.providerId },
+        });
+        if (last._tag !== "Success") return last;
+        remainingSource ??= last.value.remainingSource;
       }
-      return result;
+      setNote(
+        remainingSource === undefined
+          ? null
+          : `${provider.name} is still signed in via ${remainingSource}.`,
+      );
+      void refreshProviders(target);
+      void loadProviders();
+      return last!;
     });
   }
 
@@ -160,7 +173,7 @@ export function OmpModelLoginAccount(props: {
   }
 
   const { visible, hiddenCount } = visibleLoginProviders(providers ?? [], query, showAll);
-  const signedIn = (providers ?? []).filter((entry) => entry.authenticated);
+  const signedIn = signedInServices(providers ?? []);
 
   return (
     <View className={props.divider ? "border-t border-border-subtle" : undefined}>
@@ -203,7 +216,9 @@ export function OmpModelLoginAccount(props: {
           {step === "oauth" ? (
             <Text className="text-foreground-muted">Waiting for you to finish in the browser…</Text>
           ) : step === "device_code" ? (
-            <Text className="text-foreground-muted">Waiting for approval…</Text>
+            <Text className="text-foreground-muted">
+              Approve it on the provider's page. Sign-in finishes on its own.
+            </Text>
           ) : null}
           {prompt !== null ? (
             <>
@@ -282,10 +297,12 @@ export function OmpModelLoginAccount(props: {
               icon="person.crop.circle"
               label={entry.name}
               description={
-                entry.authenticated ? "Signed in. Sign in again to switch account." : undefined
+                isServiceSignedIn(entry, providers ?? [])
+                  ? "Signed in. Sign in again to switch account."
+                  : undefined
               }
               disabled={pending}
-              onPress={() => signIn(entry)}
+              onPress={() => signIn(preferredLoginProvider(entry, providers ?? []))}
             />
           ))}
           {hiddenCount > 0 ? (

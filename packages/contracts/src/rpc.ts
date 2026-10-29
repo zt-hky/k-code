@@ -75,6 +75,8 @@ import {
   OmpLoginListProvidersInput,
   OmpLoginListProvidersResult,
   OmpLoginRespondInput,
+  OmpLoginImportCredentialsInput,
+  OmpLoginImportCredentialsResult,
   OmpLoginSignOutInput,
   OmpLoginSignOutResult,
   OmpLoginStartInput,
@@ -544,6 +546,7 @@ export const WS_METHODS = {
   ompLoginRespond: "server.ompLogin.respond",
   ompLoginCancel: "server.ompLogin.cancel",
   ompLoginSignOut: "server.ompLogin.signOut",
+  ompLoginImportCredentials: "server.ompLogin.importCredentials",
   ompLoginSubscribe: "server.ompLogin.subscribe",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -970,6 +973,12 @@ const WsOmpLoginCancelRpc = Rpc.make(WS_METHODS.ompLoginCancel, {
 const WsOmpLoginSignOutRpc = Rpc.make(WS_METHODS.ompLoginSignOut, {
   payload: OmpLoginSignOutInput,
   success: OmpLoginSignOutResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpLoginImportCredentialsRpc = Rpc.make(WS_METHODS.ompLoginImportCredentials, {
+  payload: OmpLoginImportCredentialsInput,
+  success: OmpLoginImportCredentialsResult,
   error: OmpLoginRpcError,
 });
 
@@ -2096,6 +2105,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOmpLoginRespondRpc,
   WsOmpLoginCancelRpc,
   WsOmpLoginSignOutRpc,
+  WsOmpLoginImportCredentialsRpc,
   WsOmpLoginSubscribeRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

@@ -78,6 +78,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.ompLoginRespond]: "provider",
   [WS_METHODS.ompLoginCancel]: "provider",
   [WS_METHODS.ompLoginSignOut]: "provider",
+  [WS_METHODS.ompLoginImportCredentials]: "provider",
   [WS_METHODS.ompLoginSubscribe]: "provider",
   [WS_METHODS.serverDisableAcpRegistryProvider]: "server",
   [WS_METHODS.serverLogoutAcpRegistry]: "server",

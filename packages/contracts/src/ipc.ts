@@ -1011,6 +1011,31 @@ export const DesktopPreviewRecordingSaveInputSchema = Schema.Struct({
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
+export const LocalhostAuthCallbackResultSchema = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("received"),
+    callbackUrl: Schema.String.check(Schema.isMaxLength(16_384)),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("unavailable"),
+    reason: Schema.Literals(["invalid_request", "port_busy", "cancelled", "expired"]),
+  }),
+]);
+export type LocalhostAuthCallbackResult = typeof LocalhostAuthCallbackResultSchema.Type;
+
+export const LocalOmpCredentialsResultSchema = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("ok"),
+    providerIds: Schema.Array(Schema.String.check(Schema.isMaxLength(256))),
+    // `omp auth export` output: API keys and OAuth refresh tokens.
+    payload: Schema.String.check(Schema.isMaxLength(1_000_000)),
+  }),
+  Schema.Struct({ status: Schema.Literal("not_installed") }),
+  Schema.Struct({ status: Schema.Literal("empty") }),
+  Schema.Struct({ status: Schema.Literal("failed"), message: Schema.String }),
+]);
+export type LocalOmpCredentialsResult = typeof LocalOmpCredentialsResultSchema.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getRelayTelemetryEnabled: () => boolean;
@@ -1093,6 +1118,14 @@ export interface DesktopBridge {
   ) => Promise<T | null>;
   receiveProviderAuthCallback: (authorizationUrl: string) => Promise<string>;
   cancelProviderAuthCallback: (authorizationUrl: string) => Promise<void>;
+  /**
+   * Catches a sign-in's `localhost:<port>` redirect on this computer and resolves with the full
+   * callback URL, for the caller to hand to the environment running the sign-in.
+   */
+  receiveLocalhostAuthCallback: (authorizationUrl: string) => Promise<LocalhostAuthCallbackResult>;
+  cancelLocalhostAuthCallback: (authorizationUrl: string) => Promise<void>;
+  /** This computer's own Oh My Pi sign-ins, read with its `omp auth export`. */
+  readLocalOmpCredentials: () => Promise<LocalOmpCredentialsResult>;
   openExternal: (url: string) => Promise<boolean>;
   openSystemSettings: (pane: SystemSettingsPane) => Promise<boolean>;
   checkSystemPermission: (pane: SystemSettingsPane) => Promise<boolean>;

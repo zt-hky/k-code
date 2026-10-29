@@ -9,6 +9,7 @@ import type {
   AcpRegistryOperationError,
   AcpRegistrySetProviderInput,
   OmpLoginProvider,
+  OmpLoginImportCredentialsResult,
   OmpLoginSignOutResult,
   OmpLoginState,
   ProviderDriverKind,
@@ -52,6 +53,10 @@ export interface ProviderModelLogin {
   readonly signOut: (
     providerId: string,
   ) => Effect.Effect<OmpLoginSignOutResult, AcpRegistryOperationError>;
+  /** Merges credentials exported by another machine's `omp auth export` into this instance. */
+  readonly importCredentials: (
+    credentials: string,
+  ) => Effect.Effect<OmpLoginImportCredentialsResult, AcpRegistryOperationError>;
   readonly state: Stream.Stream<OmpLoginState>;
 }
 
