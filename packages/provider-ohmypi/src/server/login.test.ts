@@ -155,8 +155,18 @@ it.live("lists the providers omp can log in to with their stored-credential stat
       const providers = yield* h.login.listProviders;
       expect(h.children[0]?.args.slice(0, 2)).toEqual(["--mode", "rpc"]);
       expect(providers).toEqual([
-        { providerId: "anthropic", name: "Anthropic (Claude Pro/Max)", authenticated: true },
-        { providerId: "openrouter", name: "OpenRouter", authenticated: false },
+        {
+          providerId: "anthropic",
+          name: "Anthropic (Claude Pro/Max)",
+          authenticated: true,
+          flow: "localhost_redirect",
+        },
+        {
+          providerId: "openrouter",
+          name: "OpenRouter",
+          authenticated: false,
+          flow: "localhost_redirect",
+        },
       ]);
     }),
   ).pipe(Effect.provide(NodeServices.layer)),
@@ -202,6 +212,60 @@ it.live("signs out by removing every stored credential and reports auth that sti
         remainingSource: "OPENROUTER_API_KEY environment variable",
       });
       expect(yield* Ref.get(h.changed)).toBe(1);
+    }),
+  ).pipe(Effect.provide(NodeServices.layer)),
+);
+
+const EXPORT = JSON.stringify({
+  version: 1,
+  credentials: [
+    { provider: "synthetic", credential: { type: "api_key", key: "sk-not-real", source: "login" } },
+  ],
+});
+
+it.live("copies credentials into omp's own store through stdin and refreshes models", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const h = yield* makeHarness((child) =>
+        child
+          .emit("Imported 2 credential(s) for synthetic, anthropic.\n")
+          .pipe(Effect.andThen(child.exit(0))),
+      );
+      const result = yield* h.login.importCredentials(EXPORT);
+      expect(result).toEqual({ imported: 2, providerIds: ["synthetic", "anthropic"] });
+      const [child] = h.children;
+      // The secret travels on stdin only: never as an argument.
+      expect(child?.args).toEqual(["auth", "import", "-"]);
+      expect(JSON.stringify(child?.args)).not.toContain("sk-not-real");
+      expect(yield* Queue.clear(child!.written)).toEqual([EXPORT]);
+      expect(yield* Ref.get(h.changed)).toBe(1);
+    }),
+  ).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.live("reports why omp refused the credentials and leaves models alone", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const h = yield* makeHarness((child) =>
+        child.emitStderr("error: stdin is not valid JSON.\n").pipe(Effect.andThen(child.exit(1))),
+      );
+      const failure = yield* h.login.importCredentials("{bad").pipe(Effect.flip);
+      expect(failure).toMatchObject({
+        reason: "login_import_failed",
+        message: "stdin is not valid JSON.",
+      });
+      expect(yield* Ref.get(h.changed)).toBe(0);
+    }),
+  ).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.live("does not start omp for an empty import", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      const failure = yield* h.login.importCredentials("  ").pipe(Effect.flip);
+      expect(failure.reason).toBe("login_import_failed");
+      expect(h.children).toHaveLength(0);
     }),
   ).pipe(Effect.provide(NodeServices.layer)),
 );

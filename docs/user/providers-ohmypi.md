@@ -25,22 +25,57 @@ signed in. **Settings → Providers → Oh My Pi → Sign in** lists the common 
 find the rest. In a thread whose provider is not signed in, the notice above the composer opens the
 same list.
 
-Choose a service and T3 Code takes you through what it needs:
+Choose a service and T3 Code takes you through what it needs. **Sign in** always starts the way
+that finishes on its own for where you are:
 
-- **Browser sign-in** opens the service's page in a new tab and waits. If the page redirects to a
-  `localhost` address that does not load, which happens when the server is remote, copy that
-  address from the browser and paste it into the field.
-- **Device code** shows a code to enter on the service's page. Copy it, approve, and the panel
-  finishes by itself.
+- **Device code** shows a code and a link. Approve on the service's page, from any device, and the
+  panel finishes by itself: the status and models refresh without a click. GitHub Copilot, Kimi
+  Code, xAI Grok (SuperGrok / X Premium+), Factory Droid, Muse Code and Kilo sign in this way, and
+  so does ChatGPT Plus/Pro as **Codex, headless/device**. ChatGPT is one service with two ways in;
+  the device code leads whenever your browser is not on the server's machine.
+- **Browser sign-in** (Claude Pro/Max, ChatGPT's regular sign-in, Google Gemini and Antigravity,
+  Devin, GitLab Duo, OpenRouter) redirects to a `localhost` address when it is done. That address
+  only works on the machine that runs the sign-in, so how it finishes depends on where you are:
+  - **Server and browser on one computer** (the desktop app's own server, or `npx t3` here): the
+    server catches the redirect and the panel finishes by itself. This is the primary ChatGPT
+    sign-in in that case.
+  - **Desktop app connected to another environment** (an AgentBox workspace, an SSH or Tailscale
+    host): the app opens a one-time listener on `127.0.0.1` at the redirect's port while the
+    sign-in is running, accepts only the redirect path with the sign-in's own `state`, passes the
+    full address to the environment, and closes. It lives at most 10 minutes. The page says "You
+    can close this tab", and the panel finishes by itself. If another program already uses that
+    port, the panel says so and you paste the address instead.
+  - **Web or mobile app connected to a remote server**: nothing on the browser's side can catch the
+    redirect. Copy the address the browser ended on (it may show an error page) and paste it into
+    the field.
+- **Other ways to sign in** under a service lists the remaining options, for example ChatGPT's
+  localhost sign-in when the device code leads, or the device code when the localhost sign-in leads.
 - **API key** takes the key in a hidden field. The service checks it before Oh My Pi stores it.
+
+Services whose sign-in returns to an installed app (Z.AI's `zcode://` link, GitLab Duo Agent's
+`vscode://` link) also finish by pasting the address.
+
+### Use my local sign-ins
+
+In the desktop app, when the environment is not this computer, **Settings → Providers → Oh My Pi**
+also offers **Use my local sign-ins**. It reads the sign-ins from this computer's own Oh My Pi
+(`omp auth export`), lists the services that would be copied, and asks you to confirm. The warning
+is real: it copies your API keys and sign-in tokens, so anyone who can use that environment can use
+those accounts. Copy them only to a server you control.
+
+On confirm the app sends them over the connection it already has to the environment (this needs the
+**Manage providers** permission), which runs `omp auth import -` for that Oh My Pi instance. T3 Code
+does not log or keep them, on either side, and they stay on this computer too. Status and models
+refresh when it is done. If Oh My Pi is not installed on this computer, the panel says so instead.
+The web and mobile apps do not offer this, since they cannot run Oh My Pi locally.
 
 Signed-in accounts are listed under the services, each with **Sign out**. Signing out removes the
 stored credentials from the server; if an environment variable still provides a key, the panel
 says so. Cancel stops a sign-in at any point. Models appear in the picker as soon as a sign-in
 finishes, grouped by the service that provides them.
 
-The sign-in runs on the environment that hosts Oh My Pi, so it works the same from the web,
-desktop, and mobile apps.
+The sign-in runs on the environment that hosts Oh My Pi, so it works from the web, desktop, and
+mobile apps.
 
 ## What carries over
 

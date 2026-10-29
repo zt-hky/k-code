@@ -216,6 +216,35 @@ export function parseOmpLogoutCredentialIds(data: unknown): ReadonlyArray<number
   });
 }
 
+const IMPORTED = /^Imported (\d+) credential\(s\)(?: for (.+?))?\.?$/m;
+
+/** `omp auth import` stdout → how many credentials it stored and for which providers. */
+export function parseOmpImportSummary(stdout: string): {
+  readonly imported: number;
+  readonly providerIds: ReadonlyArray<OmpLoginProvider["providerId"]>;
+} {
+  const match = IMPORTED.exec(stripAnsi(stdout));
+  if (match === null) return { imported: 0, providerIds: [] };
+  const providerIds = (match[2] ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => PROVIDER_ID.test(id))
+    .slice(0, MAX_PROVIDERS);
+  return {
+    imported: Number(match[1]),
+    providerIds: providerIds as ReadonlyArray<OmpLoginProvider["providerId"]>,
+  };
+}
+
+/** The reason `omp auth import` refused its input: stderr's first line, without its `error:` prefix. */
+export function parseOmpImportFailure(stderr: string): string | null {
+  const line = stripAnsi(stderr)
+    .split("\n")
+    .map((text) => text.trim())
+    .find((text) => text !== "");
+  return line === undefined ? null : line.replace(/^error:\s*/i, "").slice(0, 200);
+}
+
 /** Providers whose key powers web search, not a model. */
 export const OMP_SEARCH_PROVIDER_IDS: ReadonlySet<string> = new Set([
   "tavily",

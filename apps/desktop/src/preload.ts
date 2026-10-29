@@ -196,6 +196,12 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.RECEIVE_PROVIDER_AUTH_CALLBACK_CHANNEL, url),
   cancelProviderAuthCallback: (url: string) =>
     ipcRenderer.invoke(IpcChannels.CANCEL_PROVIDER_AUTH_CALLBACK_CHANNEL, url),
+  receiveLocalhostAuthCallback: (authorizationUrl: string) =>
+    ipcRenderer.invoke(IpcChannels.RECEIVE_LOCALHOST_AUTH_CALLBACK_CHANNEL, authorizationUrl),
+  cancelLocalhostAuthCallback: (authorizationUrl: string) =>
+    ipcRenderer.invoke(IpcChannels.CANCEL_LOCALHOST_AUTH_CALLBACK_CHANNEL, authorizationUrl),
+  readLocalOmpCredentials: () =>
+    ipcRenderer.invoke(IpcChannels.READ_LOCAL_OMP_CREDENTIALS_CHANNEL, undefined),
   openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL_CHANNEL, url),
   checkSystemPermission: (pane: string) =>
     ipcRenderer.invoke(IpcChannels.CHECK_SYSTEM_PERMISSION_CHANNEL, pane),

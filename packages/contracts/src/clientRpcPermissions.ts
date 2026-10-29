@@ -58,6 +58,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.ompLoginRespond]: AuthProvidersManageScope,
   [WS_METHODS.ompLoginCancel]: AuthProvidersManageScope,
   [WS_METHODS.ompLoginSignOut]: AuthProvidersManageScope,
+  // Copies the user's own model credentials to this environment.
+  [WS_METHODS.ompLoginImportCredentials]: AuthProvidersManageScope,
 
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,

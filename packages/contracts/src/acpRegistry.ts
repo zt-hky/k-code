@@ -337,10 +337,27 @@ const OmpLoginProviderId = TrimmedNonEmptyString.check(
 );
 const OmpLoginFlowId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
 
+/**
+ * How a sign-in reaches the user. `device_code` finishes on approval from any device;
+ * `localhost_redirect` returns to `localhost:<port>` on the browser's machine; `app_redirect` to
+ * an installed app; `browser_poll` needs no redirect. Absent: an API key, or not recorded.
+ */
+export const OmpLoginProviderFlow = Schema.Literals([
+  "device_code",
+  "localhost_redirect",
+  "app_redirect",
+  "browser_poll",
+]);
+export type OmpLoginProviderFlow = typeof OmpLoginProviderFlow.Type;
+
 export const OmpLoginProvider = Schema.Struct({
   providerId: OmpLoginProviderId,
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
   authenticated: Schema.Boolean,
+  flow: Schema.optionalKey(OmpLoginProviderFlow),
+  // Another way to sign in to the same service: this entry's `providerId` is a variant of the
+  // service `variantOf` names, so clients offer one service with several ways in.
+  variantOf: Schema.optionalKey(OmpLoginProviderId),
 });
 export type OmpLoginProvider = typeof OmpLoginProvider.Type;
 
@@ -418,6 +435,20 @@ export const OmpLoginSignOutResult = Schema.Struct({
 });
 export type OmpLoginSignOutResult = typeof OmpLoginSignOutResult.Type;
 
+export const OmpLoginImportCredentialsInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  // Write-only: the output of `omp auth export` on the user's computer, API keys and OAuth
+  // refresh tokens included. Passed to `omp auth import -`; never stored, logged or traced.
+  credentials: Schema.String.check(Schema.isMaxLength(1_000_000)),
+});
+export type OmpLoginImportCredentialsInput = typeof OmpLoginImportCredentialsInput.Type;
+
+export const OmpLoginImportCredentialsResult = Schema.Struct({
+  imported: NonNegativeInt,
+  providerIds: Schema.Array(OmpLoginProviderId).check(Schema.isMaxLength(128)),
+});
+export type OmpLoginImportCredentialsResult = typeof OmpLoginImportCredentialsResult.Type;
+
 export const AcpRegistryProbeModel = Schema.Struct({
   id: AcpRegistryProbeText,
   name: AcpRegistryProbeText,
@@ -491,6 +522,7 @@ export const AcpRegistryOperationErrorReason = Schema.Literals([
   "login_failed",
   "login_stale_flow",
   "login_sign_out_failed",
+  "login_import_failed",
 ]);
 export type AcpRegistryOperationErrorReason = typeof AcpRegistryOperationErrorReason.Type;
 

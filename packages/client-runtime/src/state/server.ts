@@ -1541,6 +1541,14 @@ export function createServerEnvironmentAtoms<R, E>(
           `${environmentId}:${input.instanceId}:${input.providerId}`,
       },
     }),
+    importOmpLoginCredentials: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-login:import-credentials",
+      tag: WS_METHODS.ompLoginImportCredentials,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => `${environmentId}:${input.instanceId}`,
+      },
+    }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,

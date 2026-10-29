@@ -4,16 +4,43 @@ import { ProviderInstanceId, type OmpLoginProvider, type OmpLoginState } from "@
 import {
   authorizationHost,
   authorizationUrlToOpen,
+  bridgeDeliveryTarget,
   canSubmitPrompt,
+  chooseLoginWay,
   groupLoginProviders,
+  importedProviderNames,
+  isServiceSignedIn,
   isSignedIn,
+  localhostBridgeUrl,
   loginFlowStep,
+  loginLocality,
   loginPanel,
   needsRefreshAfterSignIn,
+  signOutWays,
 } from "./OmpModelLoginSection.logic";
 
-const provider = (providerId: string, name: string, authenticated = false): OmpLoginProvider =>
-  ({ providerId, name, authenticated }) as OmpLoginProvider;
+const provider = (
+  providerId: string,
+  name: string,
+  authenticated = false,
+  extra: Partial<OmpLoginProvider> = {},
+): OmpLoginProvider => ({ providerId, name, authenticated, ...extra }) as OmpLoginProvider;
+
+const CODEX = provider("openai-codex", "ChatGPT Plus/Pro (Codex Subscription)", false, {
+  flow: "localhost_redirect",
+});
+const CODEX_DEVICE = provider(
+  "openai-codex-device",
+  "ChatGPT Plus/Pro (Codex, headless/device)",
+  false,
+  {
+    flow: "device_code",
+    variantOf: "openai-codex" as never,
+  },
+);
+const ANTHROPIC = provider("anthropic", "Anthropic (Claude Pro/Max)", false, {
+  flow: "localhost_redirect",
+});
 
 const state = (patch: Partial<OmpLoginState>): OmpLoginState => ({
   instanceId: ProviderInstanceId.make("ohmypi"),
@@ -129,5 +156,139 @@ describe("Oh My Pi model provider sign-in view", () => {
   it("names the host of an authorization page", () => {
     expect(authorizationHost("https://github.com/login/device")).toBe("github.com");
     expect(authorizationHost("not a url")).toBeNull();
+  });
+});
+
+describe("choosing how to sign in", () => {
+  const providers = [CODEX, CODEX_DEVICE, ANTHROPIC];
+
+  it("leads with the device code when the browser is not on the server's machine", () => {
+    const remote = chooseLoginWay(CODEX, providers, "remote");
+    expect(remote.primary.providerId).toBe("openai-codex-device");
+    expect(remote.others.map((way) => way.providerId)).toEqual(["openai-codex"]);
+  });
+
+  it("keeps the localhost sign-in primary on the same machine, with the device code as the alternative", () => {
+    const local = chooseLoginWay(CODEX, providers, "same_machine");
+    expect(local.primary.providerId).toBe("openai-codex");
+    expect(local.others.map((way) => way.providerId)).toEqual(["openai-codex-device"]);
+  });
+
+  it("has nothing else to offer a service with a single way, remote or not", () => {
+    expect(chooseLoginWay(ANTHROPIC, providers, "remote")).toEqual({
+      primary: ANTHROPIC,
+      others: [],
+    });
+    const copilot = provider("github-copilot", "GitHub Copilot", false, { flow: "device_code" });
+    expect(chooseLoginWay(copilot, [copilot], "remote").primary).toBe(copilot);
+    expect(chooseLoginWay(copilot, [copilot], "same_machine").primary).toBe(copilot);
+  });
+
+  it("lists a service once, with its variants folded in, and searches them by name", () => {
+    const ids = (list: ReadonlyArray<OmpLoginProvider>) => list.map((entry) => entry.providerId);
+    expect(ids(groupLoginProviders(providers, "", false).popular)).toEqual([
+      "anthropic",
+      "openai-codex",
+    ]);
+    expect(ids(groupLoginProviders(providers, "headless", false).popular)).toEqual([
+      "openai-codex",
+    ]);
+    // A variant whose service is not offered stands alone.
+    expect(ids(groupLoginProviders([CODEX_DEVICE], "", true).others)).toEqual([
+      "openai-codex-device",
+    ]);
+  });
+
+  it("counts a service signed in through any way and signs out of the ones that are", () => {
+    const signedInDevice = { ...CODEX_DEVICE, authenticated: true };
+    const all = [CODEX, signedInDevice];
+    expect(isServiceSignedIn(CODEX, all, null, null)).toBe(true);
+    expect(signOutWays(CODEX, all, null, null).map((way) => way.providerId)).toEqual([
+      "openai-codex-device",
+    ]);
+    expect(signOutWays(CODEX, [CODEX, CODEX_DEVICE], null, null)).toEqual([CODEX]);
+  });
+});
+
+describe("where the browser is", () => {
+  const base = { targetTag: "PrimaryConnectionTarget", hasDesktopBridge: false };
+
+  it("is the server's machine only over loopback from a loopback browser or the desktop app", () => {
+    const local = { ...base, httpBaseUrl: "http://127.0.0.1:13773", browserHostname: "localhost" };
+    expect(loginLocality(local)).toBe("same_machine");
+    expect(
+      loginLocality({ ...local, browserHostname: "agentbox.example.com", hasDesktopBridge: true }),
+    ).toBe("same_machine");
+    expect(loginLocality({ ...local, browserHostname: "agentbox.example.com" })).toBe("remote");
+  });
+
+  it("is remote for any other server address, SSH route or relay", () => {
+    const loopbackBrowser = { ...base, browserHostname: "localhost" };
+    expect(loginLocality({ ...loopbackBrowser, httpBaseUrl: "https://box.example.com" })).toBe(
+      "remote",
+    );
+    expect(loginLocality({ ...loopbackBrowser, httpBaseUrl: null })).toBe("remote");
+    expect(
+      loginLocality({
+        ...loopbackBrowser,
+        targetTag: "SshConnectionTarget",
+        httpBaseUrl: "http://127.0.0.1:50000",
+      }),
+    ).toBe("remote");
+    expect(
+      loginLocality({
+        ...loopbackBrowser,
+        targetTag: "RelayConnectionTarget",
+        httpBaseUrl: "http://localhost:1",
+      }),
+    ).toBe("remote");
+  });
+});
+
+describe("the desktop localhost bridge", () => {
+  const authorizationUrl = `https://claude.ai/oauth/authorize?redirect_uri=${encodeURIComponent(
+    "http://localhost:54545/callback",
+  )}&state=0123456789abcdef`;
+  const waiting = state({
+    phase: "waiting",
+    flowId: "a",
+    kind: "oauth",
+    authorizationUrl,
+    prompt: prompt("Paste the authorization code"),
+  });
+
+  it("listens only for this client's own running sign-in with a localhost redirect, from a remote server", () => {
+    expect(localhostBridgeUrl(waiting, "a", "remote", true)).toBe(authorizationUrl);
+    expect(localhostBridgeUrl(waiting, "a", "same_machine", true)).toBeNull();
+    expect(localhostBridgeUrl(waiting, "a", "remote", false)).toBeNull();
+    expect(localhostBridgeUrl(waiting, "b", "remote", true)).toBeNull();
+    expect(localhostBridgeUrl({ ...waiting, phase: "succeeded" }, "a", "remote", true)).toBeNull();
+    expect(localhostBridgeUrl({ ...waiting, kind: "device_code" }, "a", "remote", true)).toBeNull();
+    expect(
+      localhostBridgeUrl(
+        { ...waiting, authorizationUrl: "https://example.com/auth?x=1" },
+        "a",
+        "remote",
+        true,
+      ),
+    ).toBeNull();
+  });
+
+  it("answers the prompt omp is asking once the redirect was caught", () => {
+    expect(bridgeDeliveryTarget(waiting, { flowId: "a" })).toEqual({ flowId: "a", promptId: "p1" });
+    expect(bridgeDeliveryTarget({ ...waiting, prompt: null }, { flowId: "a" })).toBeNull();
+    expect(bridgeDeliveryTarget(waiting, { flowId: "other" })).toBeNull();
+    expect(bridgeDeliveryTarget(waiting, null)).toBeNull();
+  });
+});
+
+describe("importing local sign-ins", () => {
+  it("names the providers a copy would carry, falling back to their ids", () => {
+    expect(
+      importedProviderNames(
+        ["anthropic", "mystery"],
+        [provider("anthropic", "Anthropic (Claude)")],
+      ),
+    ).toEqual(["Anthropic (Claude)", "mystery"]);
   });
 });

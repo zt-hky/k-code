@@ -49,6 +49,8 @@ export interface OmpChild {
   readonly stderr: Stream.Stream<string>;
   /** Writes whole text to stdin; stdin stays open until the child's scope closes. */
   readonly write: (text: string) => Effect.Effect<void>;
+  /** Ends stdin, for commands that read until end of input. */
+  readonly endInput: Effect.Effect<void>;
   readonly exitCode: Effect.Effect<number>;
 }
 
@@ -82,6 +84,7 @@ export const spawnOmp = Effect.fn("OmpProcess.spawn")(function* (
     stdout: Stream.decodeText(child.stdout).pipe(Stream.orDie),
     stderr: Stream.decodeText(child.stderr).pipe(Stream.orDie),
     write: (text) => Queue.offer(stdin, encoder.encode(text)).pipe(Effect.asVoid),
+    endInput: Queue.end(stdin).pipe(Effect.asVoid),
     exitCode: child.exitCode.pipe(
       Effect.map(Number),
       Effect.orElseSucceed(() => -1),

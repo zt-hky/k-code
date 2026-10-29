@@ -50,6 +50,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.ompLoginRespond,
       WS_METHODS.ompLoginCancel,
       WS_METHODS.ompLoginSignOut,
+      WS_METHODS.ompLoginImportCredentials,
       WS_METHODS.ompLoginSubscribe,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthProvidersManageScope);
