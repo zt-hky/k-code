@@ -14,25 +14,25 @@ export class ServerCliCommandExitError extends Schema.TaggedError<ServerCliComma
   }
 }
 
-export class ServerCliDevelopmentIconSourceMissingError extends Schema.TaggedError<ServerCliDevelopmentIconSourceMissingError>()(
-  "ServerCliDevelopmentIconSourceMissingError",
+export class ServerCliIconSourceMissingError extends Schema.TaggedError<ServerCliIconSourceMissingError>()(
+  "ServerCliIconSourceMissingError",
   {
     sourcePath: Schema.String,
   },
 ) {
   override get message(): string {
-    return `Missing development icon source: ${this.sourcePath}`;
+    return `Missing web icon source: ${this.sourcePath}`;
   }
 }
 
-export class ServerCliDevelopmentIconTargetMissingError extends Schema.TaggedError<ServerCliDevelopmentIconTargetMissingError>()(
-  "ServerCliDevelopmentIconTargetMissingError",
+export class ServerCliIconTargetMissingError extends Schema.TaggedError<ServerCliIconTargetMissingError>()(
+  "ServerCliIconTargetMissingError",
   {
     targetPath: Schema.String,
   },
 ) {
   override get message(): string {
-    return `Missing development icon target: ${this.targetPath}. Build web first.`;
+    return `Missing web icon target: ${this.targetPath}. Build web first.`;
   }
 }
 

@@ -17,6 +17,7 @@ import {
   useRemoteCapableEditors,
   useRemoteOpenHint,
   useRemoteOpenState,
+  useVscodeWebManaged,
   useVscodeWebOpener,
 } from "../../remoteOpen";
 import { useEnvironment } from "../../state/environments";
@@ -233,6 +234,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   const openInEditorMutation = useAtomCommand(shellEnvironment.openInEditor, "open in editor");
   const remote = useRemoteOpenState(environmentId);
   const openVscodeWeb = useVscodeWebOpener(environmentId);
+  const managedVscodeWeb = useVscodeWebManaged(environmentId);
   const canOperateHost = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const isHostEditorDenied = remote.mode === "local-exec" && !canOperateHost;
   const canOpenEditor = remote.mode !== "remote-unavailable" && !isHostEditorDenied;
@@ -290,6 +292,55 @@ export const OpenInPicker = memo(function OpenInPicker({
     openVscodeWeb === null ? null : resolveOpenInOptions(navigator.platform, ["vscode"])[0];
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
   const primaryLabel = isPanel ? `Open in ${primaryOption?.label ?? "editor"}` : "Open";
+
+  if (managedVscodeWeb) {
+    const openManaged = () => {
+      if (openInCwd) openVscodeWeb?.(openInCwd, openInCwdIsFile === true);
+    };
+    const ManagedIcon = resolveOpenInOptions(navigator.platform, ["vscode"])[0]?.Icon;
+    if (presentation === "menu") {
+      return (
+        <MenuItem
+          density="touch"
+          disabled={!openInCwd || openVscodeWeb === null}
+          onClick={openManaged}
+        >
+          {ManagedIcon ? <ManagedIcon aria-hidden="true" className="size-4" /> : null}
+          <MenuItemLabel>Open in VS Code (Web)</MenuItemLabel>
+        </MenuItem>
+      );
+    }
+    return (
+      <ThreadDetailsControl
+        aria-label="Open in VS Code (Web)"
+        size={isPanel ? "sm" : "xs"}
+        variant={isPanel ? "ghost" : "outline"}
+        panel={isPanel}
+        disabled={!openInCwd || openVscodeWeb === null}
+        onClick={() => {
+          openManaged();
+          announce("Opened in VS Code (Web)");
+        }}
+      >
+        {ManagedIcon ? (
+          <ManagedIcon
+            aria-hidden="true"
+            className={isPanel ? THREAD_DETAILS_PANEL_ICON_CLASS : "size-3.5"}
+          />
+        ) : null}
+        <span
+          className={cn(
+            compact
+              ? "sr-only"
+              : "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
+            isPanel && cn("not-sr-only ml-0 min-w-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS),
+          )}
+        >
+          {isPanel ? "Open in VS Code" : "Open"}
+        </span>
+      </ThreadDetailsControl>
+    );
+  }
 
   const editorItems = (
     <>

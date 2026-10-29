@@ -129,12 +129,23 @@ const normalizeServerSettings = (
     ),
   );
 
-export function redactServerSettingsForClient(settings: ServerSettings): ServerSettings {
-  return mapSettingsSecrets(settings, (secret) =>
+export function redactServerSettingsForClient(
+  settings: ServerSettings,
+  managed?: { readonly vscodeWebUrl?: string | undefined },
+): ServerSettings {
+  const redacted = mapSettingsSecrets(settings, (secret) =>
     secret.sensitive
       ? { value: "", redacted: secret.redacted || secret.value.length > 0 }
       : { value: secret.value, redacted: false },
   );
+  return managed?.vscodeWebUrl === undefined
+    ? redacted
+    : {
+        ...redacted,
+        vscodeWebUrl: managed.vscodeWebUrl,
+        remoteOpenSshHost: "",
+        remoteOpenSshUser: "",
+      };
 }
 
 export function applyProviderInstanceMutation(

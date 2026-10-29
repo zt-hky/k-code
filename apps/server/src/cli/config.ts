@@ -164,6 +164,28 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  instanceName: Config.String("T3CODE_INSTANCE_NAME").pipe(
+    Config.option,
+    Config.map((value) =>
+      Option.getOrUndefined(
+        Option.filter(
+          Option.map(value, (v) => v.trim()),
+          (v) => v.length > 0,
+        ),
+      ),
+    ),
+  ),
+  vscodeWebUrl: Config.String("T3CODE_VSCODE_WEB_URL").pipe(
+    Config.option,
+    Config.map((value) =>
+      Option.getOrUndefined(
+        Option.filter(
+          Option.map(value, (v) => v.trim()),
+          (v) => v.length > 0,
+        ),
+      ),
+    ),
+  ),
 });
 
 const DevAuthTokenConfig = Config.Redacted("T3CODE_DEV_AUTH_TOKEN").pipe(
@@ -505,6 +527,8 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     logWebSocketEvents,
     tailscaleServeEnabled,
     tailscaleServePort,
+    ...(env.instanceName === undefined ? {} : { instanceName: env.instanceName }),
+    ...(env.vscodeWebUrl === undefined ? {} : { managedVscodeWebUrl: env.vscodeWebUrl }),
   };
 
   return config;

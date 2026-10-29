@@ -82,6 +82,10 @@ const NATIVE_INSTALL_COMMANDS = {
     windows: "irm https://chatgpt.com/codex/install.ps1 | iex",
     posix: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
   },
+  ohmypi: {
+    windows: "npm install -g @oh-my-pi/pi-coding-agent@latest",
+    posix: "curl -fsSL https://omp.sh/install | sh",
+  },
 } as const;
 
 export function resolveOnboardingProviderInstallCommand(

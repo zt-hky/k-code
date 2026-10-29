@@ -630,6 +630,13 @@ export const ServerConfig = Schema.Struct({
   directEndpoints: Schema.optionalKey(ForwardCompatibleArray(ServerDirectEndpoint)),
   observability: ServerObservability,
   settings: ServerSettings,
+  /** Operator-assigned name of this server (T3CODE_INSTANCE_NAME), shown in the page title. */
+  instanceName: Schema.optionalKey(TrimmedNonEmptyString),
+  /**
+   * Set when the operator pins VS Code to a web instance (T3CODE_VSCODE_WEB_URL): `settings.vscodeWebUrl`
+   * is that URL, and SSH remote open and desktop editors are not offered for this environment.
+   */
+  managedVscodeWebUrl: Schema.optionalKey(TrimmedNonEmptyString),
   shellResumeCompletionMarker: Schema.optionalKey(Schema.Boolean),
   /**
    * The shell can leave idle subagent children out of snapshots (`omitIdleSubagents`), and

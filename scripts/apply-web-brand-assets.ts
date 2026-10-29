@@ -10,15 +10,10 @@ import { Argument, Command, Flag } from "effect/cli";
 import {
   resolveWebAssetBrandForChannel,
   resolveWebIconOverrides,
+  WEB_ASSET_BRANDS,
   WEB_ASSET_CHANNELS,
   type WebAssetBrand,
 } from "./lib/brand-assets.ts";
-
-const WEB_ASSET_BRANDS = [
-  "development",
-  "nightly",
-  "production",
-] as const satisfies ReadonlyArray<WebAssetBrand>;
 
 export const applyWebBrandAssets = Effect.fn("applyWebBrandAssets")(function* (
   brand: WebAssetBrand,

@@ -33,6 +33,12 @@ export const BRAND_ASSET_PATHS = {
 
 export type WebAssetBrand = "development" | "nightly" | "production";
 
+export const WEB_ASSET_BRANDS = [
+  "development",
+  "nightly",
+  "production",
+] as const satisfies ReadonlyArray<WebAssetBrand>;
+
 export const WEB_ASSET_CHANNELS = ["latest", "nightly"] as const;
 
 export type WebAssetChannel = (typeof WEB_ASSET_CHANNELS)[number];
@@ -98,8 +104,6 @@ export function resolveWebIconOverrides(
     },
   ];
 }
-
-export const DEVELOPMENT_ICON_OVERRIDES = resolveWebIconOverrides("development", "dist/client");
 
 export const DEVELOPMENT_PUBLIC_ICON_OVERRIDES = resolveWebIconOverrides(
   "development",
