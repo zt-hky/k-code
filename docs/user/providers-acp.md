@@ -76,6 +76,15 @@ If an agent cannot complete its advertised flow remotely, its CLI remains availa
 server. For example, Codex supports `codex login --device-auth`, and Grok Build supports
 `grok login --device-auth`.
 
+### Oh My Pi model providers
+
+Oh My Pi signs in to each model service separately. Open **Settings → Providers → Oh My Pi**,
+find **Model providers**, and choose **Show providers**. **Sign in** opens the service's page on
+your device. When the service redirects to a `localhost` page that does not load, which happens
+whenever the server is remote, copy that page's full address into the field in Settings. Device
+codes and API keys are entered the same way. **Sign out** removes the stored credentials from the
+environment; if an environment variable still provides a key, Settings says so.
+
 ## Models and options
 
 The model picker lists the models the agent reports. If the agent reports none, or hides some, add

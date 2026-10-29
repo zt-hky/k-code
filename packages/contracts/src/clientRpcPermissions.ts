@@ -5,6 +5,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
+  AuthProvidersManageScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
   AuthTerminalOperateScope,
@@ -52,6 +53,11 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,
   [WS_METHODS.serverImportAcpRegistrySession]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverDeleteAcpRegistrySession]: AuthOrchestrationOperateScope,
+  // Signing in or out changes the model credentials every Oh My Pi session on this environment uses.
+  [WS_METHODS.ompLoginStart]: AuthProvidersManageScope,
+  [WS_METHODS.ompLoginRespond]: AuthProvidersManageScope,
+  [WS_METHODS.ompLoginCancel]: AuthProvidersManageScope,
+  [WS_METHODS.ompLoginSignOut]: AuthProvidersManageScope,
 
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,

@@ -1431,6 +1431,23 @@ export const layerWsRpc = (
         return { instance, manager: instance.acpSessionManagement };
       });
 
+      const ompLogin = Effect.fn("ws.ompLogin.resolve")(function* (instanceId: ProviderInstanceId) {
+        const instance = yield* providerInstances.getInstance(instanceId);
+        if (instance === undefined) {
+          return yield* new AcpRegistryOperationError({
+            reason: "instance_not_found",
+            message: `Provider instance ${instanceId} was not found.`,
+          });
+        }
+        if (instance.modelProviderLogin === undefined) {
+          return yield* new AcpRegistryOperationError({
+            reason: "login_unsupported",
+            message: `Provider instance ${instanceId} has no model provider sign-in.`,
+          });
+        }
+        return instance.modelProviderLogin;
+      });
+
       const importedAcpThreadId = (input: {
         readonly driver: ProviderDriverKind;
         readonly instanceId: ProviderInstanceId;
@@ -2315,6 +2332,47 @@ export const layerWsRpc = (
             "provider.instance_id": input.instanceId,
             "project.id": input.projectId,
           }).pipe(Effect.andThen(disableAcpRegistryProvider(input))),
+        [WS_METHODS.ompLoginListProviders]: (input) =>
+          Effect.annotateCurrentSpan({ "provider.instance_id": input.instanceId }).pipe(
+            Effect.andThen(ompLogin(input.instanceId)),
+            Effect.flatMap((login) => login.listProviders),
+            Effect.map((providers) => ({ providers })),
+          ),
+        [WS_METHODS.ompLoginStart]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "omp_login.provider_id": input.providerId,
+          }).pipe(
+            Effect.andThen(ompLogin(input.instanceId)),
+            Effect.flatMap((login) => login.start(input.providerId)),
+          ),
+        // The pasted value is a code or key: it never reaches a span attribute.
+        [WS_METHODS.ompLoginRespond]: (input) =>
+          Effect.annotateCurrentSpan({ "provider.instance_id": input.instanceId }).pipe(
+            Effect.andThen(ompLogin(input.instanceId)),
+            Effect.flatMap((login) =>
+              login.respond({
+                flowId: input.flowId,
+                promptId: input.promptId,
+                value: input.value,
+              }),
+            ),
+          ),
+        [WS_METHODS.ompLoginCancel]: (input) =>
+          Effect.annotateCurrentSpan({ "provider.instance_id": input.instanceId }).pipe(
+            Effect.andThen(ompLogin(input.instanceId)),
+            Effect.flatMap((login) => login.cancel(input.flowId)),
+          ),
+        [WS_METHODS.ompLoginSignOut]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "omp_login.provider_id": input.providerId,
+          }).pipe(
+            Effect.andThen(ompLogin(input.instanceId)),
+            Effect.flatMap((login) => login.signOut(input.providerId)),
+          ),
+        [WS_METHODS.ompLoginSubscribe]: (input) =>
+          Stream.unwrap(ompLogin(input.instanceId).pipe(Effect.map((login) => login.state))),
         [WS_METHODS.serverLogoutAcpRegistry]: (input) =>
           Effect.annotateCurrentSpan({ "provider.instance_id": input.instanceId }).pipe(
             Effect.andThen(

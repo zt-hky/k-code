@@ -17,6 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
+import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Path from "effect/Path";
@@ -42,6 +43,7 @@ import {
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import { ompMaintenance } from "./ompMaintenance.ts";
+import { makeOmpLogin } from "./ompLogin.ts";
 import {
   haveProviderSnapshotSettingsChanged,
   makeProviderSnapshotSettingsSource,
@@ -248,7 +250,9 @@ function baseSnapshot(
             : input.settings.agentId.length > 0),
     },
     ...(input.message ? { message: input.message } : {}),
-    ...(agentId === OMP_AGENT_ID ? { showInteractionModeToggle: true } : {}),
+    ...(agentId === OMP_AGENT_ID
+      ? { showInteractionModeToggle: true, modelProviderLogin: true }
+      : {}),
     models: modelsFromDiscovery(input.probe?.probe, input.settings.customModels, agentId),
     ...(input.probe === undefined
       ? {}
@@ -895,6 +899,33 @@ export const AcpRegistryDriver: ProviderDriver<
       ),
     };
 
+    const instanceScope = yield* Scope.Scope;
+    const modelProviderLogin =
+      registryAgentId(effectiveConfig) === OMP_AGENT_ID
+        ? yield* makeOmpLogin({
+            instanceId,
+            resolveSpawn: catalog.resolve(effectiveConfig, host.paths.cwd, processEnvironment).pipe(
+              Effect.map(({ spawn }) => ({
+                command: spawn.command,
+                env: spawn.env ?? processEnvironment,
+                cwd: host.paths.cwd,
+              })),
+              Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError),
+            ),
+            // A probe takes seconds; the login result must not wait for it.
+            onCredentialsChanged: clearLiveState.pipe(
+              Effect.andThen(liveSnapshotSemaphore.withPermit(invalidateEnrichmentCache)),
+              Effect.andThen(snapshot.refresh),
+              Effect.asVoid,
+              Effect.forkIn(instanceScope),
+              Effect.asVoid,
+            ),
+          }).pipe(
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+            Effect.provideService(Crypto.Crypto, crypto),
+          )
+        : undefined;
+
     return {
       instanceId,
       driverKind: DRIVER_KIND,
@@ -909,6 +940,7 @@ export const AcpRegistryDriver: ProviderDriver<
       },
       orchestrationAdapter,
       textGeneration: makeUnsupportedTextGeneration(),
+      ...(modelProviderLogin === undefined ? {} : { modelProviderLogin }),
       acpSessionManagement: {
         listSessions: ({ cwd, cursor }) =>
           provideAcpManagementServices(

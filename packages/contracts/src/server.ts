@@ -242,6 +242,7 @@ export const ServerProvider = Schema.Struct({
   ),
   configurableProviders: Schema.optional(Schema.Boolean),
   manageableExtensions: Schema.optional(Schema.Boolean),
+  modelProviderLogin: Schema.optional(Schema.Boolean),
   runtimePaths: Schema.optionalKey(
     Schema.Struct({
       homePath: TrimmedNonEmptyString,

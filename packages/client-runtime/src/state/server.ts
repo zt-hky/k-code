@@ -1503,6 +1503,44 @@ export function createServerEnvironmentAtoms<R, E>(
         key: ({ environmentId, input }) => `${environmentId}:${input.instanceId}`,
       },
     }),
+    ompLoginState: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:omp-login:state",
+      tag: WS_METHODS.ompLoginSubscribe,
+      idleTtlMs: 0,
+    }),
+    listOmpLoginProviders: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-login:list-providers",
+      tag: WS_METHODS.ompLoginListProviders,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => `${environmentId}:${input.instanceId}`,
+      },
+    }),
+    startOmpLogin: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-login:start",
+      tag: WS_METHODS.ompLoginStart,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => `${environmentId}:${input.instanceId}`,
+      },
+    }),
+    respondOmpLogin: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-login:respond",
+      tag: WS_METHODS.ompLoginRespond,
+    }),
+    cancelOmpLogin: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-login:cancel",
+      tag: WS_METHODS.ompLoginCancel,
+    }),
+    signOutOmpLogin: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-login:sign-out",
+      tag: WS_METHODS.ompLoginSignOut,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          `${environmentId}:${input.instanceId}:${input.providerId}`,
+      },
+    }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,

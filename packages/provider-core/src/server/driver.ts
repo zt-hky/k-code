@@ -8,6 +8,9 @@ import type {
   AcpRegistrySetExtensionSourceResult,
   AcpRegistryOperationError,
   AcpRegistrySetProviderInput,
+  OmpLoginProvider,
+  OmpLoginSignOutResult,
+  OmpLoginState,
   ProviderDriverKind,
   ProviderInstanceEnvironment,
   ProviderInstanceId,
@@ -17,6 +20,7 @@ import type {
 import type * as Effect from "effect/Effect";
 import type * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
+import type * as Stream from "effect/Stream";
 
 import type * as ProviderAdapter from "./ProviderAdapter.ts";
 import type { ProviderAuthController } from "./auth.ts";
@@ -34,6 +38,22 @@ export interface ProviderDriverMetadata {
 
 export type ProviderWorkspaceSnapshot = ServerProvider &
   Pick<ServerProviderWorkspaceSnapshot, "slashCommandsPending" | "optionDescriptors">;
+
+/** Signing in to the model providers behind an agent that has its own login command. */
+export interface ProviderModelLogin {
+  readonly listProviders: Effect.Effect<ReadonlyArray<OmpLoginProvider>, AcpRegistryOperationError>;
+  readonly start: (providerId: string) => Effect.Effect<OmpLoginState, AcpRegistryOperationError>;
+  readonly respond: (input: {
+    readonly flowId: string;
+    readonly promptId: string;
+    readonly value: string;
+  }) => Effect.Effect<OmpLoginState, AcpRegistryOperationError>;
+  readonly cancel: (flowId: string) => Effect.Effect<OmpLoginState, AcpRegistryOperationError>;
+  readonly signOut: (
+    providerId: string,
+  ) => Effect.Effect<OmpLoginSignOutResult, AcpRegistryOperationError>;
+  readonly state: Stream.Stream<OmpLoginState>;
+}
 
 export interface ProviderInstance {
   readonly instanceId: ProviderInstanceId;
@@ -90,6 +110,7 @@ export interface ProviderInstance {
       readonly enabled: boolean;
     }) => Effect.Effect<AcpRegistrySetExtensionSourceResult, AcpRegistryOperationError>;
   };
+  readonly modelProviderLogin?: ProviderModelLogin;
 }
 
 export interface ProviderContinuationIdentity {

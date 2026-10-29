@@ -5,6 +5,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
 import { Button } from "../ui/button";
 import { WizardFooter, WizardPanel } from "../ui/wizard";
+import { OmpModelLoginSection } from "./OmpModelLoginSection";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { SettingsGroup } from "./SettingsGroup";
 import { SettingsRow } from "./settingsLayout";
@@ -83,6 +84,13 @@ export function ProviderWizardAuthenticationStep({
               }
             />
           )}
+          {provider?.modelProviderLogin === true ? (
+            <OmpModelLoginSection
+              environmentId={environmentId}
+              instanceId={instanceId}
+              readOnly={false}
+            />
+          ) : null}
         </SettingsGroup>
       </WizardPanel>
       <WizardFooter>
