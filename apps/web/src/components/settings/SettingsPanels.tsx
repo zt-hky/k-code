@@ -67,6 +67,7 @@ import { providerInstanceEntriesFor } from "../../providerInstances";
 import { ensureLocalApi, readLocalApi } from "../../localApi";
 import { isMacPlatform } from "../../lib/utils";
 import { useEnvironmentProviders, useEnvironments } from "../../state/environments";
+import { useVscodeWebManaged } from "../../remoteOpen";
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
@@ -1525,6 +1526,7 @@ export function ThreadsSettingsPanel() {
   const { environment, connectedEnvironments, target, scope } = useSettingsScope();
   const isProjectScope = scope.kind === "project" || scope.kind === "checkout";
   const environmentId = environment?.environmentId ?? null;
+  const managedVscodeWeb = useVscodeWebManaged(environmentId);
   const hasServerTargets = connectedEnvironments.length > 0;
   const mixedResponseStreamingMode = useScopedSettingsMixed(["responseStreamingMode"]);
   const providersByEnvironment = useEnvironmentProviders();
@@ -1612,108 +1614,135 @@ export function ThreadsSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="remote-editor" title="Open in editor">
-        <SettingsRow
-          {...searchableSetting("vscode-web-enabled")}
-          description='Show "VS Code (Web)" next to VS Code in Open in menus, opening VS Code for the Web at the URL below. Saved per device.'
-          resetAction={
-            settings.vscodeWebEnabled !== DEFAULT_UNIFIED_SETTINGS.vscodeWebEnabled ? (
-              <SettingResetButton
-                label="VS Code (Web)"
-                onClick={() =>
-                  updateSettings({ vscodeWebEnabled: DEFAULT_UNIFIED_SETTINGS.vscodeWebEnabled })
-                }
+        {managedVscodeWeb ? (
+          <SettingsRow
+            {...searchableSetting("vscode-web-url")}
+            description="VS Code for the Web is managed by this environment. Open in menus go straight to it; SSH and desktop editors are not used here."
+            control={
+              <Input
+                size="sm"
+                className="w-full sm:w-72"
+                value={settings.vscodeWebUrl}
+                readOnly
+                spellCheck={false}
+                aria-label="VS Code web URL (managed)"
               />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.vscodeWebEnabled}
-              onCheckedChange={(checked) => updateSettings({ vscodeWebEnabled: Boolean(checked) })}
-              aria-label="Show VS Code (Web)"
+            }
+          />
+        ) : (
+          <>
+            <SettingsRow
+              {...searchableSetting("vscode-web-enabled")}
+              description='Show "VS Code (Web)" next to VS Code in Open in menus, opening VS Code for the Web at the URL below. Saved per device.'
+              resetAction={
+                settings.vscodeWebEnabled !== DEFAULT_UNIFIED_SETTINGS.vscodeWebEnabled ? (
+                  <SettingResetButton
+                    label="VS Code (Web)"
+                    onClick={() =>
+                      updateSettings({
+                        vscodeWebEnabled: DEFAULT_UNIFIED_SETTINGS.vscodeWebEnabled,
+                      })
+                    }
+                  />
+                ) : null
+              }
+              control={
+                <Switch
+                  checked={settings.vscodeWebEnabled}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ vscodeWebEnabled: Boolean(checked) })
+                  }
+                  aria-label="Show VS Code (Web)"
+                />
+              }
             />
-          }
-        />
-        <SettingsRow
-          serverScoped
-          settingKeys={["vscodeWebUrl"]}
-          {...searchableSetting("vscode-web-url")}
-          description='Address of VS Code for the Web running on this environment, such as code serve-web or code-server. "VS Code (Web)" appears only when this is set.'
-          resetAction={
-            settings.vscodeWebUrl !== DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl ? (
-              <SettingResetButton
-                label="VS Code web URL"
-                onClick={() =>
-                  updateSettings({ vscodeWebUrl: DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl })
-                }
-              />
-            ) : null
-          }
-          control={
-            <DraftInput
-              size="sm"
-              className="w-full sm:w-72"
-              value={settings.vscodeWebUrl}
-              onCommit={(next) => updateSettings({ vscodeWebUrl: next })}
-              placeholder="https://code.example.com"
-              spellCheck={false}
-              aria-label="VS Code web URL"
+            <SettingsRow
+              serverScoped
+              settingKeys={["vscodeWebUrl"]}
+              {...searchableSetting("vscode-web-url")}
+              description='Address of VS Code for the Web running on this environment, such as code serve-web or code-server. "VS Code (Web)" appears only when this is set.'
+              resetAction={
+                settings.vscodeWebUrl !== DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl ? (
+                  <SettingResetButton
+                    label="VS Code web URL"
+                    onClick={() =>
+                      updateSettings({ vscodeWebUrl: DEFAULT_UNIFIED_SETTINGS.vscodeWebUrl })
+                    }
+                  />
+                ) : null
+              }
+              control={
+                <DraftInput
+                  size="sm"
+                  className="w-full sm:w-72"
+                  value={settings.vscodeWebUrl}
+                  onCommit={(next) => updateSettings({ vscodeWebUrl: next })}
+                  placeholder="https://code.example.com"
+                  spellCheck={false}
+                  aria-label="VS Code web URL"
+                />
+              }
             />
-          }
-        />
-        <SettingsRow
-          serverScoped
-          settingKeys={["remoteOpenSshHost"]}
-          {...searchableSetting("remote-open-ssh-host")}
-          description="Host or IP your editor connects to over SSH when opening files from another device. Leave empty to use the detected Tailscale or local network name."
-          resetAction={
-            settings.remoteOpenSshHost !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost ? (
-              <SettingResetButton
-                label="SSH host"
-                onClick={() =>
-                  updateSettings({ remoteOpenSshHost: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost })
-                }
-              />
-            ) : null
-          }
-          control={
-            <DraftInput
-              size="sm"
-              className="w-full sm:w-72"
-              value={settings.remoteOpenSshHost}
-              onCommit={(next) => updateSettings({ remoteOpenSshHost: next })}
-              placeholder="Detected automatically"
-              spellCheck={false}
-              aria-label="SSH host"
+            <SettingsRow
+              serverScoped
+              settingKeys={["remoteOpenSshHost"]}
+              {...searchableSetting("remote-open-ssh-host")}
+              description="Host or IP your editor connects to over SSH when opening files from another device. Leave empty to use the detected Tailscale or local network name."
+              resetAction={
+                settings.remoteOpenSshHost !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost ? (
+                  <SettingResetButton
+                    label="SSH host"
+                    onClick={() =>
+                      updateSettings({
+                        remoteOpenSshHost: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshHost,
+                      })
+                    }
+                  />
+                ) : null
+              }
+              control={
+                <DraftInput
+                  size="sm"
+                  className="w-full sm:w-72"
+                  value={settings.remoteOpenSshHost}
+                  onCommit={(next) => updateSettings({ remoteOpenSshHost: next })}
+                  placeholder="Detected automatically"
+                  spellCheck={false}
+                  aria-label="SSH host"
+                />
+              }
             />
-          }
-        />
-        <SettingsRow
-          serverScoped
-          settingKeys={["remoteOpenSshUser"]}
-          {...searchableSetting("remote-open-ssh-user")}
-          description="SSH user for that host. Leave empty to use the user running T3 Code."
-          resetAction={
-            settings.remoteOpenSshUser !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser ? (
-              <SettingResetButton
-                label="SSH user"
-                onClick={() =>
-                  updateSettings({ remoteOpenSshUser: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser })
-                }
-              />
-            ) : null
-          }
-          control={
-            <DraftInput
-              size="sm"
-              className="w-full sm:w-72"
-              value={settings.remoteOpenSshUser}
-              onCommit={(next) => updateSettings({ remoteOpenSshUser: next })}
-              placeholder="Server user"
-              spellCheck={false}
-              aria-label="SSH user"
+            <SettingsRow
+              serverScoped
+              settingKeys={["remoteOpenSshUser"]}
+              {...searchableSetting("remote-open-ssh-user")}
+              description="SSH user for that host. Leave empty to use the user running T3 Code."
+              resetAction={
+                settings.remoteOpenSshUser !== DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser ? (
+                  <SettingResetButton
+                    label="SSH user"
+                    onClick={() =>
+                      updateSettings({
+                        remoteOpenSshUser: DEFAULT_UNIFIED_SETTINGS.remoteOpenSshUser,
+                      })
+                    }
+                  />
+                ) : null
+              }
+              control={
+                <DraftInput
+                  size="sm"
+                  className="w-full sm:w-72"
+                  value={settings.remoteOpenSshUser}
+                  onCommit={(next) => updateSettings({ remoteOpenSshUser: next })}
+                  placeholder="Server user"
+                  spellCheck={false}
+                  aria-label="SSH user"
+                />
+              }
             />
-          }
-        />
+          </>
+        )}
       </SettingsSection>
 
       <ProjectDefaultsSettings category="general" />

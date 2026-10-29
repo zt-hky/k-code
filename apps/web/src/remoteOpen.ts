@@ -225,13 +225,22 @@ export function buildVscodeWebUrl(
   return url.toString();
 }
 
+/** True when the server pins VS Code to one web instance, leaving no SSH or desktop editor routes. */
+export function useVscodeWebManaged(environmentId: EnvironmentId | null): boolean {
+  return (
+    useAtomValue(serverEnvironment.configValueAtom(environmentId))?.managedVscodeWebUrl !==
+    undefined
+  );
+}
+
 /** Opener for "VS Code (Web)", or null when it is turned off or the environment has no URL. */
 export function useVscodeWebOpener(
   environmentId: EnvironmentId | null,
 ): ((absolutePath: string, isFile: boolean) => boolean) | null {
-  const enabled = useClientSettings((settings) => settings.vscodeWebEnabled);
-  const baseUrl =
-    useAtomValue(serverEnvironment.configValueAtom(environmentId))?.settings.vscodeWebUrl ?? "";
+  const clientEnabled = useClientSettings((settings) => settings.vscodeWebEnabled);
+  const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
+  const enabled = clientEnabled || config?.managedVscodeWebUrl !== undefined;
+  const baseUrl = config?.settings.vscodeWebUrl ?? "";
   if (!enabled || baseUrl.length === 0) return null;
   return (absolutePath, isFile) => {
     const url = buildVscodeWebUrl(baseUrl, absolutePath, isFile);

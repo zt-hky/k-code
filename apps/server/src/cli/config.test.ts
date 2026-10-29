@@ -684,6 +684,48 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
+  it.effect("reads the instance name and managed VS Code web URL from the environment", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-managed-base");
+
+      const resolve = (env: Record<string, string>) =>
+        resolveServerConfig(
+          {
+            mode: Option.some("web"),
+            port: Option.some(3773),
+            host: Option.none(),
+            baseDir: Option.some(baseDir),
+            cwd: Option.none(),
+            devUrl: Option.none(),
+            noBrowser: Option.none(),
+            bootstrapFd: Option.none(),
+            autoBootstrapProjectFromCwd: Option.none(),
+            logWebSocketEvents: Option.none(),
+            tailscaleServeEnabled: Option.none(),
+            tailscaleServePort: Option.none(),
+          },
+          Option.none(),
+          { startupPresentation: "headless" },
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(ConfigProvider.layer(ConfigProvider.fromEnv({ env })), NetService.layer),
+          ),
+        );
+
+      const managed = yield* resolve({
+        T3CODE_INSTANCE_NAME: " alice ",
+        T3CODE_VSCODE_WEB_URL: "https://alice-code.agentbox.io.vn",
+      });
+      expect(managed.instanceName).toBe("alice");
+      expect(managed.managedVscodeWebUrl).toBe("https://alice-code.agentbox.io.vn");
+
+      const blank = yield* resolve({ T3CODE_INSTANCE_NAME: "  ", T3CODE_VSCODE_WEB_URL: "" });
+      expect(blank.instanceName).toBeUndefined();
+      expect(blank.managedVscodeWebUrl).toBeUndefined();
+    }),
+  );
+
   it.effect("keeps whitespace-separated pairs and literal equals signs in OTLP headers", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;

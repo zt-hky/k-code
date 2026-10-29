@@ -9,7 +9,11 @@ import * as Path from "effect/Path";
 import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { DEVELOPMENT_ICON_OVERRIDES } from "../../../scripts/lib/brand-assets.ts";
+import {
+  resolveWebIconOverrides,
+  WEB_ASSET_BRANDS,
+  type WebAssetBrand,
+} from "../../../scripts/lib/brand-assets.ts";
 import { findEsmImportsOfExternalPackages } from "../../../scripts/lib/cli-executable-imports.ts";
 import { injectLinuxArm64Sea } from "../../../scripts/lib/linux-arm64-sea.ts";
 import rootPackageJson from "../../../package.json" with { type: "json" };
@@ -18,8 +22,8 @@ import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import {
   ServerCliBuildAssetMissingError,
   ServerCliCommandExitError,
-  ServerCliDevelopmentIconSourceMissingError,
-  ServerCliDevelopmentIconTargetMissingError,
+  ServerCliIconSourceMissingError,
+  ServerCliIconTargetMissingError,
   ServerCliExecutableImportError,
 } from "./cliErrors.ts";
 
@@ -42,34 +46,41 @@ const runCommand = Effect.fn("runCommand")(function* (command: ChildProcess.Stan
   }
 });
 
-const applyDevelopmentIconOverrides = Effect.fn("applyDevelopmentIconOverrides")(function* (
+const applyWebIconOverrides = Effect.fn("applyWebIconOverrides")(function* (
   repoRoot: string,
   serverDir: string,
+  brand: WebAssetBrand,
 ) {
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
 
-  for (const override of DEVELOPMENT_ICON_OVERRIDES) {
+  for (const override of resolveWebIconOverrides(brand, "dist/client")) {
     const sourcePath = path.join(repoRoot, override.sourceRelativePath);
     const targetPath = path.join(serverDir, override.targetRelativePath);
 
     if (!(yield* fs.exists(sourcePath))) {
-      return yield* new ServerCliDevelopmentIconSourceMissingError({ sourcePath });
+      return yield* new ServerCliIconSourceMissingError({ sourcePath });
     }
     if (!(yield* fs.exists(targetPath))) {
-      return yield* new ServerCliDevelopmentIconTargetMissingError({ targetPath });
+      return yield* new ServerCliIconTargetMissingError({ targetPath });
     }
 
     yield* fs.copyFile(sourcePath, targetPath);
   }
 
-  yield* Effect.log("[cli] Applied development icon overrides to dist/client");
+  yield* Effect.log(`[cli] Applied ${brand} icon overrides to dist/client`);
 });
 
 const buildCmd = Command.make(
   "build",
   {
     verbose: Flag.Boolean("verbose").pipe(Flag.withDefault(false)),
+    brand: Flag.Literals("brand", WEB_ASSET_BRANDS).pipe(
+      Flag.withDescription(
+        "Favicon and apple-touch brand written into dist/client. Defaults to production (black logo).",
+      ),
+      Flag.withDefault("production"),
+    ),
   },
   (config) =>
     Effect.gen(function* () {
@@ -93,7 +104,7 @@ const buildCmd = Command.make(
 
       if (yield* fs.exists(webDist)) {
         yield* fs.copy(webDist, clientTarget);
-        yield* applyDevelopmentIconOverrides(repoRoot, serverDir);
+        yield* applyWebIconOverrides(repoRoot, serverDir, config.brand);
         yield* Effect.log("[cli] Bundled web app into dist/client");
       } else {
         yield* Effect.logWarning("[cli] Web dist not found. Skipping client bundle.");

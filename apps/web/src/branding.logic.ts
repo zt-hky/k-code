@@ -36,3 +36,11 @@ export function resolveServerBackedAppDisplayName(input: {
     ? input.fallbackDisplayName
     : formatAppDisplayName({ baseName: input.baseName, stageLabel });
 }
+
+export function withInstanceName(
+  displayName: string,
+  instanceName: string | null | undefined,
+): string {
+  const name = instanceName?.trim();
+  return name ? `${displayName} | ${name}` : displayName;
+}

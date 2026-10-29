@@ -31,6 +31,7 @@ import {
   supportsSharedSettingsSync,
 } from "@t3tools/client-runtime/state/shared-settings";
 import { ensureLocalApi } from "~/localApi";
+import { BUILD_CLIENT_SETTINGS_DEFAULTS } from "~/clientSettingsDefaults";
 import {
   getThemeDefinition,
   getThemePreviewSidebarArtwork,
@@ -151,6 +152,11 @@ async function hydrateClientSettings(): Promise<void> {
       }
       if (persistedSettings) {
         replaceClientSettingsSnapshot({ ...DEFAULT_CLIENT_SETTINGS, ...persistedSettings });
+      } else if (Object.keys(BUILD_CLIENT_SETTINGS_DEFAULTS).length > 0) {
+        replaceClientSettingsSnapshot({
+          ...DEFAULT_CLIENT_SETTINGS,
+          ...BUILD_CLIENT_SETTINGS_DEFAULTS,
+        });
       }
       setClientSettingsHydrationStatus("ready");
     } catch (error) {

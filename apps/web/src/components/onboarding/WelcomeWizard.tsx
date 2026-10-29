@@ -76,6 +76,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { connectPairing } from "../../connection/onboarding";
 import { getProviderSummary } from "../settings/providerStatus";
 import { providerClients } from "../settings/providerDriverMeta";
+import { OmpModelLoginDialog } from "../settings/OmpModelLoginDialog";
 import { ChatGptWelcomeCoordinator } from "../settings/ChatGptWelcomeCoordinator";
 import { AddManagedCodexAccountDialog, CodexSetupSection } from "../settings/CodexSetupSection";
 import { readCodexSetupMode } from "../settings/CodexSetupSection.logic";
@@ -651,7 +652,7 @@ function PairingForm({
   );
 }
 
-const PRIMARY_AGENT_DRIVERS = ["codex", "claudeAgent"] as const;
+const PRIMARY_AGENT_DRIVERS = ["codex", "claudeAgent", "ohmypi"] as const;
 type OnboardingAgentDriver = (typeof PRIMARY_AGENT_DRIVERS)[number];
 
 interface AgentTerminalSession {
@@ -713,6 +714,7 @@ function ConnectedAgentsStep({
   });
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const [terminalSession, setTerminalSession] = useState<AgentTerminalSession | null>(null);
+  const [ompLoginOpen, setOmpLoginOpen] = useState(false);
   const [addingAccount, setAddingAccount] = useState(false);
   const [createdAccount, setCreatedAccount] = useState<{
     instanceId: ProviderInstanceId;
@@ -801,6 +803,11 @@ function ConnectedAgentsStep({
               provider={provider}
               terminalOpen={terminalSession?.driver === driver}
               terminalAvailable={serverConfig !== null && canOperateTerminal}
+              onSignIn={
+                driver === "ohmypi" && provider !== undefined
+                  ? () => setOmpLoginOpen(true)
+                  : undefined
+              }
               onOpenTerminal={() => {
                 if (
                   provider === undefined ||
@@ -847,6 +854,17 @@ function ConnectedAgentsStep({
           onAccountCreated={(instanceId, displayName) =>
             setCreatedAccount({ instanceId, displayName, autoStart: true })
           }
+        />
+      ) : null}
+      {ompLoginOpen && byDriver.get("ohmypi") !== undefined ? (
+        <OmpModelLoginDialog
+          environmentId={environmentId}
+          instanceId={byDriver.get("ohmypi")!.instanceId}
+          open={ompLoginOpen}
+          onOpenChange={(open) => {
+            setOmpLoginOpen(open);
+            if (!open) void refreshProviders({ environmentId, input: {} });
+          }}
         />
       ) : null}
       {terminalSession !== null ? (
@@ -953,12 +971,14 @@ function AgentCard({
   provider,
   terminalOpen,
   terminalAvailable,
+  onSignIn,
   onOpenTerminal,
 }: {
   readonly driver: OnboardingAgentDriver;
   readonly provider: ServerProvider | undefined;
   readonly terminalOpen: boolean;
   readonly terminalAvailable: boolean;
+  readonly onSignIn?: (() => void) | undefined;
   readonly onOpenTerminal: () => void;
 }) {
   const meta = providerClients.get(ProviderDriverKind.make(driver));
@@ -997,8 +1017,10 @@ function AgentCard({
           <Button
             size="xs"
             variant="ghost"
-            onClick={onOpenTerminal}
-            disabled={terminalOpen || !terminalAvailable}
+            onClick={providerState === "signIn" && onSignIn ? onSignIn : onOpenTerminal}
+            disabled={
+              providerState === "signIn" && onSignIn ? false : terminalOpen || !terminalAvailable
+            }
           >
             <TerminalIcon className="size-3.5" />
             {providerState === "signIn" ? "Sign in" : "Install"}

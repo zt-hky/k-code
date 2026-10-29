@@ -22,7 +22,7 @@ import { startThreadNotifications } from "./components/ThreadNotificationCoordin
 import { startWebPush } from "./webPush";
 import { startGuideRunNotifications } from "./components/pullRequest/guide/PullRequestGuideRunCoordinator";
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "./branding";
-import { resolveServerBackedAppDisplayName } from "./branding.logic";
+import { resolveServerBackedAppDisplayName, withInstanceName } from "./branding.logic";
 import { isElectron } from "./env";
 import {
   subscribeComposerDraftModelReconciliation,
@@ -108,12 +108,15 @@ function startDocumentTitle(): void {
   appAtomRegistry.subscribe(
     primaryServerConfigAtom,
     (config) => {
-      document.title = resolveServerBackedAppDisplayName({
-        baseName: APP_BASE_NAME,
-        fallbackDisplayName: APP_DISPLAY_NAME,
-        fallbackStageLabel: APP_STAGE_LABEL,
-        primaryServerVersion: config?.environment.serverVersion ?? null,
-      });
+      document.title = withInstanceName(
+        resolveServerBackedAppDisplayName({
+          baseName: APP_BASE_NAME,
+          fallbackDisplayName: APP_DISPLAY_NAME,
+          fallbackStageLabel: APP_STAGE_LABEL,
+          primaryServerVersion: config?.environment.serverVersion ?? null,
+        }),
+        config?.instanceName,
+      );
     },
     { immediate: true },
   );

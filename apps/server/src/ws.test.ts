@@ -696,8 +696,8 @@ it.effect(
         key: "mod+alt+z",
         command: "terminal.split",
       });
-      const expectedSettings = [duringDiscovery, latestSettings].map(
-        ServerSettings.redactServerSettingsForClient,
+      const expectedSettings = [duringDiscovery, latestSettings].map((settings) =>
+        ServerSettings.redactServerSettingsForClient(settings),
       );
       const expectedKeybindings = [duringAck, latestKeybindings];
       // The two sources can interleave, but each must retain its own publication order.

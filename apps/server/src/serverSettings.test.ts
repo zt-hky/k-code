@@ -1996,3 +1996,25 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 });
+
+it("pins VS Code to the managed web URL and drops SSH remote open for clients", () => {
+  const settings = {
+    ...DEFAULT_SERVER_SETTINGS,
+    vscodeWebUrl: "https://user-chosen.example",
+    remoteOpenSshHost: "box.example",
+    remoteOpenSshUser: "dev",
+  };
+
+  const managed = ServerSettingsModule.redactServerSettingsForClient(settings, {
+    vscodeWebUrl: "https://alice-code.agentbox.io.vn",
+  });
+  assert.equal(managed.vscodeWebUrl, "https://alice-code.agentbox.io.vn");
+  assert.equal(managed.remoteOpenSshHost, "");
+  assert.equal(managed.remoteOpenSshUser, "");
+
+  const unmanaged = ServerSettingsModule.redactServerSettingsForClient(settings, {
+    vscodeWebUrl: undefined,
+  });
+  assert.equal(unmanaged.vscodeWebUrl, "https://user-chosen.example");
+  assert.equal(unmanaged.remoteOpenSshHost, "box.example");
+});

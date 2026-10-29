@@ -131,13 +131,24 @@ const normalizeServerSettings = (
     ),
   );
 
-export function redactServerSettingsForClient(settings: ServerSettings): ServerSettings {
+export function redactServerSettingsForClient(
+  settings: ServerSettings,
+  managed?: { readonly vscodeWebUrl?: string | undefined },
+): ServerSettings {
   const redacted = mapSettingsSecrets(settings, (secret) =>
     secret.sensitive
       ? { value: "", redacted: secret.redacted || secret.value.length > 0 }
       : { value: secret.value, redacted: false },
   );
-  return { ...redacted, secretProviders: withoutUnknownSecretProviderConfigs(redacted) };
+  const clientSafe = { ...redacted, secretProviders: withoutUnknownSecretProviderConfigs(redacted) };
+  return managed?.vscodeWebUrl === undefined
+    ? clientSafe
+    : {
+        ...clientSafe,
+        vscodeWebUrl: managed.vscodeWebUrl,
+        remoteOpenSshHost: "",
+        remoteOpenSshUser: "",
+      };
 }
 
 // A newer kind's config may hold credentials this build cannot recognize, so it never leaves the server.
