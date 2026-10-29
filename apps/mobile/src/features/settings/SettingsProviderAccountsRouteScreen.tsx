@@ -33,6 +33,7 @@ import {
 } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
+import { OmpModelLoginAccount } from "./OmpModelLoginAccount";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
 
 export function SettingsProviderAccountsRouteScreen() {
@@ -66,14 +67,23 @@ export function SettingsProviderAccountsRouteScreen() {
                   <>
                     {(providersByEnvironment.get(environment.environmentId) ?? [])
                       .filter(canManageProvider)
-                      .map((provider, index) => (
-                        <ProviderAccount
-                          key={provider.instanceId}
-                          environment={environment}
-                          provider={provider}
-                          divider={index > 0}
-                        />
-                      ))}
+                      .map((provider, index) =>
+                        provider.modelProviderLogin === true ? (
+                          <OmpModelLoginAccount
+                            key={provider.instanceId}
+                            environment={environment}
+                            provider={provider}
+                            divider={index > 0}
+                          />
+                        ) : (
+                          <ProviderAccount
+                            key={provider.instanceId}
+                            environment={environment}
+                            provider={provider}
+                            divider={index > 0}
+                          />
+                        ),
+                      )}
                     {!(providersByEnvironment.get(environment.environmentId) ?? []).some(
                       canManageProvider,
                     ) ? (
@@ -94,7 +104,9 @@ export function SettingsProviderAccountsRouteScreen() {
 
 function canManageProvider(provider: ServerProvider) {
   return Boolean(
-    provider.setup?.canAuthenticate || (provider.driver === "acpRegistry" && provider.installed),
+    provider.setup?.canAuthenticate ||
+    (provider.driver === "acpRegistry" && provider.installed) ||
+    (provider.modelProviderLogin === true && provider.installed),
   );
 }
 

@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { parseOmpLatestVersion } from "./ompMaintenance.ts";
+import { parseOmpLatestVersion } from "./maintenance.ts";
 
 describe("parseOmpLatestVersion", () => {
   it("reads the new version when an update exists", () => {

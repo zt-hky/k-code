@@ -13,6 +13,7 @@ import { fxClient } from "@t3tools/provider-fx/client";
 import { grokClient } from "@t3tools/provider-grok/client";
 import { museClient } from "@t3tools/provider-muse/client";
 import { openCodeClient } from "@t3tools/provider-opencode/client";
+import { ohMyPiClient } from "@t3tools/provider-ohmypi/client";
 import { piClient } from "@t3tools/provider-pi/client";
 
 export const providerClients = makeProviderClientRegistry([
@@ -30,6 +31,7 @@ export const providerClients = makeProviderClientRegistry([
     acpRegistryAgentIds: ["claude-acp"],
     settingsSchema: ClaudeSettings,
   },
+  ohMyPiClient,
   cursorClient,
   grokClient,
   fxClient,

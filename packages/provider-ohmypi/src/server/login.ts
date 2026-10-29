@@ -10,6 +10,7 @@ import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -23,13 +24,14 @@ import {
   parseOmpLoginFailure,
   parseOmpLoginProviders,
   parseOmpLogoutCredentialIds,
-} from "./ompLoginOutput.ts";
-import { OmpProcessError, spawnOmp, withOmpRpc, type OmpSpawn } from "./ompProcess.ts";
+} from "./loginOutput.ts";
+import { OmpProcessError, spawnOmp, withOmpRpc, type OmpSpawn } from "./process.ts";
 
 const FLOW_TIMEOUT = Duration.minutes(10);
 const RPC_TIMEOUT = Duration.seconds(60);
 // readline writes a question without a newline, so a quiet tail is a prompt, not a split line.
 const PROMPT_SETTLE = Duration.millis(150);
+const CREDENTIAL_CHECK_TIMEOUT = Duration.seconds(15);
 const MAX_FAILURE_MESSAGE = 1_024;
 
 interface ActiveFlow {
@@ -63,7 +65,9 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
     phase: "idle",
     flowId: null,
     providerId: null,
+    kind: null,
     authorizationUrl: null,
+    userCode: null,
     instructions: null,
     progress: null,
     prompt: null,
@@ -77,6 +81,23 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
       active === flow
         ? SubscriptionRef.update(state, (current) => ({ ...current, ...patch }))
         : Effect.void,
+    );
+
+  const hasCredential = (providerId: string) =>
+    options.resolveSpawn.pipe(
+      Effect.flatMap((spawn) =>
+        withOmpRpc(spawn, (call) => call({ type: "get_login_providers" })).pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        ),
+      ),
+      Effect.map((data) =>
+        parseOmpLoginProviders(data).some(
+          (provider) => provider.providerId === providerId && provider.authenticated,
+        ),
+      ),
+      Effect.timeoutOption(CREDENTIAL_CHECK_TIMEOUT),
+      Effect.map(Option.getOrElse(() => false)),
+      Effect.orElseSucceed(() => false),
     );
 
   const runFlow = Effect.fn("OmpLogin.runFlow")(function* (
@@ -100,28 +121,50 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
       const scanner = makeOmpLoginScanner();
       let loggedIn = false;
       let promptCount = 0;
+      // The URL block and the prompt that follows it arrive in separate chunks, and only the
+      // two together say what the flow is (a dashboard link plus a secret prompt is an API key,
+      // not a page to open). So the URL waits for the output to go quiet.
+      let pendingAuthorization: Extract<OmpLoginOutputEvent, { _tag: "authorization" }> | undefined;
+      let secretPrompt = false;
+      let pendingPrompt: OmpLoginState["prompt"] = null;
+      const publishAuthorization = Effect.suspend(() => {
+        const authorization = pendingAuthorization;
+        pendingAuthorization = undefined;
+        if (authorization === undefined) return Effect.void;
+        return publishFor(flow, {
+          phase: "waiting",
+          kind:
+            authorization.userCode !== null ? "device_code" : secretPrompt ? "api_key" : "oauth",
+          authorizationUrl: authorization.url,
+          userCode: authorization.userCode,
+          instructions: authorization.instructions,
+          ...(pendingPrompt === null ? {} : { prompt: pendingPrompt }),
+        }).pipe(Effect.tap(() => Effect.sync(() => (pendingPrompt = null))));
+      });
       const handle = (event: OmpLoginOutputEvent) => {
         switch (event._tag) {
           case "authorization":
-            return publishFor(flow, {
-              phase: "waiting",
-              authorizationUrl: event.url,
-              instructions: event.instructions,
-            });
+            pendingAuthorization = event;
+            return Effect.void;
           case "progress":
             return publishFor(flow, { phase: "waiting", progress: event.message });
           case "loggedIn":
             loggedIn = true;
             return Effect.void;
-          case "prompt":
-            return publishFor(flow, {
-              phase: "waiting",
-              prompt: {
-                id: `prompt-${++promptCount}`,
-                message: event.message,
-                secret: event.secret,
-              },
-            });
+          case "prompt": {
+            secretPrompt = event.secret;
+            const prompt = {
+              id: `prompt-${++promptCount}`,
+              message: event.message,
+              secret: event.secret,
+            };
+            // A prompt that follows a URL is published with it, so clients never see one half.
+            if (pendingAuthorization !== undefined) {
+              pendingPrompt = prompt;
+              return Effect.void;
+            }
+            return publishFor(flow, { phase: "waiting", prompt });
+          }
         }
       };
       // Each chunk restarts the quiet period; a pending one is dropped when stdout ends, so a
@@ -137,12 +180,12 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
           Effect.gen(function* () {
             yield* cancelSettle;
             yield* Effect.forEach(scanner.push(chunk), handle, { discard: true });
-            if (!scanner.hasPendingTail()) return;
+            if (!scanner.hasPendingTail() && pendingAuthorization === undefined) return;
             settle = yield* Effect.sleep(PROMPT_SETTLE).pipe(
               Effect.andThen(
                 Effect.suspend(() =>
                   Effect.forEach(scanner.flush(), handle, { discard: true }),
-                ).pipe(Effect.uninterruptible),
+                ).pipe(Effect.andThen(publishAuthorization), Effect.uninterruptible),
               ),
               Effect.forkIn(flow.scope),
             );
@@ -150,6 +193,7 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
         ),
         Effect.ensuring(cancelSettle),
       );
+      yield* publishAuthorization;
       const exitCode = yield* child.exitCode;
       const stderr = yield* Fiber.join(stderrFiber);
       return { kind: "exited" as const, loggedIn, exitCode, stderr };
@@ -169,7 +213,10 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
       ),
     );
     yield* Scope.close(flow.scope, Exit.void);
-    const succeeded = outcome.kind === "exited" && outcome.loggedIn && outcome.exitCode === 0;
+    // omp prints `Logged in to <provider>` on success. A clean exit without it (a wording this
+    // scanner does not know) still counts when the provider now reports a credential.
+    const exitedCleanly = outcome.kind === "exited" && outcome.exitCode === 0 && !flow.cancelled;
+    const succeeded = exitedCleanly && (outcome.loggedIn || (yield* hasCredential(providerId)));
     const message =
       flow.cancelled || succeeded
         ? null
@@ -180,7 +227,9 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
     if (succeeded) yield* options.onCredentialsChanged;
     yield* publishFor(flow, {
       phase: flow.cancelled ? "cancelled" : succeeded ? "succeeded" : "failed",
+      kind: null,
       authorizationUrl: null,
+      userCode: null,
       instructions: null,
       progress: null,
       prompt: null,

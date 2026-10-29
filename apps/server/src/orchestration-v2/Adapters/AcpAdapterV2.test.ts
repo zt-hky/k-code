@@ -7,6 +7,8 @@ import {
   makeAcpRegistryAdapterV2,
 } from "@t3tools/provider-acp-registry/testing";
 import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
+import { OhMyPiSettings } from "@t3tools/provider-ohmypi/settings";
+import { makeOhMyPiAdapterV2 } from "@t3tools/provider-ohmypi/testing";
 import { AcpRegistryCatalog } from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 import { decodeAcpReplayTranscript, makeAcpReplayRuntime } from "./AcpAdapterV2.testkit.ts";
 // @effect-diagnostics nodeBuiltinImport:off
@@ -100,7 +102,7 @@ import {
 
 const DEFAULT_GROK_SETTINGS = Schema.decodeSync(GrokSettings)({});
 const DROID_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({ agentId: "factory-droid" });
-const OMP_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({ agentId: "omp" });
+const OMP_SETTINGS = Schema.decodeSync(OhMyPiSettings)({});
 
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
@@ -905,10 +907,9 @@ describe("AcpAdapterV2", () => {
         driver,
       );
       const instanceId = ProviderInstanceId.make("droid-form-test");
-      const adapter = yield* makeAcpRegistryAdapterV2({
+      const adapterOptions = {
         instanceId,
         selfInvocation: yield* resolveSelfInvocation(),
-        settings,
         environment: {},
         makeRuntime: makeAcpReplayRuntime({
           transcript,
@@ -919,7 +920,15 @@ describe("AcpAdapterV2", () => {
           ),
           childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
         }),
-      }).pipe(
+      };
+      const adapter = yield* (
+        settings === OMP_SETTINGS
+          ? makeOhMyPiAdapterV2({ ...adapterOptions, settings: OMP_SETTINGS })
+          : makeAcpRegistryAdapterV2({
+              ...adapterOptions,
+              settings: settings as AcpRegistrySettings,
+            })
+      ).pipe(
         Effect.provide(
           Layer.mock(AcpRegistryCatalog)({ resolve: () => Effect.die("runtime is injected") }),
         ),
@@ -992,7 +1001,7 @@ describe("AcpAdapterV2", () => {
     const path = yield* Path.Path;
     const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
     const instanceId = ProviderInstanceId.make(`omp-${name}`);
-    const adapter = yield* makeAcpRegistryAdapterV2({
+    const adapter = yield* makeOhMyPiAdapterV2({
       instanceId,
       selfInvocation: yield* resolveSelfInvocation(),
       settings: OMP_SETTINGS,

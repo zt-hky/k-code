@@ -38,6 +38,7 @@ const workspaceFiles = [
   "packages/provider-fx/package.json",
   "packages/provider-grok/package.json",
   "packages/provider-muse/package.json",
+  "packages/provider-ohmypi/package.json",
   "packages/provider-opencode/package.json",
   "packages/source-control-azure-devops/package.json",
   "packages/source-control-bitbucket/package.json",

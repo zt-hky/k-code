@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { makeAnsiFilter, stripAnsi } from "./ompAnsi.ts";
+import { makeAnsiFilter, stripAnsi } from "./ansi.ts";
 
 describe("omp ansi", () => {
   it("strips complete escapes", () => {

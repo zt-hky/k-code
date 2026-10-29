@@ -52,8 +52,18 @@ export function shouldShowProviderStatusBanner(
 export function hasProviderSetup(status: ServerProvider): boolean {
   return (
     status.driver === "antigravity" ||
+    status.modelProviderLogin === true ||
     status.setup?.canAuthenticate === true ||
     status.setup?.canInstall === true
+  );
+}
+
+/** An installed provider that signs in to model providers rather than to one account. */
+export function canSignInToModelProvider(status: ServerProvider): boolean {
+  return (
+    status.modelProviderLogin === true &&
+    status.installed &&
+    status.auth.status === "unauthenticated"
   );
 }
 
@@ -71,6 +81,7 @@ export function getProviderStatusMessage(status: ServerProvider): string {
     return `Open provider setup to install ${formatProviderDriverKindLabel(status.driver)} on this environment.`;
   }
   if (status.auth.status === "unauthenticated") {
+    if (canSignInToModelProvider(status)) return "Sign in to a model provider to use its models.";
     if (hasProviderSetup(status)) {
       return status.driver === "antigravity"
         ? "Open provider setup to sign in with Google."
@@ -88,10 +99,12 @@ export function getProviderStatusMessage(status: ServerProvider): string {
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   onDismiss,
   onOpenProviderSetup,
+  onSignInToModelProvider,
   status,
 }: {
   onDismiss: () => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
+  onSignInToModelProvider?: (instanceId: ProviderInstanceId) => void;
   status: ServerProvider | null;
 }) {
   if (!status || getProviderStatusBannerKey(status) === null) {
@@ -127,7 +140,11 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
               {message}
             </TooltipPopup>
           </Tooltip>
-          {onOpenProviderSetup && hasProviderSetup(status) ? (
+          {onSignInToModelProvider && canSignInToModelProvider(status) ? (
+            <InlineButton onClick={() => onSignInToModelProvider(status.instanceId)}>
+              Sign in to a model provider
+            </InlineButton>
+          ) : onOpenProviderSetup && hasProviderSetup(status) ? (
             <InlineButton onClick={() => onOpenProviderSetup(status.instanceId)}>
               Open provider setup
             </InlineButton>

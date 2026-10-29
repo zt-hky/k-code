@@ -1,17 +1,28 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ProviderInstanceId, type OmpLoginProvider, type OmpLoginState } from "@t3tools/contracts";
 
-import { isSignedIn, loginPanel, visibleLoginProviders } from "./OmpModelLoginSection.logic";
+import {
+  authorizationHost,
+  authorizationUrlToOpen,
+  canSubmitPrompt,
+  groupLoginProviders,
+  isSignedIn,
+  loginFlowStep,
+  loginPanel,
+  needsRefreshAfterSignIn,
+} from "./OmpModelLoginSection.logic";
 
 const provider = (providerId: string, name: string, authenticated = false): OmpLoginProvider =>
   ({ providerId, name, authenticated }) as OmpLoginProvider;
 
 const state = (patch: Partial<OmpLoginState>): OmpLoginState => ({
-  instanceId: ProviderInstanceId.make("omp"),
+  instanceId: ProviderInstanceId.make("ohmypi"),
   phase: "idle",
   flowId: null,
   providerId: null,
+  kind: null,
   authorizationUrl: null,
+  userCode: null,
   instructions: null,
   progress: null,
   prompt: null,
@@ -19,24 +30,31 @@ const state = (patch: Partial<OmpLoginState>): OmpLoginState => ({
   ...patch,
 });
 
+const prompt = (message: string, secret = false) =>
+  ({ id: "p1", message, secret }) as NonNullable<OmpLoginState["prompt"]>;
+
 describe("Oh My Pi model provider sign-in view", () => {
-  it("lists signed-in providers first and filters by name or id without reordering within a group", () => {
+  it("offers popular providers in their fixed order and keeps the rest behind search", () => {
     const providers = [
-      provider("openai-codex", "ChatGPT Plus/Pro"),
+      provider("zai", "Z.ai"),
+      provider("deepseek", "DeepSeek"),
       provider("anthropic", "Anthropic (Claude Pro/Max)", true),
+      provider("kagi", "Kagi"),
       provider("openrouter", "OpenRouter"),
-      provider("github-copilot", "GitHub Copilot", true),
+      provider("openai-codex", "ChatGPT Plus/Pro"),
     ];
-    expect(visibleLoginProviders(providers, "").map((entry) => entry.providerId)).toEqual([
-      "anthropic",
-      "github-copilot",
-      "openai-codex",
-      "openrouter",
-    ]);
-    expect(visibleLoginProviders(providers, " CHATGPT ").map((entry) => entry.providerId)).toEqual([
-      "openai-codex",
-    ]);
-    expect(visibleLoginProviders(providers, "router")).toHaveLength(1);
+    const ids = (list: ReadonlyArray<OmpLoginProvider>) => list.map((entry) => entry.providerId);
+
+    const collapsed = groupLoginProviders(providers, "", false);
+    expect(ids(collapsed.popular)).toEqual(["anthropic", "openai-codex", "openrouter", "deepseek"]);
+    expect(collapsed.others).toEqual([]);
+    expect(collapsed.hiddenCount).toBe(2);
+
+    expect(ids(groupLoginProviders(providers, "", true).others)).toEqual(["kagi", "zai"]);
+    const searched = groupLoginProviders(providers, " KAGI ", false);
+    expect(ids(searched.others)).toEqual(["kagi"]);
+    expect(searched.popular).toEqual([]);
+    expect(ids(groupLoginProviders(providers, "chatgpt", false).popular)).toEqual(["openai-codex"]);
   });
 
   it("shows a running sign-in to everyone but replays a finished one only to the client that started it", () => {
@@ -60,5 +78,56 @@ describe("Oh My Pi model provider sign-in view", () => {
     expect(isSignedIn(codex, succeeded, "a")).toBe(true);
     expect(isSignedIn(codex, succeeded, null)).toBe(false);
     expect(isSignedIn(provider("anthropic", "Anthropic"), succeeded, "a")).toBe(false);
+  });
+
+  it("classifies the step from the flow kind, or from a prompt that arrives before one", () => {
+    expect(loginFlowStep(state({ phase: "starting" }))).toBe("starting");
+    expect(
+      loginFlowStep(state({ phase: "waiting", prompt: prompt("GitHub Enterprise URL") })),
+    ).toBe("prompt");
+    expect(loginFlowStep(state({ phase: "waiting", kind: "device_code" }))).toBe("device_code");
+    expect(loginFlowStep(state({ phase: "waiting", kind: "oauth", prompt: prompt("Paste") }))).toBe(
+      "oauth",
+    );
+  });
+
+  it("opens the sign-in page once per flow, only for the client that started it and never for API keys", () => {
+    const oauth = state({
+      phase: "waiting",
+      flowId: "a",
+      kind: "oauth",
+      authorizationUrl: "https://example.com/auth",
+    });
+    expect(authorizationUrlToOpen(oauth, "a", null)).toBe("https://example.com/auth");
+    expect(authorizationUrlToOpen(oauth, "a", "a")).toBeNull();
+    expect(authorizationUrlToOpen(oauth, "b", null)).toBeNull();
+    expect(authorizationUrlToOpen({ ...oauth, kind: "device_code" }, "a", null)).not.toBeNull();
+    expect(authorizationUrlToOpen({ ...oauth, kind: "api_key" }, "a", null)).toBeNull();
+    expect(authorizationUrlToOpen({ ...oauth, kind: null }, "a", null)).toBeNull();
+    expect(authorizationUrlToOpen({ ...oauth, phase: "succeeded" }, "a", null)).toBeNull();
+    expect(authorizationUrlToOpen(null, "a", null)).toBeNull();
+  });
+
+  it("lets an optional prompt be submitted empty but requires a value otherwise", () => {
+    const enterprise = prompt("GitHub Enterprise URL/domain (blank for github.com)");
+    expect(canSubmitPrompt(enterprise, "")).toBe(true);
+    expect(canSubmitPrompt(prompt("Name (optional)"), "  ")).toBe(true);
+    expect(canSubmitPrompt(prompt("Paste your DeepSeek API key (sk-...)", true), "  ")).toBe(false);
+    expect(canSubmitPrompt(prompt("Paste your DeepSeek API key (sk-...)", true), "sk-1")).toBe(
+      true,
+    );
+  });
+
+  it("refreshes provider status once for a sign-in this client finished", () => {
+    const done = state({ phase: "succeeded", flowId: "a" });
+    expect(needsRefreshAfterSignIn(done, "a", null)).toBe(true);
+    expect(needsRefreshAfterSignIn(done, "a", "a")).toBe(false);
+    expect(needsRefreshAfterSignIn(done, "b", null)).toBe(false);
+    expect(needsRefreshAfterSignIn(state({ phase: "failed", flowId: "a" }), "a", null)).toBe(false);
+  });
+
+  it("names the host of an authorization page", () => {
+    expect(authorizationHost("https://github.com/login/device")).toBe("github.com");
+    expect(authorizationHost("not a url")).toBeNull();
   });
 });

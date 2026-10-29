@@ -125,6 +125,7 @@ import { formatProviderUpdateRequiredNotice } from "@t3tools/client-runtime/prov
 const PRIMARY_PROVIDER_DRIVERS: ReadonlySet<string> = new Set([
   "claudeAgent",
   "codex",
+  "ohmypi",
   "antigravity",
 ]);
 /** Keep measured size changes stable; let catalog mutations return underflowing filtered lists to the top. */

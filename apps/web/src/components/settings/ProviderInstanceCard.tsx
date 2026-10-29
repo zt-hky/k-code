@@ -64,6 +64,7 @@ import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { AcpSessionManagementSection } from "./AcpSessionManagementSection";
+import { OmpModelLoginSection } from "./OmpModelLoginSection";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
 import {
@@ -1166,6 +1167,29 @@ export function ProviderInstanceCard({
         />
       </SettingsSection>
 
+      {environmentId !== undefined && liveProvider?.modelProviderLogin === true ? (
+        <div
+          inert={readOnly}
+          aria-disabled={readOnly || undefined}
+          className={readOnly ? "opacity-50 select-none" : undefined}
+        >
+          <FoldedSettingsSection
+            // Remount on a sign-out so the panel opens when there is nothing to use yet.
+            key={`${instanceId}:${liveProvider.auth.status === "unauthenticated"}`}
+            id={`provider-instance-${instanceId}-sign-in`}
+            title={liveProvider.auth.status === "unauthenticated" ? "Sign in" : "Model providers"}
+            headerPlacement="outside"
+            defaultOpen={liveProvider.auth.status === "unauthenticated"}
+          >
+            <OmpModelLoginSection
+              environmentId={environmentId}
+              instanceId={instanceId}
+              readOnly={readOnly}
+            />
+          </FoldedSettingsSection>
+        </div>
+      ) : null}
+
       {setup || environmentFields.length > 0 ? (
         <SettingsSection title="Setup">
           {setup}
@@ -1227,7 +1251,8 @@ export function ProviderInstanceCard({
           onChange={updateGenericEnvironment}
         />
       </SettingsSection>
-      {environmentId !== undefined && liveProvider?.driver === "acpRegistry" ? (
+      {environmentId !== undefined &&
+      (liveProvider?.driver === "acpRegistry" || liveProvider?.driver === "ohmypi") ? (
         <AcpSessionManagementSection
           environmentId={environmentId}
           instanceId={instanceId}

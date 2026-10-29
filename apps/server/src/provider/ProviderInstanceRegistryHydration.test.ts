@@ -2,7 +2,9 @@ import {
   DEFAULT_SERVER_SETTINGS,
   ProjectId,
   ProviderDriverKind,
+  isUnconfiguredDefaultInstanceEnabled,
   ProviderInstanceId,
+  resolveProviderInstanceEnabled,
   type ServerSettings,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -27,6 +29,17 @@ function settingsWith(overrides: Partial<ServerSettings>): ServerSettings {
 }
 
 describe("deriveProviderInstanceConfigMap", () => {
+  it("gives Oh My Pi an enabled default instance without any saved settings, like Codex and Claude", () => {
+    const merged = deriveProviderInstanceConfigMap(settingsWith({ providerInstances: {} }));
+    const instance = merged[ProviderInstanceId.make("ohmypi")];
+
+    expect(instance).toEqual({ driver: ProviderDriverKind.make("ohmypi") });
+    expect(resolveProviderInstanceEnabled(instance!)).toBe(true);
+    expect(isUnconfiguredDefaultInstanceEnabled(ProviderInstanceId.make("ohmypi"))).toBe(true);
+    // Providers that need a binary the user chose stay off until added.
+    expect(resolveProviderInstanceEnabled(merged[ProviderInstanceId.make("grok")]!)).toBe(false);
+  });
+
   it("turns a machine-disabled instance on when a project enables it", () => {
     const settings = settingsWith({
       providerInstances: {

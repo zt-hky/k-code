@@ -1,0 +1,21 @@
+{
+  "provider": "xai-oauth",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 342,
+      "stream": "stdout",
+      "text": "Requesting device authorization...\n"
+    },
+    {
+      "t": 737,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://accounts.x.ai/oauth2/device?user_code=7GK3-NDGK\nEnter code: 7GK3-NDGK\n\n"
+    },
+    {
+      "t": 737,
+      "stream": "stdout",
+      "text": "Waiting for device authorization...\n"
+    }
+  ]
+}

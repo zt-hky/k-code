@@ -1,0 +1,36 @@
+{
+  "provider": "deepseek",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 160,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://platform.deepseek.com/api_keys\nCreate or copy your API key from the DeepSeek dashboard\n\n"
+    },
+    {
+      "t": 160,
+      "stream": "stdout",
+      "text": "Paste your DeepSeek API key (sk-...): "
+    },
+    {
+      "t": 4503,
+      "stream": "stdin",
+      "text": "<answer>"
+    },
+    {
+      "t": 4504,
+      "stream": "stdout",
+      "text": "Validating API key...\n"
+    },
+    {
+      "t": 4845,
+      "stream": "stderr",
+      "text": "Login failed: deepseek API key validation failed (401): {\"error\":{\"message\":\"Authentication Fails, Your api key: ****0000 is invalid (request_id: c408c437-f9c9-438c-baca-03f935cd0281)\",\"type\":\"authentication_error\",\"param\":null,\"code\":\"invalid_request_error\"}}\n"
+    },
+    {
+      "t": 4858,
+      "stream": "exit",
+      "text": "1"
+    }
+  ]
+}

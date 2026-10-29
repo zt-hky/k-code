@@ -1,10 +1,12 @@
 import type {
+  EnvironmentId,
   OrchestrationV2ProviderFailureClass,
   ProviderInstanceId,
   ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
+import { OmpModelLoginDialog } from "../settings/OmpModelLoginDialog";
 import { ProviderStatusBanner } from "./ProviderStatusBanner";
 import { dismissThreadErrorBannerForSession, ThreadErrorBanner } from "./ThreadErrorBanner";
 
@@ -13,6 +15,7 @@ import { dismissThreadErrorBannerForSession, ThreadErrorBanner } from "./ThreadE
  * values, so a ChatView render that changes neither banner leaves both cached.
  */
 export function ChatBannerLane(props: {
+  environmentId: EnvironmentId;
   providerStatus: ServerProvider | null;
   providerStatusBannerKey: string | null;
   setDismissedProviderStatusBannerKey: Dispatch<SetStateAction<string | null>>;
@@ -26,6 +29,7 @@ export function ChatBannerLane(props: {
   setThreadErrorBannerDismissTick: Dispatch<SetStateAction<number>>;
 }) {
   const {
+    environmentId,
     providerStatus,
     providerStatusBannerKey,
     setDismissedProviderStatusBannerKey,
@@ -38,13 +42,25 @@ export function ChatBannerLane(props: {
     setThreadError,
     setThreadErrorBannerDismissTick,
   } = props;
+  const [signInInstanceId, setSignInInstanceId] = useState<ProviderInstanceId | null>(null);
   return (
     <div className="chat-banner-lane pointer-events-none absolute top-0 z-30 flex flex-col">
       <ProviderStatusBanner
         status={providerStatus}
         onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
         onOpenProviderSetup={onOpenProviderSetup}
+        onSignInToModelProvider={setSignInInstanceId}
       />
+      {signInInstanceId !== null ? (
+        <OmpModelLoginDialog
+          environmentId={environmentId}
+          instanceId={signInInstanceId}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSignInInstanceId(null);
+          }}
+        />
+      ) : null}
       <ThreadErrorBanner
         error={threadError}
         errorClass={threadErrorClass}

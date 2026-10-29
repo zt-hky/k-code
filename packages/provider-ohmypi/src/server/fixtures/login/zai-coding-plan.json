@@ -1,0 +1,16 @@
+{
+  "provider": "zai-coding-plan",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 399,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://chat.z.ai/api/oauth/authorize?client_id=client_P8X5CMWmlaRO9gyO-KSqtg&response_type=code&redirect_uri=zcode%3A%2F%2Fzai-auth%2Fcallback&state=348189f720ae43c406b726302d8d47c9\nComplete Z.ai login in your browser. On supported local desktops, omp captures the zcode:// callback and restores its previous handler automatically. You can also paste the final redirect URL or authorization code when prompted.\n\n"
+    },
+    {
+      "t": 399,
+      "stream": "stdout",
+      "text": "Waiting for pasted authorization code...\nPaste the authorization code (or full redirect URL): "
+    }
+  ]
+}

@@ -17,7 +17,7 @@ import { useUsageLimitsPanel } from "./useUsageLimitsPanel";
 
 const environmentId = EnvironmentId.make("env-1");
 const instanceId = ProviderInstanceId.make("ohmypi");
-const driver = ProviderDriverKind.make("acpRegistry");
+const driver = ProviderDriverKind.make("ohmypi");
 const checkedAt = "2026-01-01T00:00:00.000Z";
 const limits = { checkedAt, windows: [] };
 

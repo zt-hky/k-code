@@ -1,0 +1,41 @@
+{
+  "provider": "synthetic",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 158,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://dev.synthetic.new/docs/api/overview\nCopy your API key from the Synthetic dashboard\n\n"
+    },
+    {
+      "t": 159,
+      "stream": "stdout",
+      "text": "Paste your Synthetic API key (sk-...): "
+    },
+    {
+      "t": 8003,
+      "stream": "stdin",
+      "text": "<answer>"
+    },
+    {
+      "t": 8003,
+      "stream": "stdout",
+      "text": "Validating API key...\n"
+    },
+    {
+      "t": 10029,
+      "stream": "stdout",
+      "text": "\nLogged in to Synthetic\n"
+    },
+    {
+      "t": 10029,
+      "stream": "stdout",
+      "text": "Credentials saved to /home/user/.omp/agent/agent.db\n"
+    },
+    {
+      "t": 10042,
+      "stream": "exit",
+      "text": "0"
+    }
+  ]
+}

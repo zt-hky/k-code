@@ -1,0 +1,21 @@
+{
+  "provider": "openai-codex",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 180,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://auth.openai.com/oauth/authorize?client_id=app_EMoamEEZ73f0CkXaXp7hrann&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid+profile+email+offline_access+api.connectors.read+api.connectors.invoke&code_challenge=qqXFkFfu4GgsMSmqhMpmtQiH0-K-1IiYEKDvFHV70Gw&code_challenge_method=S256&state=bcb1e118b2cf058b8f94426cd7f63d6f&id_token_add_organizations=true&codex_cli_simplified_flow=true&originator=omp\nLocal shortcut (this machine only): http://localhost:1455/launch\nA browser window should open. Complete login to finish.\n\n"
+    },
+    {
+      "t": 180,
+      "stream": "stdout",
+      "text": "Waiting for browser authentication...\n"
+    },
+    {
+      "t": 182,
+      "stream": "stdout",
+      "text": "Paste the authorization code (or full redirect URL): "
+    }
+  ]
+}
