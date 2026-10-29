@@ -1,9 +1,14 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 
 import {
   extractOmpPlanApprovalElicitation,
   extractOmpProposedPlanMarkdown,
   extractOmpSubagentUpdate,
+  makeOmpSubagentTranscriptReader,
 } from "./ompAcp.ts";
 
 const approvalSchema = {
@@ -196,4 +201,66 @@ describe("omp subagent extraction", () => {
     expect(extractOmpSubagentUpdate(tool({ path: "a.ts" }))).toBeUndefined();
     expect(extractOmpSubagentUpdate(tool({ tasks: [{ nope: 1 }] }))).toBeUndefined();
   });
+});
+
+describe("omp subagent transcripts", () => {
+  it.effect("reads each child's session incrementally and holds back a partial line", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const agentDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-omp-transcript-" });
+      const sessionDir = path.join(agentDir, "sessions", "-repo", "2026-01-01T00-00-00-000Z_s1");
+      yield* fileSystem.makeDirectory(sessionDir, { recursive: true });
+      const file = path.join(sessionDir, "Scout.jsonl");
+      const line = (message: object) =>
+        `${JSON.stringify({ type: "message", id: "l1", message })}\n`;
+      const assistant = line({
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "look first" },
+          { type: "toolCall", id: "c1", name: "grep", intent: "Finding x", arguments: { p: "x" } },
+        ],
+      });
+      const result = line({ role: "toolResult", toolCallId: "c1", content: [], isError: false });
+      const partial = `{"type":"message","id":"l3","message":{"role":"assistant","content":[{"type":"te`;
+      yield* fileSystem.writeFileString(
+        file,
+        `{"type":"session"}\n${assistant}${result}${partial}`,
+      );
+
+      const read = makeOmpSubagentTranscriptReader({ fileSystem, path, agentDir });
+      const first = yield* read({ sessionId: "s1", agentId: "Scout", fromByte: 0 });
+      expect(first.entries).toEqual([
+        { type: "reasoning", nativeId: "Scout:l1:0", text: "look first" },
+        {
+          type: "tool",
+          toolCall: {
+            toolCallId: "c1",
+            title: "Finding x",
+            kind: "grep",
+            status: "inProgress",
+            data: { rawInput: { p: "x" } },
+          },
+        },
+        {
+          type: "tool",
+          toolCall: {
+            toolCallId: "c1",
+            status: "completed",
+            data: { rawOutput: { content: [], details: undefined } },
+          },
+        },
+      ]);
+
+      yield* fileSystem.writeFileString(file, `xt","text":"done"}]}}\n`, { flag: "a" });
+      const second = yield* read({ sessionId: "s1", agentId: "Scout", fromByte: first.nextByte });
+      expect(second.entries).toEqual([{ type: "assistant", nativeId: "Scout:l3:0", text: "done" }]);
+      expect(yield* read({ sessionId: "s1", agentId: "Scout", fromByte: second.nextByte })).toEqual(
+        { entries: [], nextByte: second.nextByte },
+      );
+      expect(
+        (yield* read({ sessionId: "missing", agentId: "Scout", fromByte: 0 })).entries,
+      ).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
 });

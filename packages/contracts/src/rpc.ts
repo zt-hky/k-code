@@ -105,6 +105,12 @@ import {
   AgentSessionScanError,
 } from "./agentSessions.ts";
 import {
+  WebPushError,
+  WebPushPublicKeyResult,
+  WebPushSubscribeInput,
+  WebPushUnsubscribeInput,
+} from "./webPush.ts";
+import {
   AssetAccessError,
   AssetCreateUrlInput,
   AssetCreateUrlResult,
@@ -529,6 +535,9 @@ export const WS_METHODS = {
   serverReportClientActivity: "server.reportClientActivity",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
+  webPushGetPublicKey: "webPush.getPublicKey",
+  webPushSubscribe: "webPush.subscribe",
+  webPushUnsubscribe: "webPush.unsubscribe",
 
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
@@ -995,6 +1004,24 @@ const WsCloudInstallRelayClientRpc = Rpc.make(WS_METHODS.cloudInstallRelayClient
 const WsServerReportClientActivityRpc = Rpc.make(WS_METHODS.serverReportClientActivity, {
   payload: ClientActivityReportInput,
   error: EnvironmentAuthorizationError,
+});
+
+const WsWebPushGetPublicKeyRpc = Rpc.make(WS_METHODS.webPushGetPublicKey, {
+  payload: Schema.Struct({}),
+  success: WebPushPublicKeyResult,
+  error: Schema.Union([WebPushError, EnvironmentAuthorizationError]),
+});
+
+const WsWebPushSubscribeRpc = Rpc.make(WS_METHODS.webPushSubscribe, {
+  payload: WebPushSubscribeInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([WebPushError, EnvironmentAuthorizationError]),
+});
+
+const WsWebPushUnsubscribeRpc = Rpc.make(WS_METHODS.webPushUnsubscribe, {
+  payload: WebPushUnsubscribeInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([WebPushError, EnvironmentAuthorizationError]),
 });
 
 const PullRequestRpcError = Schema.Union([
@@ -2012,6 +2039,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsScheduledTasksListWebhookDeliveriesRpc,
   WsScheduledTasksGetWebhookDeliveryRpc,
   WsServerReportClientActivityRpc,
+  WsWebPushGetPublicKeyRpc,
+  WsWebPushSubscribeRpc,
+  WsWebPushUnsubscribeRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
   WsPullRequestsListRpc,

@@ -7,6 +7,9 @@ import {
   NOTIFICATION_MODE_LABELS,
   unlockNotificationAudio,
 } from "../../threadNotifications";
+import { appAtomRegistry } from "../../rpc/atomRegistry";
+import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
+import { disableWebPush, enableWebPush, webPushSupport } from "../../webPush";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
@@ -40,6 +43,12 @@ export function NotificationSettings() {
             setPermissionMessage(null);
             if (hasNotificationSound(value)) unlockNotificationAudio();
             if (hasDesktopNotifications(value)) {
+              if (webPushSupport() === "ios-browser-tab") {
+                setPermissionMessage(
+                  "On iPhone and iPad, add T3 Code to your Home Screen (Share → Add to Home Screen), open it from there, then turn notifications on.",
+                );
+                return;
+              }
               if (typeof Notification === "undefined" || !window.isSecureContext) {
                 setPermissionMessage(
                   "Notifications need a supported browser over HTTPS, or the desktop app. Sound only is still available.",
@@ -61,6 +70,19 @@ export function NotificationSettings() {
                 );
                 return;
               }
+              const primaryEnvironmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
+              if (primaryEnvironmentId !== null && webPushSupport() === "supported") {
+                setRequesting(true);
+                const pushError = await enableWebPush(primaryEnvironmentId);
+                setRequesting(false);
+                if (pushError !== null) {
+                  setPermissionMessage(
+                    `Notifications work while T3 Code is open. Background notifications could not be enabled: ${pushError}`,
+                  );
+                }
+              }
+            } else {
+              void disableWebPush(appAtomRegistry.get(primaryEnvironmentIdAtom));
             }
             updateSettings({ notificationMode: value });
           }}

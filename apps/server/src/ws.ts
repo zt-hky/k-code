@@ -187,6 +187,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
+import * as WebPushNotifier from "./webPush/WebPushNotifier.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { terminalOutputStream, withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
@@ -1334,6 +1335,7 @@ export const layerWsRpc = (
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
       const databaseStorage = yield* DatabaseStorage.DatabaseStorage;
+      const webPushNotifier = yield* WebPushNotifier.WebPushNotifier;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const peerLinks = yield* PeerLinks.PeerLinks;
       const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
@@ -2613,6 +2615,14 @@ export const layerWsRpc = (
         [WS_METHODS.serverCheckOtlpEndpoint]: (input) => otlpEndpointCheck.check(input),
         [WS_METHODS.serverPrepareTriage]: (input) => triage.prepare(input),
         [WS_METHODS.serverSignalProcess]: (input) => processDiagnostics.signal(input),
+        [WS_METHODS.webPushGetPublicKey]: () =>
+          webPushNotifier.getPublicKey.pipe(Effect.map((publicKey) => ({ publicKey }))),
+        [WS_METHODS.webPushSubscribe]: (input) =>
+          webPushNotifier.subscribe({ ...input, sessionId: currentSessionId }).pipe(Effect.as({})),
+        [WS_METHODS.webPushUnsubscribe]: (input) =>
+          webPushNotifier
+            .unsubscribe({ ...input, sessionId: currentSessionId })
+            .pipe(Effect.as({})),
         [WS_METHODS.serverReportClientActivity]: (input, metadata) =>
           Ref.update(rpcClientIds, (clientIds) => {
             const next = new Set(clientIds);
