@@ -35,7 +35,6 @@ const thread = (overrides: Partial<WebPushAlertThread> = {}): WebPushAlertThread
   archivedAt: null,
   latestRunId: RunId.make("run-1"),
   latestRunCompletedAt: null,
-  latestVisibleMessage: null,
   ...overrides,
 });
 
@@ -121,19 +120,7 @@ describe("web push alerts", () => {
 describe("web push notification body", () => {
   it("shows the start of the latest reply, the error, or the questions", () => {
     const reply = "word ".repeat(100);
-    const body = resolveWebPushAlert({
-      environmentId,
-      project,
-      thread: {
-        ...completed("run-1", 1_000),
-        latestVisibleMessage: {
-          id: "m1" as never,
-          role: "assistant",
-          text: reply,
-          updatedAt: at(1_000),
-        },
-      },
-    })?.body;
+    const body = webPushBody("Fix the flaky test", reply);
     expect(body?.startsWith("Fix the flaky test\nword word")).toBe(true);
     expect(body?.endsWith("…")).toBe(true);
     expect(body!.length).toBeLessThanOrEqual("Fix the flaky test\n".length + 280);

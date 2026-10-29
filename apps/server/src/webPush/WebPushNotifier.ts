@@ -111,6 +111,20 @@ export const make = Effect.gen(function* () {
       LIMIT 1
     `,
   });
+
+  // Shells carry no message text, so read the run's last assistant message.
+  const latestReply = SqlSchema.findAll({
+    Request: Schema.Struct({ threadId: Schema.String, runId: Schema.String }),
+    Result: Schema.Struct({ text: Schema.String }),
+    execute: ({ threadId, runId }) => sql`
+      SELECT json_extract(payload_json, '$.text') AS text
+      FROM orchestration_v2_projection_messages
+      WHERE thread_id = ${threadId} AND run_id = ${runId} AND role = 'assistant'
+        AND json_extract(payload_json, '$.text') IS NOT NULL
+      ORDER BY created_at DESC, message_id DESC
+      LIMIT 1
+    `,
+  });
   const hasSubscribers = yield* Ref.make(false);
 
   const readStoredKeys = secrets.get(VAPID_KEYS_SECRET).pipe(
@@ -263,23 +277,35 @@ export const make = Effect.gen(function* () {
         );
         return;
       case "Send": {
-        const requestId = shell?.pendingRuntimeRequest?.id;
-        if (decision.alert.kind !== "input" || shell === null || requestId === undefined) {
+        if (shell === null) {
           yield* send(decision.alert);
           return;
         }
-        const questions = yield* pendingQuestions({ threadId, requestId }).pipe(
+        const requestId = shell.pendingRuntimeRequest?.id;
+        // Detail is best effort; the notification still goes out without it.
+        const detail = yield* (
+          decision.alert.kind === "input" && requestId !== undefined
+            ? pendingQuestions({ threadId, requestId }).pipe(
+                Effect.map((rows) => webPushQuestionsDetail(rows[0]?.questions ?? [])),
+              )
+            : decision.alert.kind === "completed" && shell.latestRunId !== null
+              ? latestReply({ threadId, runId: shell.latestRunId }).pipe(
+                  Effect.map((rows) => rows[0]?.text),
+                )
+              : Effect.succeedNone.pipe(Effect.map(Option.getOrUndefined<string>))
+        ).pipe(
           Effect.catchCause((cause) =>
-            Effect.logWarning("web push question lookup failed", {
+            Effect.logWarning("web push detail lookup failed", {
               threadId,
               cause: Cause.pretty(cause),
-            }).pipe(Effect.as([])),
+            }).pipe(Effect.as(undefined)),
           ),
         );
-        yield* send({
-          ...decision.alert,
-          body: webPushBody(shell.title, webPushQuestionsDetail(questions[0]?.questions ?? [])),
-        });
+        yield* send(
+          detail === undefined
+            ? decision.alert
+            : { ...decision.alert, body: webPushBody(shell.title, detail) },
+        );
         return;
       }
     }

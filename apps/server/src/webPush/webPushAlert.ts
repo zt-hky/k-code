@@ -13,12 +13,7 @@ import * as DateTime from "effect/DateTime";
 export type WebPushAlertThread = ProjectThreadAwarenessV2Input["thread"] &
   Pick<
     OrchestrationV2ThreadShell,
-    | "archivedAt"
-    | "latestRunId"
-    | "latestRunCompletedAt"
-    | "pendingRuntimeRequest"
-    | "latestVisibleMessage"
-    | "lastError"
+    "archivedAt" | "latestRunId" | "latestRunCompletedAt" | "pendingRuntimeRequest" | "lastError"
   >;
 
 export type WebPushAlertKind = "completed" | "failed" | "input" | "approval";
@@ -55,12 +50,6 @@ export function resolveWebPushAlert(input: {
     case "completed":
       return {
         ...base,
-        body: webPushBody(
-          thread.title,
-          thread.latestVisibleMessage?.role === "assistant"
-            ? thread.latestVisibleMessage.text
-            : undefined,
-        ),
         key: `completed:${thread.latestRunId}`,
         kind: "completed",
         title: "Thread completed",
