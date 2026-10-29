@@ -12,6 +12,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
+  AuthProvidersManageScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
   ThreadId,
@@ -94,6 +95,32 @@ describe("command permissions", () => {
         );
       }),
     ),
+  );
+
+  it.effect(
+    "requires the destination providers grant to sign in to an Oh My Pi model provider",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = yield* setup;
+          const signIn = createCommandPermissions(runtime, WS_METHODS.ompLoginStart);
+          registry.set(sessions(env), AsyncResult.success(grant(true)));
+          expect(registry.get(signIn.permissionAtom(env))).toBe(false);
+          expect((yield* signIn.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+          registry.set(
+            sessions(env),
+            AsyncResult.success({
+              ...grant(false),
+              scopes: [AuthProvidersManageScope],
+              permissions: [AuthProvidersManageScope],
+            }),
+          );
+          expect(registry.get(signIn.permissionAtom(env))).toBe(true);
+          yield* signIn.authorize(registry, env);
+        }),
+      ),
   );
 
   it.effect("requires the destination settings grant to run storage cleanup", () =>

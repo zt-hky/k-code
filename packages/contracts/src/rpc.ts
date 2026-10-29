@@ -71,6 +71,15 @@ import {
   AcpRegistrySetExtensionSourceResult,
   AcpRegistryLogoutInput,
   AcpRegistryLogoutResult,
+  OmpLoginCancelInput,
+  OmpLoginListProvidersInput,
+  OmpLoginListProvidersResult,
+  OmpLoginRespondInput,
+  OmpLoginSignOutInput,
+  OmpLoginSignOutResult,
+  OmpLoginStartInput,
+  OmpLoginState,
+  OmpLoginSubscribeInput,
   AcpRegistryManagedBinaryUninstallInput,
   AcpRegistryManagedBinaryUninstallResult,
   AcpRegistryOperationError,
@@ -530,6 +539,12 @@ export const WS_METHODS = {
   serverSetAcpRegistryProvider: "server.setAcpRegistryProvider",
   serverDisableAcpRegistryProvider: "server.disableAcpRegistryProvider",
   serverLogoutAcpRegistry: "server.logoutAcpRegistry",
+  ompLoginListProviders: "server.ompLogin.listProviders",
+  ompLoginStart: "server.ompLogin.start",
+  ompLoginRespond: "server.ompLogin.respond",
+  ompLoginCancel: "server.ompLogin.cancel",
+  ompLoginSignOut: "server.ompLogin.signOut",
+  ompLoginSubscribe: "server.ompLogin.subscribe",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetHostResources: "server.getHostResources",
@@ -924,6 +939,45 @@ const WsServerLogoutAcpRegistryRpc = Rpc.make(WS_METHODS.serverLogoutAcpRegistry
   payload: AcpRegistryLogoutInput,
   success: AcpRegistryLogoutResult,
   error: Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]),
+});
+
+const OmpLoginRpcError = Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]);
+
+const WsOmpLoginListProvidersRpc = Rpc.make(WS_METHODS.ompLoginListProviders, {
+  payload: OmpLoginListProvidersInput,
+  success: OmpLoginListProvidersResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpLoginStartRpc = Rpc.make(WS_METHODS.ompLoginStart, {
+  payload: OmpLoginStartInput,
+  success: OmpLoginState,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpLoginRespondRpc = Rpc.make(WS_METHODS.ompLoginRespond, {
+  payload: OmpLoginRespondInput,
+  success: OmpLoginState,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpLoginCancelRpc = Rpc.make(WS_METHODS.ompLoginCancel, {
+  payload: OmpLoginCancelInput,
+  success: OmpLoginState,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpLoginSignOutRpc = Rpc.make(WS_METHODS.ompLoginSignOut, {
+  payload: OmpLoginSignOutInput,
+  success: OmpLoginSignOutResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpLoginSubscribeRpc = Rpc.make(WS_METHODS.ompLoginSubscribe, {
+  payload: OmpLoginSubscribeInput,
+  success: OmpLoginState,
+  error: OmpLoginRpcError,
+  stream: true,
 });
 
 const WsServerGetTraceDiagnosticsRpc = Rpc.make(WS_METHODS.serverGetTraceDiagnostics, {
@@ -2037,6 +2091,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerSetAcpRegistryProviderRpc,
   WsServerDisableAcpRegistryProviderRpc,
   WsServerLogoutAcpRegistryRpc,
+  WsOmpLoginListProvidersRpc,
+  WsOmpLoginStartRpc,
+  WsOmpLoginRespondRpc,
+  WsOmpLoginCancelRpc,
+  WsOmpLoginSignOutRpc,
+  WsOmpLoginSubscribeRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetHostResourcesRpc,

@@ -331,6 +331,85 @@ export const AcpRegistryLogoutResult = Schema.Struct({
 });
 export type AcpRegistryLogoutResult = typeof AcpRegistryLogoutResult.Type;
 
+const OmpLoginProviderId = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(128),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+);
+const OmpLoginFlowId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
+
+export const OmpLoginProvider = Schema.Struct({
+  providerId: OmpLoginProviderId,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  authenticated: Schema.Boolean,
+});
+export type OmpLoginProvider = typeof OmpLoginProvider.Type;
+
+export const OmpLoginListProvidersInput = Schema.Struct({ instanceId: ProviderInstanceId });
+export type OmpLoginListProvidersInput = typeof OmpLoginListProvidersInput.Type;
+
+export const OmpLoginListProvidersResult = Schema.Struct({
+  providers: Schema.Array(OmpLoginProvider).check(Schema.isMaxLength(128)),
+});
+export type OmpLoginListProvidersResult = typeof OmpLoginListProvidersResult.Type;
+
+export const OmpLoginPrompt = Schema.Struct({
+  id: OmpLoginFlowId,
+  message: Schema.String.check(Schema.isMaxLength(1_024)),
+  // Masked by clients: API keys and tokens.
+  secret: Schema.Boolean,
+});
+export type OmpLoginPrompt = typeof OmpLoginPrompt.Type;
+
+export const OmpLoginState = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  phase: Schema.Literals(["idle", "starting", "waiting", "succeeded", "failed", "cancelled"]),
+  flowId: Schema.NullOr(OmpLoginFlowId),
+  providerId: Schema.NullOr(OmpLoginProviderId),
+  authorizationUrl: Schema.NullOr(Schema.String.check(Schema.isMaxLength(16_384))),
+  instructions: Schema.NullOr(Schema.String.check(Schema.isMaxLength(2_048))),
+  progress: Schema.NullOr(Schema.String.check(Schema.isMaxLength(512))),
+  prompt: Schema.NullOr(OmpLoginPrompt),
+  message: Schema.NullOr(Schema.String.check(Schema.isMaxLength(1_024))),
+});
+export type OmpLoginState = typeof OmpLoginState.Type;
+
+export const OmpLoginStartInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  providerId: OmpLoginProviderId,
+});
+export type OmpLoginStartInput = typeof OmpLoginStartInput.Type;
+
+export const OmpLoginRespondInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  flowId: OmpLoginFlowId,
+  promptId: OmpLoginFlowId,
+  // Write-only: pasted codes, redirect URLs and API keys never appear in state.
+  value: Schema.String.check(Schema.isMaxLength(16_384)),
+});
+export type OmpLoginRespondInput = typeof OmpLoginRespondInput.Type;
+
+export const OmpLoginCancelInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  flowId: OmpLoginFlowId,
+});
+export type OmpLoginCancelInput = typeof OmpLoginCancelInput.Type;
+
+export const OmpLoginSubscribeInput = Schema.Struct({ instanceId: ProviderInstanceId });
+export type OmpLoginSubscribeInput = typeof OmpLoginSubscribeInput.Type;
+
+export const OmpLoginSignOutInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  providerId: OmpLoginProviderId,
+});
+export type OmpLoginSignOutInput = typeof OmpLoginSignOutInput.Type;
+
+export const OmpLoginSignOutResult = Schema.Struct({
+  removed: NonNegativeInt,
+  // Auth that still applies after sign-out, such as an environment variable.
+  remainingSource: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(256))),
+});
+export type OmpLoginSignOutResult = typeof OmpLoginSignOutResult.Type;
+
 export const AcpRegistryProbeModel = Schema.Struct({
   id: AcpRegistryProbeText,
   name: AcpRegistryProbeText,
@@ -399,6 +478,11 @@ export const AcpRegistryOperationErrorReason = Schema.Literals([
   "extensions_unsupported",
   "extensions_list_failed",
   "extension_toggle_failed",
+  "login_unsupported",
+  "login_list_failed",
+  "login_failed",
+  "login_stale_flow",
+  "login_sign_out_failed",
 ]);
 export type AcpRegistryOperationErrorReason = typeof AcpRegistryOperationErrorReason.Type;
 

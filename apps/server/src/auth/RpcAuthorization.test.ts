@@ -44,6 +44,19 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("keeps Oh My Pi model sign-in, which replaces credentials every session uses, behind providers:manage", () => {
+    for (const method of [
+      WS_METHODS.ompLoginListProviders,
+      WS_METHODS.ompLoginStart,
+      WS_METHODS.ompLoginRespond,
+      WS_METHODS.ompLoginCancel,
+      WS_METHODS.ompLoginSignOut,
+      WS_METHODS.ompLoginSubscribe,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthProvidersManageScope);
+    }
+  });
+
   it("keeps triage, which seeds an agent that reads logs and the database, behind operate scope", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.serverPrepareTriage)).toBe(
       AuthOrchestrationOperateScope,
