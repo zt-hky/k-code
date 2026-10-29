@@ -340,6 +340,18 @@ export interface AcpAdapterV2Flavor {
     toolCall: AcpToolCallState,
   ) => AcpAdapterV2SubagentUpdate | undefined;
   readonly isProvisionalSubagentTool?: (toolCall: AcpToolCallState) => boolean;
+  /**
+   * Reads a child's own transcript for agents that stream none of its work over ACP.
+   * Returns the entries after `fromByte` and where the next read starts.
+   */
+  readonly readSubagentTranscript?: (input: {
+    readonly sessionId: string;
+    readonly agentId: string;
+    readonly fromByte: number;
+  }) => Effect.Effect<{
+    readonly entries: ReadonlyArray<AcpSubagentTranscriptEntry>;
+    readonly nextByte: number;
+  }>;
   /** Tools whose questions arrive as a form elicitation; the question card replaces their tool row. */
   readonly isUserInputTool?: (toolCall: AcpToolCallState) => boolean;
   readonly normalizeToolCall?: (toolCall: AcpToolCallState) => AcpToolCallState;
@@ -444,7 +456,18 @@ export interface AcpAdapterV2SubagentUpdate {
   /** Thinking level the child runs with, when the agent reports one. */
   readonly reasoningEffort?: string | null;
   readonly suppressNormalTool?: boolean;
+  /** Child agents whose transcripts `readSubagentTranscript` can read. */
+  readonly transcriptAgentIds?: ReadonlyArray<string>;
 }
+
+export type AcpSubagentTranscriptEntry =
+  | {
+      readonly type: "assistant" | "reasoning";
+      /** Unique within the parent task, across all of its child agents. */
+      readonly nativeId: string;
+      readonly text: string;
+    }
+  | { readonly type: "tool"; readonly toolCall: AcpToolCallState };
 
 export interface AcpAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
@@ -1309,6 +1332,8 @@ interface ActiveAcpSubagent {
   terminalStatusProjected: boolean;
   readonly toolState: Pick<ActiveAcpTurn, "tools" | "toolUpdatesSkipped" | "toolStartedAt">;
   readonly toolSessionIds: Map<string, string>;
+  /** Next unread byte of each child agent's transcript. */
+  readonly transcriptOffsets: Map<string, number>;
 }
 
 interface AcpNativeChildSession {
@@ -1675,6 +1700,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         const emitNativeResponseLifecycle =
           options.testHooks?.onNativeResponseLifecycle ?? (() => Effect.void);
         const nextElicitationOrdinal = yield* Ref.make(0);
+        // The ordinal restarts with the server while the agent session id survives a resume, so
+        // an epoch keeps a new question from overwriting an earlier question's turn item.
+        const elicitationEpoch = (yield* crypto.randomUUIDv4().pipe(Effect.orDie)).slice(0, 8);
         const providerTurns = yield* Ref.make(new Map<string, OrchestrationV2ProviderTurn>());
         const snapshot = yield* Ref.make<SnapshotMessageState>({
           order: [],
@@ -2790,6 +2818,92 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           }
         });
 
+        const emitSubagentTranscriptText = Effect.fnUntraced(function* (
+          subagent: ActiveAcpSubagent,
+          kind: "assistant" | "reasoning",
+          nativeId: string,
+          text: string,
+        ) {
+          if (text.length === 0) return;
+          const nativeItemId = `${subagent.task.nativeTaskRef?.nativeId ?? subagent.task.id}:transcript:${nativeId}`;
+          const ordinal = resolveSubagentChildOrdinal(subagent, nativeItemId);
+          const now = yield* DateTime.now;
+          if (kind === "assistant") {
+            const artifacts = makeSubagentConversationArtifacts({
+              messageId: providerMessageId(nativeItemId),
+              turnItemId: providerTurnItemId(nativeItemId),
+              threadId: subagent.childThreadId,
+              rootNodeId: subagent.childRootNodeId,
+              providerThreadId: subagent.task.providerThreadId,
+              providerTurnId: null,
+              nativeItemRef: { driver, nativeId: nativeItemId, strength: "weak" },
+              role: "assistant",
+              text,
+              ordinal,
+              now,
+            });
+            yield* emitProviderEvent({
+              type: "message.updated",
+              driver,
+              message: artifacts.message,
+            });
+            yield* emitProviderEvent({
+              type: "turn_item.updated",
+              driver,
+              turnItem: artifacts.turnItem,
+            });
+            return;
+          }
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver,
+            turnItem: {
+              id: providerTurnItemId(nativeItemId),
+              threadId: subagent.childThreadId,
+              runId: null,
+              nodeId: subagent.childRootNodeId,
+              providerThreadId: subagent.task.providerThreadId,
+              providerTurnId: null,
+              nativeItemRef: { driver, nativeId: nativeItemId, strength: "weak" },
+              parentItemId: null,
+              ordinal,
+              status: "completed",
+              title: null,
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              type: "reasoning",
+              text,
+              streaming: false,
+            },
+          });
+        });
+
+        // Reads only what the child appended since the last read, so progress updates stay cheap.
+        const syncSubagentTranscript = Effect.fnUntraced(function* (
+          subagent: ActiveAcpSubagent,
+          sessionId: string,
+          agentIds: ReadonlyArray<string>,
+        ) {
+          const read = flavor.readSubagentTranscript;
+          if (read === undefined) return;
+          for (const agentId of agentIds) {
+            const chunk = yield* read({
+              sessionId,
+              agentId,
+              fromByte: subagent.transcriptOffsets.get(agentId) ?? 0,
+            });
+            subagent.transcriptOffsets.set(agentId, chunk.nextByte);
+            for (const entry of chunk.entries) {
+              if (entry.type === "tool") {
+                yield* projectSubagentTool(subagent, `transcript:${agentId}`, entry.toolCall);
+              } else {
+                yield* emitSubagentTranscriptText(subagent, entry.type, entry.nativeId, entry.text);
+              }
+            }
+          }
+        });
+
         const emitSubagent = Effect.fnUntraced(function* (
           context: ActiveAcpTurn,
           update: AcpAdapterV2SubagentUpdate,
@@ -2908,6 +3022,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               toolStartedAt: new Map(),
             },
             toolSessionIds: new Map(),
+            transcriptOffsets: new Map(),
           };
           subagent.task = task;
           context.subagents.set(nativeTaskId, subagent);
@@ -2997,6 +3112,14 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               buffered,
               (notification) => projectSubagentNotification(subagent, notification),
               { concurrency: 1, discard: true },
+            );
+          }
+
+          if (update.transcriptAgentIds !== undefined) {
+            yield* syncSubagentTranscript(
+              subagent,
+              context.nativeThreadId,
+              update.transcriptAgentIds,
             );
           }
 
@@ -6392,7 +6515,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                     nextElicitationOrdinal,
                     (current) => current + 1,
                   );
-                  const nativeRequestId = `${elicitationScopeId}:elicitation:${ordinal}`;
+                  const nativeRequestId = `${elicitationScopeId}:elicitation:${elicitationEpoch}:${ordinal}`;
                   return {
                     nativeItemId: nativeRequestId,
                     nativeRequestId,

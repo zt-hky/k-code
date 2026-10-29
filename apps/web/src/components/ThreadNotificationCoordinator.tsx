@@ -21,6 +21,7 @@ import { isWindowsPlatform } from "../lib/utils";
 import { environmentSummaries } from "../state/presentation";
 import { environmentShell } from "../state/shell";
 import { environmentThreadShells } from "../state/threads";
+import { primaryEnvironmentIdAtom } from "../state/primaryEnvironment";
 import {
   hasDesktopNotifications,
   hasNotificationSound,
@@ -29,6 +30,7 @@ import {
   threadNotificationTag,
   unlockNotificationAudio,
 } from "../threadNotifications";
+import { isWebPushActive } from "../webPush";
 import { resolveSidebarThreadStatus, type SidebarThreadStatus } from "./Sidebar.logic";
 import {
   createThreadNotificationGate,
@@ -141,7 +143,9 @@ export function startThreadNotifications(
       !hasDesktopNotifications(mode) ||
       (document.visibilityState === "visible" && document.hasFocus()) ||
       typeof Notification === "undefined" ||
-      Notification.permission !== "granted"
+      Notification.permission !== "granted" ||
+      // The service worker shows this environment's notifications from Web Push.
+      (environmentId === registry.get(primaryEnvironmentIdAtom) && isWebPushActive())
     )
       return;
     try {

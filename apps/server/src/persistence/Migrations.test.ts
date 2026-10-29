@@ -8,6 +8,7 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
+import WebPushSubscriptions from "./Migrations/074_WebPushSubscriptions.ts";
 
 const v2Migrations = migrationManifest.filter(([id]) => id >= 55);
 const newerMigrationId = Math.max(...migrationManifest.map(([id]) => id)) + 1;
@@ -26,6 +27,87 @@ const v2TableCount = Effect.gen(function* () {
     SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'orchestration_v2_%'
   `;
   return rows.length;
+});
+
+const activeTurnItemIndexNames = [
+  "orchestration_v2_projection_turn_items_active_ordinal_idx",
+  "orchestration_v2_projection_turn_items_active_run_idx",
+];
+
+const schemaNames = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ readonly name: string }>`
+    SELECT name FROM sqlite_master
+    WHERE name = 'web_push_subscriptions' OR name LIKE 'orchestration_v2_projection_turn_items_active_%'
+    ORDER BY name
+  `;
+  return rows.map((row) => row.name);
+});
+
+const expectedSchemaNames = [...activeTurnItemIndexNames, "web_push_subscriptions"];
+
+describe("Web Push migration id 73 collision", () => {
+  it.effect("heals a database that recorded 73 as WebPushSubscriptions", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 72 });
+      // What fork builds wrote: the table, a subscription, and 73 recorded as web push.
+      yield* WebPushSubscriptions;
+      yield* sql`
+        INSERT INTO web_push_subscriptions (endpoint, session_id, p256dh, auth, created_at)
+        VALUES ('https://push.example/a', 'session-1', 'p', 'a', '2026-10-01T00:00:00.000Z')
+      `;
+      yield* sql`
+        INSERT INTO effect_sql_migrations (migration_id, name) VALUES (73, 'WebPushSubscriptions')
+      `;
+      assert.deepStrictEqual(yield* schemaNames, ["web_push_subscriptions"]);
+
+      assert.deepStrictEqual(yield* runMigrations(), [
+        [73, "ActiveTurnItemIndexes"],
+        [74, "WebPushSubscriptions"],
+      ]);
+      assert.deepStrictEqual(yield* history, migrationManifest);
+      assert.deepStrictEqual(yield* schemaNames, expectedSchemaNames);
+      assert.strictEqual((yield* sql`SELECT endpoint FROM web_push_subscriptions`).length, 1);
+      assert.deepStrictEqual(yield* runMigrations(), []);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("migrates a fresh database", () =>
+    Effect.gen(function* () {
+      assert.deepStrictEqual(yield* runMigrations(), migrationManifest);
+      assert.deepStrictEqual(yield* history, migrationManifest);
+      assert.deepStrictEqual(yield* schemaNames, expectedSchemaNames);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("upgrades an upstream-only database at 73", () =>
+    Effect.gen(function* () {
+      yield* runMigrations({ toMigrationInclusive: 73 });
+      assert.deepStrictEqual(yield* schemaNames, activeTurnItemIndexNames);
+      assert.deepStrictEqual(yield* runMigrations(), [[74, "WebPushSubscriptions"]]);
+      assert.deepStrictEqual(yield* history, migrationManifest);
+      assert.deepStrictEqual(yield* schemaNames, expectedSchemaNames);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("refuses to reconcile 73 when later migrations are recorded", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 72 });
+      yield* sql`
+        INSERT INTO effect_sql_migrations (migration_id, name)
+        VALUES (73, 'WebPushSubscriptions'), (${newerMigrationId}, 'FutureMainMigration')
+      `;
+      const before = yield* history;
+
+      const exit = yield* Effect.exit(runMigrations());
+
+      assert.isTrue(Exit.isFailure(exit));
+      assert.include(String(exit), "Cannot reconcile Web Push migration 73");
+      assert.deepStrictEqual(yield* history, before);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
 });
 
 describe("runMigrations", () => {

@@ -16,6 +16,7 @@ import {
   extractOmpPlanApprovalElicitation,
   extractOmpProposedPlanMarkdown,
   extractOmpSubagentUpdate,
+  makeOmpSubagentTranscriptReader,
   OMP_AGENT_ID,
   OMP_MODE_OPTION_ID,
 } from "./ompAcp.ts";
@@ -221,6 +222,24 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
   const isOmp = registryAgentId === OMP_AGENT_ID;
   let ompSkillNames: ReadonlySet<string> = new Set();
   const ansiFilters = new Map<string, AnsiFilter>();
+  const ompFileSystem = isOmp
+    ? Option.getOrUndefined(yield* Effect.serviceOption(FileSystem.FileSystem))
+    : undefined;
+  const ompPath = isOmp ? Option.getOrUndefined(yield* Effect.serviceOption(Path.Path)) : undefined;
+  // omp's default agent dir; PI_CODING_AGENT_DIR overrides it.
+  const ompAgentDir =
+    options.environment.PI_CODING_AGENT_DIR ??
+    (options.environment.HOME === undefined || ompPath === undefined
+      ? undefined
+      : ompPath.join(options.environment.HOME, ".omp", "agent"));
+  const readOmpSubagentTranscript =
+    ompFileSystem === undefined || ompPath === undefined || ompAgentDir === undefined
+      ? undefined
+      : makeOmpSubagentTranscriptReader({
+          fileSystem: ompFileSystem,
+          path: ompPath,
+          agentDir: ompAgentDir,
+        });
   const onAvailableCommandsUpdate: AcpAdapterV2Flavor["onAvailableCommandsUpdate"] =
     isOmp || runtimeCoordinator !== undefined
       ? (commands) => {
@@ -261,6 +280,9 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
           supportsSessionSteering: true,
           supportsCompaction: true,
           extractSubagentUpdate: extractOmpSubagentUpdate,
+          ...(readOmpSubagentTranscript === undefined
+            ? {}
+            : { readSubagentTranscript: readOmpSubagentTranscript }),
           rewriteUserText: (text: string) =>
             Effect.succeed(rewriteOmpSkillMentions(text, ompSkillNames)),
           normalizeSessionUpdate: (notification) => {

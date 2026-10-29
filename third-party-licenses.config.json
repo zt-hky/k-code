@@ -433,6 +433,14 @@
       }
     },
     {
+      "name": "http_ece",
+      "sourceUrl": "https://github.com/martinthomson/encrypted-content-encoding",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) Martin Thomson <martin.thomson@gmail.com>"]
+      }
+    },
+    {
       "name": "keyv",
       "generatedNotice": {
         "licenseId": "MIT",

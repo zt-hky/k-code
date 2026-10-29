@@ -1,5 +1,13 @@
-import type { AcpAdapterV2Flavor } from "@t3tools/provider-acp/server/adapter";
+import type {
+  AcpAdapterV2Flavor,
+  AcpSubagentTranscriptEntry,
+} from "@t3tools/provider-acp/server/adapter";
+import * as Effect from "effect/Effect";
+import type * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
+import type * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
+import * as Schema from "effect/Schema";
 
 export const OMP_AGENT_ID = "omp";
 export const OMP_MODE_OPTION_ID = "mode";
@@ -160,6 +168,15 @@ export const extractOmpSubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractSu
           ) ??
           null);
 
+  const transcriptAgentIds = [
+    ...new Set(
+      [...progress, ...results].flatMap((entry) => {
+        const id = nonEmptyString(entry.id);
+        return id === undefined ? [] : [id];
+      }),
+    ),
+  ];
+
   return {
     nativeTaskId: tool.toolCallId,
     childSessionId: null,
@@ -170,5 +187,129 @@ export const extractOmpSubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractSu
     result,
     progress: activity,
     reasoningEffort,
+    ...(transcriptAgentIds.length === 0 ? {} : { transcriptAgentIds }),
   };
 };
+
+const decodeJsonLine = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+const NEWLINE = 0x0a;
+const textDecoder = new TextDecoder();
+
+/** Maps one line of an omp session file (`<agentId>.jsonl`) to transcript entries. */
+function ompTranscriptEntries(
+  agentId: string,
+  line: string,
+): ReadonlyArray<AcpSubagentTranscriptEntry> {
+  const entry = asRecord(Option.getOrUndefined(decodeJsonLine(line)));
+  const message = asRecord(entry?.message);
+  if (entry?.type !== "message" || message === undefined) return [];
+  const lineId = nonEmptyString(entry.id) ?? "";
+  if (message.role === "toolResult") {
+    const toolCallId = nonEmptyString(message.toolCallId);
+    if (toolCallId === undefined) return [];
+    return [
+      {
+        type: "tool",
+        toolCall: {
+          toolCallId,
+          status: message.isError === true ? "failed" : "completed",
+          data: { rawOutput: { content: message.content, details: message.details } },
+        },
+      },
+    ];
+  }
+  if (message.role !== "assistant" || !Array.isArray(message.content)) return [];
+  return message.content.flatMap((part, index): ReadonlyArray<AcpSubagentTranscriptEntry> => {
+    const record = asRecord(part);
+    const nativeId = `${agentId}:${lineId}:${index}`;
+    switch (record?.type) {
+      case "text": {
+        const text = nonEmptyString(record.text);
+        return text === undefined ? [] : [{ type: "assistant", nativeId, text }];
+      }
+      case "thinking": {
+        const text = nonEmptyString(record.thinking);
+        return text === undefined ? [] : [{ type: "reasoning", nativeId, text }];
+      }
+      case "toolCall": {
+        const toolCallId = nonEmptyString(record.id);
+        const name = nonEmptyString(record.name);
+        if (toolCallId === undefined || name === undefined) return [];
+        return [
+          {
+            type: "tool",
+            toolCall: {
+              toolCallId,
+              title: nonEmptyString(record.intent) ?? name,
+              kind: name,
+              status: "inProgress",
+              data: { rawInput: record.arguments ?? {} },
+            },
+          },
+        ];
+      }
+      default:
+        return [];
+    }
+  });
+}
+
+/**
+ * omp runs subagents in-process and streams none of their work over ACP, but it saves each
+ * child's session beside the parent's: `<agentDir>/sessions/<cwd>/<stamp>_<sessionId>/<agentId>.jsonl`.
+ */
+export function makeOmpSubagentTranscriptReader(input: {
+  readonly fileSystem: FileSystem.FileSystem;
+  readonly path: Path.Path;
+  readonly agentDir: string;
+}): NonNullable<AcpAdapterV2Flavor["readSubagentTranscript"]> {
+  const { fileSystem, path } = input;
+  const sessionsRoot = path.join(input.agentDir, "sessions");
+  const sessionDirs = new Map<string, string>();
+
+  const findSessionDir = Effect.fnUntraced(function* (sessionId: string) {
+    const cached = sessionDirs.get(sessionId);
+    if (cached !== undefined) return cached;
+    const suffix = `_${sessionId}`;
+    for (const project of yield* fileSystem.readDirectory(sessionsRoot)) {
+      const projectDir = path.join(sessionsRoot, project);
+      const match = (yield* fileSystem
+        .readDirectory(projectDir)
+        .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))).find((name) =>
+        name.endsWith(suffix),
+      );
+      if (match === undefined) continue;
+      const dir = path.join(projectDir, match);
+      if ((yield* fileSystem.stat(dir)).type !== "Directory") continue;
+      sessionDirs.set(sessionId, dir);
+      return dir;
+    }
+    return undefined;
+  });
+
+  return ({ sessionId, agentId, fromByte }) =>
+    Effect.gen(function* () {
+      const dir = yield* findSessionDir(sessionId);
+      if (dir === undefined || agentId.includes("/") || agentId.includes("\\")) {
+        return { entries: [], nextByte: fromByte };
+      }
+      const bytes = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const file = yield* fileSystem.open(path.join(dir, `${agentId}.jsonl`), { flag: "r" });
+          const size = Number((yield* file.stat).size);
+          if (size <= fromByte) return undefined;
+          return Option.getOrUndefined(
+            yield* file.readAlloc(size - fromByte, { position: BigInt(fromByte) }),
+          );
+        }),
+      );
+      // A trailing line without its newline is still being written; read it next time.
+      const end = bytes === undefined ? -1 : bytes.lastIndexOf(NEWLINE);
+      if (bytes === undefined || end < 0) return { entries: [], nextByte: fromByte };
+      const entries = textDecoder
+        .decode(bytes.subarray(0, end))
+        .split("\n")
+        .flatMap((line) => ompTranscriptEntries(agentId, line));
+      return { entries, nextByte: fromByte + end + 1 };
+    }).pipe(Effect.orElseSucceed(() => ({ entries: [], nextByte: fromByte })));
+}
