@@ -5,7 +5,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { getProviderModelCapabilities } from "./providerModels";
+import { formatProviderDriverKindLabel, getProviderModelCapabilities } from "./providerModels";
 
 const PROVIDER = ProviderDriverKind.make("claudeAgent");
 
@@ -59,6 +59,15 @@ describe("getProviderModelCapabilities", () => {
 
     expect(getProviderModelCapabilities(models, " custom-model ", PROVIDER)).toEqual(
       customCapabilities,
+    );
+  });
+});
+
+describe("formatProviderDriverKindLabel", () => {
+  it("uses the registered display name before humanizing the slug", () => {
+    expect(formatProviderDriverKindLabel(ProviderDriverKind.make("ohmypi"))).toBe("Oh My Pi");
+    expect(formatProviderDriverKindLabel(ProviderDriverKind.make("someNewDriver"))).toBe(
+      "Some New Driver",
     );
   });
 });

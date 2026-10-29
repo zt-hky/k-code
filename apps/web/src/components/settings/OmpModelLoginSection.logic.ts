@@ -1,7 +1,7 @@
 import type { OmpLoginPrompt, OmpLoginProvider, OmpLoginState } from "@t3tools/contracts";
 
 /** The providers most people sign in to, in the order they are offered. */
-export const POPULAR_LOGIN_PROVIDER_IDS: ReadonlyArray<string> = [
+const POPULAR_LOGIN_PROVIDER_IDS: ReadonlyArray<string> = [
   "anthropic",
   "openai-codex",
   "github-copilot",
