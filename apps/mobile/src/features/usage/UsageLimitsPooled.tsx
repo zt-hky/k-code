@@ -33,6 +33,7 @@ const DRIVER_LABEL: Partial<Record<string, string>> = {
   claudeAgent: "Claude",
   grok: "Grok",
   antigravity: "Antigravity",
+  ohmypi: "Oh My Pi",
 };
 const PACE_LABEL = { ahead: "Ahead of pace", on: "On pace", under: "Under pace" } as const;
 

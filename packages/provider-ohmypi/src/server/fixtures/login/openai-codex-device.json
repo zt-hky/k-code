@@ -1,0 +1,21 @@
+{
+  "provider": "openai-codex-device",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 162,
+      "stream": "stdout",
+      "text": "Initiating device authorization…\n"
+    },
+    {
+      "t": 855,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://auth.openai.com/codex/device\nEnter code: O8JU-22U6A\n\n"
+    },
+    {
+      "t": 856,
+      "stream": "stdout",
+      "text": "Waiting for browser authorization (code: O8JU-22U6A)…\n"
+    }
+  ]
+}

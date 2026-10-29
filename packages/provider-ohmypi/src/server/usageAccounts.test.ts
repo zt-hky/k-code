@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { ProviderDriverKind } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import { ompUsageToAccounts } from "./ompUsage.ts";
+import { ompUsageToAccounts } from "./usageAccounts.ts";
 
 const fallback = ProviderDriverKind.make("acpRegistry");
 const now = DateTime.makeUnsafe("2026-10-27T12:00:00.000Z");

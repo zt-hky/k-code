@@ -24,7 +24,6 @@ import { toastManager } from "../ui/toast";
 import { reportAcpFailure, useAcpNativeSessionCommands } from "../../hooks/useAcpNativeSessions";
 import { SettingsRow } from "./settingsLayout";
 import { AcpExtensionSourcesSection } from "./AcpExtensionSourcesSection";
-import { OmpModelLoginSection } from "./OmpModelLoginSection";
 
 interface AcpSessionProject {
   readonly id: ProjectId;
@@ -103,7 +102,6 @@ export function AcpSessionManagementSection(props: {
   const canDelete = props.provider.nativeSessions?.canDelete === true;
   const canConfigureProviders = props.provider.configurableProviders === true;
   const canManageExtensions = props.provider.manageableExtensions === true;
-  const canLoginModels = props.provider.modelProviderLogin === true;
   const projectOperationPending =
     loading ||
     importingSessionId !== null ||
@@ -111,8 +109,7 @@ export function AcpSessionManagementSection(props: {
     loadingProviders ||
     savingProviderId !== null;
 
-  if (!canList && !canLogout && !canConfigureProviders && !canManageExtensions && !canLoginModels)
-    return null;
+  if (!canList && !canLogout && !canConfigureProviders && !canManageExtensions) return null;
 
   const loadSessions = async (cursor?: string) => {
     if (projectId === null || loading) return;
@@ -436,13 +433,6 @@ export function AcpSessionManagementSection(props: {
         ) : null}
       </SettingsRow>
 
-      {canLoginModels ? (
-        <OmpModelLoginSection
-          environmentId={props.environmentId}
-          instanceId={props.instanceId}
-          readOnly={props.readOnly}
-        />
-      ) : null}
       {canConfigureProviders ? (
         <div className="grid gap-3 border-t border-border/60 px-3 py-3 sm:px-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

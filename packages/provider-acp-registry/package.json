@@ -15,6 +15,10 @@
       "types": "./src/server.ts",
       "import": "./src/server.ts"
     },
+    "./server/probe": {
+      "types": "./src/server/probe.ts",
+      "import": "./src/server/probe.ts"
+    },
     "./testing": {
       "types": "./src/testing.ts",
       "import": "./src/testing.ts"

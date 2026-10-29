@@ -48,7 +48,7 @@ export const PROVIDER_PRESENTATION = {
   omp: {
     label: "Oh My Pi",
     color: "#c9a227",
-    driverKind: ProviderDriverKind.make("acpRegistry"),
+    driverKind: ProviderDriverKind.make("ohmypi"),
   },
 } satisfies Record<UsageProviderKind, UsageProviderPresentation>;
 

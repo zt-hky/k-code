@@ -9,7 +9,7 @@ import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import { stripAnsi } from "./ompAnsi.ts";
+import { stripAnsi } from "./ansi.ts";
 
 /** Where an instance's omp runs: the executable the ACP session uses, with the same environment. */
 export interface OmpSpawn {

@@ -271,21 +271,18 @@ describe("ACP Registry probe", () => {
   );
 
   it("bounds and de-duplicates advertised commands", () => {
-    const commands = normalizeAcpRegistryCommands(
-      [
-        {
-          name: "create_plan",
-          description: " Create a plan ",
-          input: { type: "text", hint: " topic " },
-        },
-        { name: "CREATE_PLAN", description: "duplicate" },
-        ...Array.from({ length: 140 }, (_, index) => ({
-          name: `command_${index}`,
-          description: "",
-        })),
-      ],
-      undefined,
-    );
+    const commands = normalizeAcpRegistryCommands([
+      {
+        name: "create_plan",
+        description: " Create a plan ",
+        input: { type: "text", hint: " topic " },
+      },
+      { name: "CREATE_PLAN", description: "duplicate" },
+      ...Array.from({ length: 140 }, (_, index) => ({
+        name: `command_${index}`,
+        description: "",
+      })),
+    ]);
 
     expect(commands.slashCommands).toHaveLength(128);
     expect(commands.slashCommands[0]).toEqual({
@@ -301,15 +298,12 @@ describe("ACP Registry probe", () => {
 
   it("routes dollar-prefixed ACP commands to the provider skill menu", () => {
     expect(
-      normalizeAcpRegistryCommands(
-        [
-          { name: "$workspace-skill", description: "Run the workspace skill" },
-          { name: "$WORKSPACE-SKILL", description: "duplicate" },
-          { name: "$", description: "empty" },
-          { name: "review", description: "Review changes" },
-        ],
-        undefined,
-      ),
+      normalizeAcpRegistryCommands([
+        { name: "$workspace-skill", description: "Run the workspace skill" },
+        { name: "$WORKSPACE-SKILL", description: "duplicate" },
+        { name: "$", description: "empty" },
+        { name: "review", description: "Review changes" },
+      ]),
     ).toEqual({
       slashCommands: [{ name: "review", description: "Review changes" }],
       skills: [

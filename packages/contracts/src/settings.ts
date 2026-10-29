@@ -1437,7 +1437,7 @@ const DEFAULT_DISABLED_PROVIDER_DRIVERS: ReadonlySet<ProviderDriverKind> = new S
 );
 
 const DEFAULT_ENABLED_DEFAULT_INSTANCES: ReadonlySet<ProviderInstanceId> = new Set(
-  ["codex", "claudeAgent"].map((instanceId) => ProviderInstanceId.make(instanceId)),
+  ["codex", "claudeAgent", "ohmypi"].map((instanceId) => ProviderInstanceId.make(instanceId)),
 );
 
 export const isUnconfiguredDefaultInstanceEnabled = (instanceId: ProviderInstanceId): boolean =>

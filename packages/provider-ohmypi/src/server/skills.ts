@@ -14,3 +14,6 @@ export function rewriteOmpSkillMentions(text: string, skillNames: ReadonlySet<st
   }
   return rewritten + text.slice(cursor);
 }
+
+/** omp advertises skills as `/skill:<name>` commands. */
+export const OMP_SKILL_PREFIXES: ReadonlyArray<string> = ["skill:"];

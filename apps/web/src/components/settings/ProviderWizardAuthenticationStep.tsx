@@ -55,7 +55,7 @@ export function ProviderWizardAuthenticationStep({
               }}
               readOnly={false}
             />
-          ) : (
+          ) : provider?.modelProviderLogin === true ? null : (
             <SettingsRow
               title="Account"
               description={

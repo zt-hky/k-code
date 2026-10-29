@@ -1,0 +1,21 @@
+{
+  "provider": "anthropic",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 157,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://claude.ai/oauth/authorize?client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A54545%2Fcallback&scope=org%3Acreate_api_key+user%3Aprofile+user%3Ainference+user%3Asessions%3Aclaude_code+user%3Amcp_servers+user%3Afile_upload&code_challenge=0yRlpz2hiHSpBPE2vy9SyEAbLB509UW61ffe1kECgko&code_challenge_method=S256&state=26b254c6fffcecf363abd42b98f824db&code=true\nLocal shortcut (this machine only): http://localhost:54545/launch\nComplete login in your browser. If the browser cannot reach this machine, paste the final redirect URL or authorization code when prompted.\n\n"
+    },
+    {
+      "t": 157,
+      "stream": "stdout",
+      "text": "Waiting for browser authentication...\n"
+    },
+    {
+      "t": 159,
+      "stream": "stdout",
+      "text": "Paste the authorization code (or full redirect URL): "
+    }
+  ]
+}

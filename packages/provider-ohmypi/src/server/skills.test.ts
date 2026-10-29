@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { normalizeAcpRegistryCommands } from "./probe.ts";
-import { rewriteOmpSkillMentions } from "./ompSkills.ts";
+import { normalizeAcpRegistryCommands } from "@t3tools/provider-acp-registry/server/probe";
+import { OMP_SKILL_PREFIXES, rewriteOmpSkillMentions } from "./skills.ts";
 
 describe("omp skill mentions", () => {
   const skills = new Set(["tdd"]);
@@ -21,14 +21,14 @@ describe("omp skill mentions", () => {
 describe("omp skills in the command catalog", () => {
   const commands = [{ name: "skill:tdd", description: "Test first" }] as never;
 
-  it("lists skill:* as skills for omp", () => {
-    const result = normalizeAcpRegistryCommands(commands, "omp");
+  it("lists skill:* as skills when the agent declares the prefix", () => {
+    const result = normalizeAcpRegistryCommands(commands, OMP_SKILL_PREFIXES);
     expect(result.skills.map((skill) => skill.name)).toEqual(["tdd"]);
     expect(result.slashCommands).toEqual([]);
   });
 
-  it("keeps skill:* as a slash command for other agents", () => {
-    const result = normalizeAcpRegistryCommands(commands, "other");
+  it("keeps skill:* as a slash command without the prefix", () => {
+    const result = normalizeAcpRegistryCommands(commands);
     expect(result.skills).toEqual([]);
     expect(result.slashCommands.map((command) => command.name)).toEqual(["skill:tdd"]);
   });

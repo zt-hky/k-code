@@ -17,16 +17,13 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
-import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Path from "effect/Path";
-import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { AcpRegistryAdapterV2Driver, type AcpRegistryAdapterV2DriverEnv } from "./adapter.ts";
-import { OMP_AGENT_ID, OMP_MODE_OPTION_ID } from "./ompAcp.ts";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
@@ -37,13 +34,7 @@ import {
   type ProviderInstance,
 } from "@t3tools/provider-core/server/driver";
 import { providerModelsFromSettings } from "@t3tools/provider-core/server/snapshotProbe";
-import {
-  enrichProviderSnapshotWithVersionAdvisory,
-  makeManualOnlyProviderMaintenanceCapabilities,
-} from "@t3tools/provider-core/server/maintenanceResolver";
-import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
-import { ompMaintenance } from "./ompMaintenance.ts";
-import { makeOmpLogin } from "./ompLogin.ts";
+import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
 import {
   haveProviderSnapshotSettingsChanged,
   makeProviderSnapshotSettingsSource,
@@ -57,16 +48,11 @@ import {
   deleteAcpRegistrySession,
   disableAcpRegistryProvider,
   listAcpRegistrySessions,
-  listAcpRegistryExtensions,
-  listAcpRegistryProjects,
   listAcpRegistryProviders,
-  setAcpRegistryExtensionSource,
   logoutAcpRegistry,
   probeAcpRegistryConfiguration,
   setAcpRegistryProvider,
-  readAcpRegistryUsageAccounts,
 } from "./probe.ts";
-import { acpRegistryUsageReader } from "./usage.ts";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.ts";
 import * as AcpRegistryAuth from "./auth.ts";
@@ -99,22 +85,14 @@ const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
   };
 };
 
-const registryAgentId = (settings: AcpRegistrySettings) =>
-  settings.source === "local" ? undefined : settings.agentId;
-
 function modelsFromDiscovery(
   discovery:
     | Pick<AcpRegistryLiveConfiguration, "models" | "currentModelId" | "configOptions">
     | undefined,
   customModels: ReadonlyArray<string>,
-  agentId?: string,
 ): ReadonlyArray<ServerProviderModel> {
   const discovered = discovery?.models ?? [];
-  // T3's Build/Plan toggle owns omp's native plan mode.
-  const optionDescriptors =
-    agentId === OMP_AGENT_ID
-      ? discovery?.configOptions.filter((option) => option.id !== OMP_MODE_OPTION_ID)
-      : discovery?.configOptions;
+  const optionDescriptors = discovery?.configOptions;
   const capabilities =
     optionDescriptors === undefined || optionDescriptors.length === 0
       ? EMPTY_CAPABILITIES
@@ -223,7 +201,6 @@ function baseSnapshot(
       ? null
       : (resolveOfficialAcpRegistryIconUrl(input.probe?.probe.icon) ??
         officialAcpRegistryIconUrlForAgentId(input.settings.agentId));
-  const agentId = registryAgentId(input.settings);
   return {
     instanceId: input.instanceId,
     driver: DRIVER_KIND,
@@ -250,10 +227,7 @@ function baseSnapshot(
             : input.settings.agentId.length > 0),
     },
     ...(input.message ? { message: input.message } : {}),
-    ...(agentId === OMP_AGENT_ID
-      ? { showInteractionModeToggle: true, modelProviderLogin: true }
-      : {}),
-    models: modelsFromDiscovery(input.probe?.probe, input.settings.customModels, agentId),
+    models: modelsFromDiscovery(input.probe?.probe, input.settings.customModels),
     ...(input.probe === undefined
       ? {}
       : {
@@ -262,10 +236,8 @@ function baseSnapshot(
             canLoad: input.probe.probe.sessionManagement.canLoad,
             canResume: input.probe.probe.sessionManagement.canResume,
             canDelete: input.probe.probe.sessionManagement.canDelete,
-            ...(agentId === OMP_AGENT_ID ? { canListProjects: true } : {}),
           },
           configurableProviders: input.probe.probe.sessionManagement.canConfigureProviders,
-          ...(agentId === OMP_AGENT_ID ? { manageableExtensions: true } : {}),
         }),
     slashCommands: input.probe?.slashCommands ?? [],
     skills: input.probe?.skills ?? [],
@@ -286,13 +258,12 @@ export function applyAcpRegistryLiveConfiguration(
   provider: ServerProvider,
   configuration: AcpRegistryLiveConfiguration,
   customModels: ReadonlyArray<string>,
-  agentId?: string,
 ): ServerProvider {
   const { message: _staleProbeMessage, ...snapshot } = provider;
   return {
     ...snapshot,
     status: provider.enabled ? "ready" : provider.status,
-    models: modelsFromDiscovery(configuration, customModels, agentId),
+    models: modelsFromDiscovery(configuration, customModels),
   };
 }
 
@@ -476,11 +447,7 @@ export const checkAcpRegistryProviderReadiness = Effect.fn(
     : snapshot;
 });
 
-export type AcpRegistryDriverEnv =
-  | AcpRegistryAdapterV2DriverEnv
-  | ProviderHost.ProviderHost
-  | ProviderLatestVersions.ProviderLatestVersions
-  | HttpClient.HttpClient;
+export type AcpRegistryDriverEnv = AcpRegistryAdapterV2DriverEnv | ProviderHost.ProviderHost;
 
 export const AcpRegistryDriver: ProviderDriver<
   AcpRegistrySettings,
@@ -493,7 +460,6 @@ export const AcpRegistryDriver: ProviderDriver<
     supportsMultipleInstances: true,
     hasDefaultInstance: false,
   },
-  usage: acpRegistryUsageReader,
   configSchema: AcpRegistrySettings,
   defaultConfig: () => decodeSettings({}),
   create: Effect.fn("AcpRegistryDriver.create")(function* ({
@@ -521,8 +487,6 @@ export const AcpRegistryDriver: ProviderDriver<
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const hostEnvironment = yield* HostProcess.Environment;
     const host = yield* ProviderHost.ProviderHost;
-    const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
-    const httpClient = yield* HttpClient.HttpClient;
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -596,28 +560,15 @@ export const AcpRegistryDriver: ProviderDriver<
                     withCommands,
                     liveConfiguration,
                     effectiveConfig.customModels,
-                    registryAgentId(effectiveConfig),
                   ),
               });
               return applyAcpRegistryUrlAuthAction(withConfiguration, authAction);
             }),
           );
     });
-    // Readiness snapshots replace the published one before enrichment lands; keep the last read.
-    const lastUsageAccounts = yield* Ref.make<ServerProvider["usageLimitAccounts"]>(undefined);
-    const usageSessionId = yield* Ref.make<string | undefined>(undefined);
     const checkProvider = checkAcpRegistryProviderReadiness(readinessInput).pipe(
       Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
       Effect.flatMap(withLiveRuntimeState),
-      Effect.flatMap((provider) =>
-        Ref.get(lastUsageAccounts).pipe(
-          Effect.map((usageLimitAccounts) =>
-            usageLimitAccounts === undefined || !provider.enabled || !provider.installed
-              ? provider
-              : { ...provider, usageLimitAccounts },
-          ),
-        ),
-      ),
     );
     const enrichProvider = checkAcpRegistryProviderStatus(
       {
@@ -642,34 +593,6 @@ export const AcpRegistryDriver: ProviderDriver<
       generation: current.generation + 1,
       entry: null,
     }));
-    const withUsageAccounts = Effect.fn("AcpRegistryDriver.withUsageAccounts")(function* (
-      provider: ServerProvider,
-    ) {
-      if (
-        registryAgentId(effectiveConfig) !== OMP_AGENT_ID ||
-        !provider.enabled ||
-        !provider.installed
-      ) {
-        return provider;
-      }
-      const previousSessionId = yield* Ref.get(usageSessionId);
-      const fetched = yield* readAcpRegistryUsageAccounts({
-        instanceId,
-        settings: effectiveConfig,
-        cwd: host.paths.cwd,
-        environment: processEnvironment,
-        ...(previousSessionId === undefined ? {} : { usageSessionId: previousSessionId }),
-      }).pipe(
-        Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        Effect.provideService(Crypto.Crypto, crypto),
-      );
-      if (fetched !== undefined) yield* Ref.set(usageSessionId, fetched.sessionId);
-      const usageLimitAccounts = fetched?.accounts ?? (yield* Ref.get(lastUsageAccounts));
-      if (usageLimitAccounts === undefined) return provider;
-      yield* Ref.set(lastUsageAccounts, usageLimitAccounts);
-      return { ...provider, usageLimitAccounts };
-    });
     const enrichProviderCached = Effect.fn("AcpRegistryDriver.enrichProviderCached")(function* (
       baseSnapshot: ServerProvider,
     ) {
@@ -681,14 +604,12 @@ export const AcpRegistryDriver: ProviderDriver<
         cached.expiresAt > now &&
         cached.provider.version === baseSnapshot.version
       ) {
-        // Usage limits move faster than the probe cache, so re-read them on every refresh.
-        const refreshed = yield* withUsageAccounts({
-          ...cached.provider,
-          checkedAt: baseSnapshot.checkedAt,
-        });
-        return { provider: refreshed, generation: cacheState.generation };
+        return {
+          provider: { ...cached.provider, checkedAt: baseSnapshot.checkedAt },
+          generation: cacheState.generation,
+        };
       }
-      const enriched = yield* withUsageAccounts(yield* enrichProvider);
+      const enriched = yield* enrichProvider;
       if (enriched.status === "ready") {
         yield* Ref.update(enrichmentCache, (current) =>
           current.generation === cacheState.generation
@@ -704,38 +625,17 @@ export const AcpRegistryDriver: ProviderDriver<
       }
       return { provider: enriched, generation: cacheState.generation };
     });
-    const ompInstallation = ompMaintenance({
-      executable: effectiveConfig.commandPath || "omp",
-      env: processEnvironment,
-      spawner,
-    });
-    const withOmpVersionAdvisory = (
-      provider: ServerProvider,
-      enableProviderUpdateChecks: boolean,
-    ) =>
-      registryAgentId(effectiveConfig) === OMP_AGENT_ID
-        ? enrichProviderSnapshotWithVersionAdvisory(provider, ompInstallation, {
-            enableProviderUpdateChecks,
-          }).pipe(
-            Effect.provideService(HttpClient.HttpClient, httpClient),
-            Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
-          )
-        : Effect.succeed(provider);
     const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
     const snapshot = yield* makeManagedServerProvider<
       ProviderSnapshotSettings<AcpRegistrySettings>
     >({
-      resolveMaintenance: () =>
-        Effect.succeed(
-          registryAgentId(effectiveConfig) === OMP_AGENT_ID ? ompInstallation : MAINTENANCE,
-        ),
+      resolveMaintenance: () => Effect.succeed(MAINTENANCE),
       getSettings: snapshotSettings.getSettings,
       streamSettings: snapshotSettings.streamSettings,
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
       initialSnapshot: () => checkProvider,
       checkProvider,
       enrichSnapshot: Effect.fn("enrichSnapshot")(function ({
-        settings,
         snapshot,
         getSnapshot,
         publishSnapshot,
@@ -759,12 +659,7 @@ export const AcpRegistryDriver: ProviderDriver<
                   Ref.get(enrichmentCache).pipe(
                     Effect.flatMap((current) =>
                       current.generation === generation
-                        ? withLiveRuntimeState(provider).pipe(
-                            Effect.flatMap((live) =>
-                              withOmpVersionAdvisory(live, settings.enableProviderUpdateChecks),
-                            ),
-                            Effect.flatMap(publishSnapshot),
-                          )
+                        ? withLiveRuntimeState(provider).pipe(Effect.flatMap(publishSnapshot))
                         : Effect.void,
                     ),
                   ),
@@ -800,7 +695,6 @@ export const AcpRegistryDriver: ProviderDriver<
                       current,
                       configuration,
                       effectiveConfig.customModels,
-                      registryAgentId(effectiveConfig),
                     ),
                   ),
                 ),
@@ -899,33 +793,6 @@ export const AcpRegistryDriver: ProviderDriver<
       ),
     };
 
-    const instanceScope = yield* Scope.Scope;
-    const modelProviderLogin =
-      registryAgentId(effectiveConfig) === OMP_AGENT_ID
-        ? yield* makeOmpLogin({
-            instanceId,
-            resolveSpawn: catalog.resolve(effectiveConfig, host.paths.cwd, processEnvironment).pipe(
-              Effect.map(({ spawn }) => ({
-                command: spawn.command,
-                env: spawn.env ?? processEnvironment,
-                cwd: host.paths.cwd,
-              })),
-              Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError),
-            ),
-            // A probe takes seconds; the login result must not wait for it.
-            onCredentialsChanged: clearLiveState.pipe(
-              Effect.andThen(liveSnapshotSemaphore.withPermit(invalidateEnrichmentCache)),
-              Effect.andThen(snapshot.refresh),
-              Effect.asVoid,
-              Effect.forkIn(instanceScope),
-              Effect.asVoid,
-            ),
-          }).pipe(
-            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-            Effect.provideService(Crypto.Crypto, crypto),
-          )
-        : undefined;
-
     return {
       instanceId,
       driverKind: DRIVER_KIND,
@@ -940,7 +807,6 @@ export const AcpRegistryDriver: ProviderDriver<
       },
       orchestrationAdapter,
       textGeneration: makeUnsupportedTextGeneration(),
-      ...(modelProviderLogin === undefined ? {} : { modelProviderLogin }),
       acpSessionManagement: {
         listSessions: ({ cwd, cursor }) =>
           provideAcpManagementServices(
@@ -994,49 +860,6 @@ export const AcpRegistryDriver: ProviderDriver<
               providerId,
             }),
           ).pipe(Effect.tap(() => liveSnapshotSemaphore.withPermit(invalidateEnrichmentCache))),
-        ...(registryAgentId(effectiveConfig) === OMP_AGENT_ID
-          ? {
-              listProjects: () =>
-                provideAcpManagementServices(
-                  listAcpRegistryProjects({
-                    instanceId,
-                    settings: effectiveConfig,
-                    cwd: host.paths.cwd,
-                    environment: processEnvironment,
-                  }),
-                ),
-              listExtensions: (cwd: string) =>
-                provideAcpManagementServices(
-                  listAcpRegistryExtensions({
-                    instanceId,
-                    settings: effectiveConfig,
-                    cwd,
-                    environment: processEnvironment,
-                  }),
-                ),
-              setExtensionSource: ({
-                cwd,
-                providerId,
-                enabled,
-              }: {
-                readonly cwd: string;
-                readonly providerId: string;
-                readonly enabled: boolean;
-              }) =>
-                provideAcpManagementServices(
-                  setAcpRegistryExtensionSource({
-                    instanceId,
-                    settings: effectiveConfig,
-                    cwd,
-                    environment: processEnvironment,
-                    providerId,
-                    enabled,
-                  }),
-                ).pipe(
-                  Effect.tap(() => liveSnapshotSemaphore.withPermit(invalidateEnrichmentCache)),
-                ),
-            }
-          : {}),
         logout: (cwd) => {
           const logout = logoutAcpRegistry({
             instanceId,

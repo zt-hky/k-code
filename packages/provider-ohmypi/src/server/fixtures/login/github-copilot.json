@@ -1,0 +1,21 @@
+{
+  "provider": "github-copilot",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 169,
+      "stream": "stdout",
+      "text": "GitHub Enterprise URL/domain (blank for github.com) (company.ghe.com): "
+    },
+    {
+      "t": 4003,
+      "stream": "stdin",
+      "text": "<answer>"
+    },
+    {
+      "t": 4461,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://github.com/login/device\nEnter code: DF49-33D3\n\n"
+    }
+  ]
+}

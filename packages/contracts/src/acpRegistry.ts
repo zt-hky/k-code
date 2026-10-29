@@ -360,12 +360,20 @@ export const OmpLoginPrompt = Schema.Struct({
 });
 export type OmpLoginPrompt = typeof OmpLoginPrompt.Type;
 
+export const OmpLoginFlowKind = Schema.Literals(["oauth", "device_code", "api_key"]);
+export type OmpLoginFlowKind = typeof OmpLoginFlowKind.Type;
+
 export const OmpLoginState = Schema.Struct({
   instanceId: ProviderInstanceId,
   phase: Schema.Literals(["idle", "starting", "waiting", "succeeded", "failed", "cancelled"]),
   flowId: Schema.NullOr(OmpLoginFlowId),
   providerId: Schema.NullOr(OmpLoginProviderId),
+  // What the flow asks of the user. `oauth` opens `authorizationUrl` and may take a pasted
+  // redirect URL or code; `device_code` shows `userCode` beside the URL; `api_key` takes a pasted
+  // key and `authorizationUrl` is only the provider's dashboard.
+  kind: Schema.NullOr(OmpLoginFlowKind),
   authorizationUrl: Schema.NullOr(Schema.String.check(Schema.isMaxLength(16_384))),
+  userCode: Schema.NullOr(Schema.String.check(Schema.isMaxLength(64))),
   instructions: Schema.NullOr(Schema.String.check(Schema.isMaxLength(2_048))),
   progress: Schema.NullOr(Schema.String.check(Schema.isMaxLength(512))),
   prompt: Schema.NullOr(OmpLoginPrompt),

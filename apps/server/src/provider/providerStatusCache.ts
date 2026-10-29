@@ -30,6 +30,7 @@ const mergeProviderModels = (
 const BUILT_IN_DRIVER_ORDER: ReadonlyArray<string> = [
   "codex",
   "claudeAgent",
+  "ohmypi",
   "cursor",
   "grok",
   "opencode",

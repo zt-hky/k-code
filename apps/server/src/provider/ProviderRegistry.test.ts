@@ -691,6 +691,58 @@ it.layer(
       );
     });
 
+    it("keeps Oh My Pi's models through a pending readiness check but drops them once signed out", () => {
+      const previousProvider = {
+        instanceId: ProviderInstanceId.make("ohmypi"),
+        driver: ProviderDriverKind.make("ohmypi"),
+        status: "ready",
+        enabled: true,
+        installed: true,
+        auth: { status: "authenticated" },
+        checkedAt: "2026-10-29T00:00:00.000Z",
+        version: "18.13.2",
+        nativeSessions: { canList: true, canLoad: true, canResume: true },
+        models: [
+          {
+            slug: "anthropic/claude-opus-5-5",
+            name: "Claude",
+            isCustom: false,
+            capabilities: null,
+          },
+        ],
+        slashCommands: [],
+        skills: [],
+      } as const satisfies ServerProvider;
+      const defaultModel = {
+        slug: "default",
+        name: "Default",
+        isCustom: false,
+        capabilities: null,
+      };
+      const readinessProvider = {
+        ...previousProvider,
+        checkedAt: "2026-10-29T00:01:00.000Z",
+        nativeSessions: undefined,
+        models: [defaultModel],
+      } satisfies ServerProvider;
+      const signedOutProvider = {
+        ...readinessProvider,
+        status: "error",
+        auth: { status: "unauthenticated" },
+      } satisfies ServerProvider;
+
+      assert.deepStrictEqual(
+        ProviderRegistry.mergeProviderSnapshot(previousProvider, readinessProvider).models.map(
+          (model) => model.slug,
+        ),
+        ["default", "anthropic/claude-opus-5-5"],
+      );
+      assert.deepStrictEqual(
+        ProviderRegistry.mergeProviderSnapshot(previousProvider, signedOutProvider).models,
+        [defaultModel],
+      );
+    });
+
     it("drops Grok models a completed probe no longer advertises", () => {
       const previousProvider = {
         instanceId: ProviderInstanceId.make("grok"),
@@ -1938,7 +1990,7 @@ it.layer(
           decodeServerSettings(
             deepMerge(encodedDefaultServerSettings, {
               providerInstances: {
-                ...disabledDefaultSlots("claudeAgent", "cursor", "grok", "opencode"),
+                ...disabledDefaultSlots("claudeAgent", "cursor", "grok", "opencode", "ohmypi"),
                 [ProviderInstanceId.make("codex")]: {
                   driver: ProviderDriverKind.make("codex"),
                   enabled: true,
@@ -2033,7 +2085,7 @@ it.layer(
           );
           yield* serverSettings.updateSettings({
             providerInstances: {
-              ...disabledDefaultSlots("claudeAgent", "cursor", "grok", "opencode"),
+              ...disabledDefaultSlots("claudeAgent", "cursor", "grok", "opencode", "ohmypi"),
               [ProviderInstanceId.make("codex")]: {
                 driver: ProviderDriverKind.make("codex"),
                 enabled: true,
@@ -2063,7 +2115,14 @@ it.layer(
           decodeServerSettings(
             deepMerge(encodedDefaultServerSettings, {
               providerInstances: {
-                ...disabledDefaultSlots("codex", "claudeAgent", "cursor", "grok", "opencode"),
+                ...disabledDefaultSlots(
+                  "codex",
+                  "claudeAgent",
+                  "cursor",
+                  "grok",
+                  "opencode",
+                  "ohmypi",
+                ),
                 ghost_main: {
                   driver: "ghostDriver",
                   displayName: "A fork-only driver we don't ship",
@@ -2138,6 +2197,7 @@ it.layer(
             "antigravity",
             "pi",
             "muse",
+            "ohmypi",
           ),
           ...(instanceId ? { [instanceId]: { driver: "ghostDriver" } } : {}),
         },

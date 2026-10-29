@@ -23,7 +23,7 @@ vi.mock(import("../state/server"), async (original) => {
   const providers = Atom.make<ReadonlyArray<ServerProvider>>([
     {
       instanceId: "ohmypi",
-      driver: "acpRegistry",
+      driver: "ohmypi",
       displayName: "Oh My Pi",
       enabled: true,
       installed: true,

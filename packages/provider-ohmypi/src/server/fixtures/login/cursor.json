@@ -1,0 +1,16 @@
+{
+  "provider": "cursor",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 420,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://cursor.com/loginDeepControl?challenge=nL2hcokonxTBCJfOBxHn8Wx3e_PYaGUqZAmNBMOue6E&uuid=13180a46-4042-45e4-950a-d2a26fdff83d&mode=login&redirectTarget=cli\n\n"
+    },
+    {
+      "t": 421,
+      "stream": "stdout",
+      "text": "Waiting for browser authentication...\n"
+    }
+  ]
+}

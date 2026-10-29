@@ -6,7 +6,7 @@ own models, tools, and sign-in, while T3 Code provides projects, threads, checkp
 delegation.
 
 Agents that T3 Code supports as their own providers, such as Codex, Claude, Cursor, Grok, OpenCode,
-Pi, and [Antigravity](./providers-antigravity.md), don't appear in the Registry list. Enable them in
+Pi, [Oh My Pi](./providers-ohmypi.md), and [Antigravity](./providers-antigravity.md), don't appear in the Registry list. Enable them in
 **Settings → Providers** instead.
 
 T3 Code prefers the current ACP v2 preview protocol and uses its richer messages, usage, plans,
@@ -76,14 +76,10 @@ If an agent cannot complete its advertised flow remotely, its CLI remains availa
 server. For example, Codex supports `codex login --device-auth`, and Grok Build supports
 `grok login --device-auth`.
 
-### Oh My Pi model providers
+### Oh My Pi
 
-Oh My Pi signs in to each model service separately. Open **Settings → Providers → Oh My Pi**,
-find **Model providers**, and choose **Show providers**. **Sign in** opens the service's page on
-your device. When the service redirects to a `localhost` page that does not load, which happens
-whenever the server is remote, copy that page's full address into the field in Settings. Device
-codes and API keys are entered the same way. **Sign out** removes the stored credentials from the
-environment; if an environment variable still provides a key, Settings says so.
+Oh My Pi is its own provider with a sign-in panel for its model services; see
+[Oh My Pi](./providers-ohmypi.md#sign-in).
 
 ## Models and options
 

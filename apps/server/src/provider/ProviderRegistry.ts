@@ -168,6 +168,16 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
     );
   }
 
+  if (provider.driver === ProviderDriverKind.make("ohmypi")) {
+    // Signing out empties omp's model list, so an unauthenticated answer is as authoritative as a
+    // completed discovery; the pending and failed-discovery snapshots must keep cached models.
+    return !(
+      provider.installed &&
+      (provider.auth.status === "unauthenticated" ||
+        (provider.status === "ready" && provider.nativeSessions !== undefined))
+    );
+  }
+
   if (provider.driver === ProviderDriverKind.make("grok")) {
     // Grok reports ready only after it discovers a model list; the pending,
     // ACP-failed, empty-inventory, and logged-out probes are warning/error.

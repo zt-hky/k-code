@@ -5,11 +5,12 @@ import type {
   OmpLoginState,
   ProviderInstanceId,
 } from "@t3tools/contracts";
-import { CopyIcon } from "lucide-react";
-import { useState } from "react";
+import { CheckIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { reportAcpFailure } from "../../hooks/useAcpNativeSessions";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
+import { useStableCallback } from "../../hooks/useStableCallback";
 import { ensureLocalApi } from "../../localApi";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
@@ -21,13 +22,84 @@ import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
+  authorizationHost,
+  authorizationUrlToOpen,
+  canSubmitPrompt,
+  groupLoginProviders,
   isSignedIn,
+  loginFlowStep,
   loginPanel,
-  promptNeedsRedirectHint,
-  visibleLoginProviders,
+  needsRefreshAfterSignIn,
+  promptIsOptional,
 } from "./OmpModelLoginSection.logic";
+import { SecretInput } from "./SecretInput";
 
-/** Signs Oh My Pi in to the model providers it supports, on the environment that runs it. */
+function ProviderRow(props: {
+  readonly provider: OmpLoginProvider;
+  readonly signedIn: boolean;
+  readonly disabled: boolean;
+  readonly onSignIn: (provider: OmpLoginProvider) => void;
+  readonly onSignOut?: ((provider: OmpLoginProvider) => void) | undefined;
+}) {
+  const { provider, signedIn } = props;
+  return (
+    <div className="flex items-center justify-between gap-2 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <p className="truncate text-xs font-medium text-foreground">{provider.name}</p>
+        {signedIn ? (
+          <Badge variant="success" size="sm">
+            Signed in
+          </Badge>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {props.onSignOut ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost-muted"
+            disabled={props.disabled}
+            onClick={() => props.onSignOut?.(provider)}
+          >
+            Sign out
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            disabled={props.disabled}
+            onClick={() => props.onSignIn(provider)}
+          >
+            {signedIn ? "Sign in again" : "Sign in"}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CopyCodeButton(props: { readonly code: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      type="button"
+      size="xs"
+      variant="outline"
+      onClick={() =>
+        void writeTextToClipboard(props.code, "Device code").then((didCopy) => setCopied(didCopy))
+      }
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? "Copied" : "Copy code"}
+    </Button>
+  );
+}
+
+/**
+ * Signs Oh My Pi in to the model providers it supports, on the environment that runs it. One
+ * click on a provider starts a flow the server classifies as browser, device code, or API key.
+ */
 export function OmpModelLoginSection(props: {
   readonly environmentId: EnvironmentId;
   readonly instanceId: ProviderInstanceId;
@@ -46,14 +118,21 @@ export function OmpModelLoginSection(props: {
   const respondLogin = useAtomCommand(serverEnvironment.respondOmpLogin, { reportFailure: false });
   const cancelLogin = useAtomCommand(serverEnvironment.cancelOmpLogin, { reportFailure: false });
   const signOutLogin = useAtomCommand(serverEnvironment.signOutOmpLogin, { reportFailure: false });
+  const refreshServerProviders = useAtomCommand(serverEnvironment.refreshProviders, {
+    reportFailure: false,
+  });
   const [providers, setProviders] = useState<ReadonlyArray<OmpLoginProvider> | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const [startedFlowId, setStartedFlowId] = useState<string | null>(null);
   const [dismissedFlowId, setDismissedFlowId] = useState<string | null>(null);
   const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ id: "", value: "" });
   const [submitting, setSubmitting] = useState(false);
+  const [signOutNote, setSignOutNote] = useState<string | null>(null);
+  const openedFlowIdRef = useRef<string | null>(null);
+  const refreshedFlowIdRef = useRef<string | null>(null);
 
   const panel = loginPanel(loginState, startedFlowId, dismissedFlowId);
   const flowActive = loginState?.phase === "starting" || loginState?.phase === "waiting";
@@ -61,13 +140,12 @@ export function OmpModelLoginSection(props: {
   const prompt = loginState?.prompt ?? null;
   const draftId = `${loginState?.flowId ?? ""}:${prompt?.id ?? ""}`;
   const draftValue = draft.id === draftId ? draft.value : "";
-  const flowProviderName =
-    providers?.find((provider) => provider.providerId === loginState?.providerId)?.name ??
-    loginState?.providerId ??
-    "the provider";
+  const flowProvider = providers?.find(
+    (provider) => provider.providerId === loginState?.providerId,
+  );
+  const flowProviderName = flowProvider?.name ?? loginState?.providerId ?? "the provider";
 
-  const loadProviders = async () => {
-    if (loading) return;
+  const loadProviders = useStableCallback(async () => {
     setLoading(true);
     const result = await listProviders({ environmentId, input: { instanceId } });
     setLoading(false);
@@ -76,11 +154,50 @@ export function OmpModelLoginSection(props: {
       return;
     }
     reportAcpFailure("Could not list Oh My Pi providers", result);
-  };
+  });
+
+  const openBrowser = useStableCallback(async (url: string, announceFailure: boolean) => {
+    try {
+      await ensureLocalApi().shell.openExternal(url);
+    } catch {
+      if (!announceFailure) return;
+      toastManager.add({
+        type: "error",
+        title: "Could not open the sign-in page",
+        description: "Copy the link and open it in your browser.",
+      });
+    }
+  });
+
+  const refreshAfterSignIn = useStableCallback(() => {
+    void refreshServerProviders({ environmentId, input: { instanceId } });
+    void loadProviders();
+  });
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the provider list from the server when the panel mounts
+  useEffect(() => {
+    if (canManage) void loadProviders();
+  }, [canManage, loadProviders]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the sign-in page, an effect outside React, once per flow
+  useEffect(() => {
+    const url = authorizationUrlToOpen(loginState, startedFlowId, openedFlowIdRef.current);
+    if (url === null) return;
+    openedFlowIdRef.current = loginState?.flowId ?? null;
+    void openBrowser(url, false);
+  }, [loginState, startedFlowId, openBrowser]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the server's provider status and models change when this client's sign-in succeeds
+  useEffect(() => {
+    if (!needsRefreshAfterSignIn(loginState, startedFlowId, refreshedFlowIdRef.current)) return;
+    refreshedFlowIdRef.current = loginState?.flowId ?? null;
+    refreshAfterSignIn();
+  }, [loginState, startedFlowId, refreshAfterSignIn]);
 
   const signIn = async (provider: OmpLoginProvider) => {
     if (flowActive || busyProviderId !== null) return;
     setBusyProviderId(provider.providerId);
+    setSignOutNote(null);
     const result = await startLogin({
       environmentId,
       input: { instanceId, providerId: provider.providerId },
@@ -95,6 +212,7 @@ export function OmpModelLoginSection(props: {
 
   const submitPrompt = async (state: OmpLoginState) => {
     if (state.flowId === null || state.prompt === null || submitting) return;
+    if (!canSubmitPrompt(state.prompt, draftValue)) return;
     setSubmitting(true);
     const result = await respondLogin({
       environmentId,
@@ -119,11 +237,6 @@ export function OmpModelLoginSection(props: {
 
   const signOut = async (provider: OmpLoginProvider) => {
     if (flowActive || busyProviderId !== null) return;
-    const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Sign out of ${provider.name}? Oh My Pi will no longer be able to use it on this environment.`,
-      { variant: "destructive" },
-    );
-    if (!confirmed) return;
     setBusyProviderId(provider.providerId);
     const result = await signOutLogin({
       environmentId,
@@ -137,79 +250,136 @@ export function OmpModelLoginSection(props: {
     setStartedFlowId(null);
     if (result.value.remainingSource === undefined) {
       toastManager.add({ type: "success", title: `Signed out of ${provider.name}` });
+      setSignOutNote(null);
     } else {
-      toastManager.add({
-        type: "warning",
-        title: `${provider.name} is still available`,
-        description: `Oh My Pi still has ${result.value.remainingSource}.`,
-      });
+      setSignOutNote(`${provider.name} is still signed in via ${result.value.remainingSource}.`);
     }
-    await loadProviders();
+    refreshAfterSignIn();
   };
 
-  const openBrowser = async (url: string) => {
-    try {
-      await ensureLocalApi().shell.openExternal(url);
-    } catch {
-      toastManager.add({
-        type: "error",
-        title: "Could not open the sign-in page",
-        description: "Copy the link and open it in your browser.",
-      });
-    }
-  };
+  const groups = groupLoginProviders(providers ?? [], filter, showAll);
+  const signedInProviders = (providers ?? []).filter((provider) =>
+    isSignedIn(provider, loginState, startedFlowId),
+  );
+  const rowDisabled = controlsDisabled || flowActive || busyProviderId !== null;
+  const authorizationUrl = loginState?.authorizationUrl ?? null;
+  const host = authorizationUrl === null ? null : authorizationHost(authorizationUrl);
+  const step = loginState === null ? "starting" : loginFlowStep(loginState);
 
-  const visible = providers === null ? [] : visibleLoginProviders(providers, filter);
-
-  return (
-    <div className="grid gap-3 border-t border-border/60 px-3 py-3 sm:px-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-xs font-medium text-foreground">Model providers</p>
-          <p className="text-xs text-muted-foreground">
-            Sign Oh My Pi in to the services whose models it can use. Credentials stay on this
-            environment.
-          </p>
-        </div>
+  const promptForm =
+    loginState !== null && prompt !== null ? (
+      <form
+        className="grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitPrompt(loginState);
+        }}
+      >
+        <label className="grid gap-1 text-xs text-foreground">
+          {prompt.message}
+          {prompt.secret ? (
+            <SecretInput
+              size="sm"
+              font="mono"
+              value={draftValue}
+              disabled={controlsDisabled || submitting}
+              maxLength={16_384}
+              placeholder="Paste here"
+              onValueChange={(value) => setDraft({ id: draftId, value })}
+            />
+          ) : (
+            <Input
+              size="sm"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={draftValue}
+              disabled={controlsDisabled || submitting}
+              maxLength={16_384}
+              placeholder={step === "oauth" ? "Paste the address or code" : undefined}
+              onValueChange={(value) => setDraft({ id: draftId, value })}
+            />
+          )}
+        </label>
         <Button
-          type="button"
+          type="submit"
           size="xs"
           variant="outline"
-          disabled={controlsDisabled || loading || flowActive}
-          onClick={() => void loadProviders()}
+          className="w-fit"
+          disabled={controlsDisabled || submitting || !canSubmitPrompt(prompt, draftValue)}
         >
-          {loading ? "Loading" : providers === null ? "Show providers" : "Refresh"}
+          {submitting
+            ? "Sending"
+            : promptIsOptional(prompt) && draftValue.trim() === ""
+              ? "Skip"
+              : "Continue"}
         </Button>
+      </form>
+    ) : null;
+
+  return (
+    <div className="grid gap-3 px-3 py-3 sm:px-4">
+      <div>
+        <p className="text-xs font-medium text-foreground">Sign in to a model provider</p>
+        <p className="text-xs text-muted-foreground">
+          Oh My Pi uses the account you sign in to for its models. Credentials stay on this
+          environment.
+        </p>
       </div>
 
-      {panel !== "none" && loginState !== null ? (
-        <div role="status" className="grid gap-2 rounded-md border border-border/60 p-3 text-xs">
-          {panel === "active" ? (
-            <>
-              <div className="flex items-center justify-between gap-2">
-                <p className="flex min-w-0 items-center gap-2 font-medium text-foreground">
-                  <Spinner size="xs" tone="muted" />
-                  <span className="truncate">Signing in to {flowProviderName}</span>
-                </p>
+      {panel === "active" && loginState !== null ? (
+        <div role="status" className="grid gap-3 rounded-md border border-border/60 p-3 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <p className="flex min-w-0 items-center gap-2 font-medium text-foreground">
+              <Spinner size="xs" tone="muted" />
+              <span className="truncate">Signing in to {flowProviderName}</span>
+            </p>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost-muted"
+              disabled={controlsDisabled}
+              onClick={() => void cancel(loginState)}
+            >
+              Cancel
+            </Button>
+          </div>
+
+          {step === "device_code" ? (
+            <div className="grid gap-2">
+              {loginState.userCode !== null ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <code className="select-all font-mono text-3xl font-semibold tracking-widest text-foreground">
+                    {loginState.userCode}
+                  </code>
+                  <CopyCodeButton code={loginState.userCode} />
+                </div>
+              ) : null}
+              {authorizationUrl !== null ? (
                 <Button
                   type="button"
-                  size="xs"
-                  variant="ghost-muted"
+                  size="sm"
+                  className="w-fit"
                   disabled={controlsDisabled}
-                  onClick={() => void cancel(loginState)}
+                  onClick={() => void openBrowser(authorizationUrl, true)}
                 >
-                  Cancel
+                  <ExternalLinkIcon />
+                  {host === null ? "Open sign-in page" : `Open ${host}`}
                 </Button>
-              </div>
-              {loginState.authorizationUrl !== null ? (
+              ) : null}
+              <p className="text-muted-foreground">Waiting for approval…</p>
+            </div>
+          ) : step === "oauth" ? (
+            <div className="grid gap-2">
+              {authorizationUrl !== null ? (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Button
                     type="button"
-                    size="xs"
-                    variant="outline"
+                    size="sm"
                     disabled={controlsDisabled}
-                    onClick={() => void openBrowser(loginState.authorizationUrl!)}
+                    onClick={() => void openBrowser(authorizationUrl, true)}
                   >
+                    <ExternalLinkIcon />
                     Open sign-in page
                   </Button>
                   <Tooltip>
@@ -222,10 +392,7 @@ export function OmpModelLoginSection(props: {
                           variant="ghost-muted"
                           disabled={controlsDisabled}
                           onClick={() =>
-                            void writeTextToClipboard(
-                              loginState.authorizationUrl!,
-                              "Provider sign-in link",
-                            )
+                            void writeTextToClipboard(authorizationUrl, "Provider sign-in link")
                           }
                         >
                           <CopyIcon />
@@ -241,133 +408,159 @@ export function OmpModelLoginSection(props: {
                   {loginState.instructions}
                 </p>
               ) : null}
-              {prompt !== null ? (
-                <form
-                  className="grid gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void submitPrompt(loginState);
-                  }}
-                >
-                  <label className="grid gap-1">
-                    {prompt.message}
-                    <Input
-                      size="sm"
-                      type={prompt.secret ? "password" : "text"}
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={draftValue}
-                      disabled={controlsDisabled || submitting}
-                      maxLength={16_384}
-                      onValueChange={(value) => setDraft({ id: draftId, value })}
-                    />
-                  </label>
-                  {promptNeedsRedirectHint(prompt.message) ? (
-                    <p className="text-muted-foreground">
-                      After you approve, the browser may end on a localhost page that fails to load.
-                      Copy that page&apos;s full address and paste it here.
-                    </p>
-                  ) : null}
-                  <Button
-                    type="submit"
-                    size="xs"
-                    variant="outline"
-                    className="w-fit"
-                    disabled={controlsDisabled || submitting}
-                  >
-                    {submitting ? "Sending" : "Continue"}
-                  </Button>
-                </form>
-              ) : (
-                <p className="text-muted-foreground">
-                  {loginState.progress ?? "Waiting for Oh My Pi…"}
-                </p>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center justify-between gap-2">
-              <p
-                role={loginState.phase === "failed" ? "alert" : undefined}
-                className={
-                  loginState.phase === "failed"
-                    ? "text-destructive [overflow-wrap:anywhere]"
-                    : "text-foreground"
-                }
-              >
-                {loginState.phase === "succeeded"
-                  ? `Signed in to ${flowProviderName}.`
-                  : loginState.phase === "cancelled"
-                    ? "Sign-in cancelled."
-                    : `Could not sign in to ${flowProviderName}. ${loginState.message ?? ""}`}
-              </p>
-              <Button
-                type="button"
-                size="xs"
-                variant="ghost-muted"
-                onClick={() => setDismissedFlowId(loginState.flowId)}
-              >
-                Dismiss
-              </Button>
+              <p className="text-muted-foreground">Waiting for you to finish in the browser…</p>
+              {promptForm !== null ? (
+                <>
+                  <p className="text-muted-foreground">
+                    Signed in on another machine or the page cannot reach localhost? Paste the
+                    address your browser ended on.
+                  </p>
+                  {promptForm}
+                </>
+              ) : null}
             </div>
+          ) : step === "api_key" || step === "prompt" ? (
+            <div className="grid gap-2">
+              {step === "api_key" && authorizationUrl !== null ? (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  className="w-fit"
+                  disabled={controlsDisabled}
+                  onClick={() => void openBrowser(authorizationUrl, true)}
+                >
+                  <ExternalLinkIcon />
+                  {host === null ? "Get an API key" : `Get a key at ${host}`}
+                </Button>
+              ) : null}
+              {promptForm}
+            </div>
+          ) : (
+            <p className="text-muted-foreground">{loginState.progress ?? "Starting…"}</p>
           )}
         </div>
       ) : null}
 
-      {providers !== null ? (
-        <>
-          <Input
-            size="sm"
-            type="search"
-            aria-label="Filter model providers"
-            placeholder="Filter providers"
-            value={filter}
-            onValueChange={setFilter}
-          />
-          <div className="max-h-96 divide-y divide-border/60 overflow-y-auto border-y border-border/60">
-            {visible.map((provider) => {
-              const signedIn = isSignedIn(provider, loginState, startedFlowId);
-              return (
-                <div
-                  key={provider.providerId}
-                  className="flex items-center justify-between gap-2 py-2"
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-xs font-medium text-foreground">{provider.name}</p>
-                    {signedIn ? (
-                      <Badge variant="success" size="sm">
-                        Signed in
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      disabled={controlsDisabled || flowActive || busyProviderId !== null}
-                      onClick={() => void signIn(provider)}
-                    >
-                      {signedIn ? "Sign in again" : "Sign in"}
-                    </Button>
-                    {signedIn ? (
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost-muted"
-                        disabled={controlsDisabled || flowActive || busyProviderId !== null}
-                        onClick={() => void signOut(provider)}
-                      >
-                        Sign out
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-            {visible.length === 0 ? (
-              <p className="py-2 text-xs text-muted-foreground">No providers match.</p>
+      {panel === "finished" && loginState !== null ? (
+        <div
+          role={loginState.phase === "failed" ? "alert" : "status"}
+          className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-3 text-xs"
+        >
+          <p
+            className={
+              loginState.phase === "failed"
+                ? "text-destructive [overflow-wrap:anywhere]"
+                : "text-foreground"
+            }
+          >
+            {loginState.phase === "succeeded"
+              ? `Signed in to ${flowProviderName}.`
+              : loginState.phase === "cancelled"
+                ? "Sign-in cancelled."
+                : `Could not sign in to ${flowProviderName}. ${loginState.message ?? ""}`}
+          </p>
+          <div className="flex shrink-0 items-center gap-1">
+            {loginState.phase === "failed" && flowProvider !== undefined ? (
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                disabled={rowDisabled}
+                onClick={() => void signIn(flowProvider)}
+              >
+                Retry
+              </Button>
             ) : null}
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost-muted"
+              onClick={() => setDismissedFlowId(loginState.flowId)}
+            >
+              Dismiss
+            </Button>
           </div>
+        </div>
+      ) : null}
+
+      {panel !== "active" ? (
+        <>
+          {signedInProviders.length > 0 ? (
+            <div className="grid gap-1">
+              <p className="text-xs font-medium text-muted-foreground">Signed-in accounts</p>
+              <div className="divide-y divide-border/60 border-y border-border/60">
+                {signedInProviders.map((provider) => (
+                  <ProviderRow
+                    key={provider.providerId}
+                    provider={provider}
+                    signedIn
+                    disabled={rowDisabled}
+                    onSignIn={(next) => void signIn(next)}
+                    onSignOut={(next) => void signOut(next)}
+                  />
+                ))}
+              </div>
+              {signOutNote !== null ? (
+                <p role="status" className="text-xs text-muted-foreground">
+                  {signOutNote}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {providers === null ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <p>{loading ? "Loading providers…" : "Providers are not loaded."}</p>
+              {loading ? null : (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost-muted"
+                  disabled={controlsDisabled}
+                  onClick={() => void loadProviders()}
+                >
+                  Retry
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              <Input
+                size="sm"
+                type="search"
+                aria-label="Search model providers"
+                placeholder="Search all providers"
+                value={filter}
+                onValueChange={setFilter}
+              />
+              <div className="max-h-96 divide-y divide-border/60 overflow-y-auto border-y border-border/60">
+                {[...groups.popular, ...groups.others].map((provider) => (
+                  <ProviderRow
+                    key={provider.providerId}
+                    provider={provider}
+                    signedIn={isSignedIn(provider, loginState, startedFlowId)}
+                    disabled={rowDisabled}
+                    onSignIn={(next) => void signIn(next)}
+                  />
+                ))}
+                {groups.popular.length + groups.others.length === 0 ? (
+                  <p className="py-2 text-xs text-muted-foreground">No providers match.</p>
+                ) : null}
+              </div>
+              {groups.hiddenCount > 0 ? (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost-muted"
+                  className="w-fit"
+                  onClick={() => setShowAll(true)}
+                >
+                  Show {groups.hiddenCount} more providers
+                </Button>
+              ) : null}
+            </div>
+          )}
         </>
       ) : null}
     </div>

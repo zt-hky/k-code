@@ -1,0 +1,36 @@
+{
+  "provider": "xai",
+  "recordedWith": "omp 18.13.2, isolated HOME, stdin a pipe",
+  "events": [
+    {
+      "t": 161,
+      "stream": "stdout",
+      "text": "\nOpen this URL in your browser:\nhttps://console.x.ai/team/default/api-keys\nCreate or copy your API key from the xAI Console\n\n"
+    },
+    {
+      "t": 161,
+      "stream": "stdout",
+      "text": "Paste your xAI API key (xai-...): "
+    },
+    {
+      "t": 4503,
+      "stream": "stdin",
+      "text": "<answer>"
+    },
+    {
+      "t": 4503,
+      "stream": "stdout",
+      "text": "Validating API key...\n"
+    },
+    {
+      "t": 4876,
+      "stream": "stderr",
+      "text": "Login failed: xAI API key validation failed (400): {\"code\":\"invalid-argument\",\"error\":\"Incorrect API key provided. You can obtain an API key from https://console.x.ai.\"}\n"
+    },
+    {
+      "t": 4890,
+      "stream": "exit",
+      "text": "1"
+    }
+  ]
+}

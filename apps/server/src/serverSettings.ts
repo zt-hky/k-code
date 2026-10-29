@@ -58,6 +58,7 @@ import {
   sourceControlHostSecretName,
 } from "./sourceControl/sourceControlHostSecrets.ts";
 
+import { migrateLegacyOmpInstances } from "./legacyOmpInstances.ts";
 import { mapSettingsSecrets, SECRET_REDACTED, type SettingsSecret } from "./settingsSecrets.ts";
 
 export {
@@ -117,6 +118,7 @@ const normalizeServerSettings = (
   encodeServerSettings(settings).pipe(
     Effect.flatMap(decodeServerSettings),
     Effect.map(foldProviderInstanceEnabledFlags),
+    Effect.map(migrateLegacyOmpInstances),
     Effect.map((next) => withIdleCompaction(next, globalIdleCompaction(next))),
     Effect.map((next) => ({ ...next, ...deriveLegacyProjectOverrides(next) })),
     Effect.mapError(
@@ -418,13 +420,16 @@ function migrateLegacyProviderSettings(
   };
 }
 
-const ACP_REGISTRY_DRIVER = ProviderDriverKind.make("acpRegistry");
+const TEXT_GENERATION_UNSUPPORTED_DRIVERS: ReadonlySet<ProviderDriverKind> = new Set(
+  ["acpRegistry", "ohmypi"].map((driver) => ProviderDriverKind.make(driver)),
+);
 
 function selectionSupportsTextGeneration(
   settings: ServerSettings,
   selection: ModelSelection,
 ): boolean {
-  return settings.providerInstances[selection.instanceId]?.driver !== ACP_REGISTRY_DRIVER;
+  const driver = settings.providerInstances[selection.instanceId]?.driver;
+  return driver === undefined || !TEXT_GENERATION_UNSUPPORTED_DRIVERS.has(driver);
 }
 
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
@@ -754,11 +759,12 @@ const make = Effect.gen(function* () {
             ),
           );
 
-    const loaded = foldProviderInstanceEnabledFlags(
+    const beforeOmpMigration = foldProviderInstanceEnabledFlags(
       legacyProviders === undefined
         ? settings
         : migrateLegacyProviderSettings(settings, legacyProviders, providerHistory),
     );
+    const loaded = migrateLegacyOmpInstances(beforeOmpMigration);
     const folded = settingsFileTrusted
       ? foldLegacyProjectSettings(loaded, legacyProjectRows)
       : loaded;
@@ -792,6 +798,7 @@ const make = Effect.gen(function* () {
       : folded;
     if (
       migrated !== loaded ||
+      (settingsFileTrusted && loaded !== beforeOmpMigration) ||
       (settingsFileTrusted && legacyProviders !== undefined) ||
       hasLegacySourceControl
     ) {

@@ -1,4 +1,4 @@
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { OHMYPI_DRIVER_KIND } from "./kind.ts";
 import {
   makeProviderMaintenanceCapabilities,
   runMaintenanceProbe,
@@ -6,8 +6,6 @@ import {
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import * as Effect from "effect/Effect";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-
-const DRIVER = ProviderDriverKind.make("acpRegistry");
 
 /** `omp update --check` prints "New version available: X" only when one exists. */
 export function parseOmpLatestVersion(output: string): string | null {
@@ -23,7 +21,7 @@ export const ompMaintenance = (input: {
   readonly spawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
 }): ProviderMaintenanceCapabilities =>
   makeProviderMaintenanceCapabilities({
-    provider: DRIVER,
+    provider: OHMYPI_DRIVER_KIND,
     packageName: null,
     updateExecutable: input.executable,
     updateArgs: ["update"],

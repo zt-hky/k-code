@@ -9,17 +9,6 @@ import {
   extractDevinSubagentUpdate,
 } from "./devinAcp.ts";
 import { extractDroidElicitationForm } from "./droidAcp.ts";
-import { extractOmpAskElicitationForm, isOmpAskToolCall } from "./ompAsk.ts";
-import { makeAnsiFilter, type AnsiFilter } from "./ompAnsi.ts";
-import { rewriteOmpSkillMentions } from "./ompSkills.ts";
-import {
-  extractOmpPlanApprovalElicitation,
-  extractOmpProposedPlanMarkdown,
-  extractOmpSubagentUpdate,
-  makeOmpSubagentTranscriptReader,
-  OMP_AGENT_ID,
-  OMP_MODE_OPTION_ID,
-} from "./ompAcp.ts";
 import {
   copilotClientCapabilitiesMeta,
   extractCopilotSubagentUpdate,
@@ -219,37 +208,14 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
       }
     : options;
   const copilotRouting = isCopilot ? makeCopilotSubagentRouting() : undefined;
-  const isOmp = registryAgentId === OMP_AGENT_ID;
-  let ompSkillNames: ReadonlySet<string> = new Set();
-  const ansiFilters = new Map<string, AnsiFilter>();
-  const ompFileSystem = isOmp
-    ? Option.getOrUndefined(yield* Effect.serviceOption(FileSystem.FileSystem))
-    : undefined;
-  const ompPath = isOmp ? Option.getOrUndefined(yield* Effect.serviceOption(Path.Path)) : undefined;
-  // omp's default agent dir; PI_CODING_AGENT_DIR overrides it.
-  const ompAgentDir =
-    options.environment.PI_CODING_AGENT_DIR ??
-    (options.environment.HOME === undefined || ompPath === undefined
-      ? undefined
-      : ompPath.join(options.environment.HOME, ".omp", "agent"));
-  const readOmpSubagentTranscript =
-    ompFileSystem === undefined || ompPath === undefined || ompAgentDir === undefined
-      ? undefined
-      : makeOmpSubagentTranscriptReader({
-          fileSystem: ompFileSystem,
-          path: ompPath,
-          agentDir: ompAgentDir,
-        });
   const onAvailableCommandsUpdate: AcpAdapterV2Flavor["onAvailableCommandsUpdate"] =
-    isOmp || runtimeCoordinator !== undefined
-      ? (commands) => {
-          const normalized = normalizeAcpRegistryCommands(commands, registryAgentId);
-          if (isOmp) ompSkillNames = new Set(normalized.skills.map((skill) => skill.name));
-          return runtimeCoordinator === undefined
-            ? Effect.void
-            : runtimeCoordinator.publishAvailableCommands(options.instanceId, normalized);
-        }
-      : undefined;
+    runtimeCoordinator === undefined
+      ? undefined
+      : (commands) =>
+          runtimeCoordinator.publishAvailableCommands(
+            options.instanceId,
+            normalizeAcpRegistryCommands(commands),
+          );
   const flavor: AcpAdapterV2Flavor = {
     driver: ACP_REGISTRY_PROVIDER,
     // Cancelling a Copilot prompt also kills the background agents it started.
@@ -269,46 +235,6 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     },
     ...(registryAgentId === "factory-droid"
       ? { extractElicitationForm: extractDroidElicitationForm }
-      : {}),
-    ...(isOmp
-      ? {
-          extractElicitationForm: extractOmpAskElicitationForm,
-          isUserInputTool: isOmpAskToolCall,
-          extractProposedPlanMarkdown: extractOmpProposedPlanMarkdown,
-          planApprovalElicitation: extractOmpPlanApprovalElicitation,
-          interactionModeOptionIds: [OMP_MODE_OPTION_ID],
-          supportsSessionSteering: true,
-          supportsCompaction: true,
-          extractSubagentUpdate: extractOmpSubagentUpdate,
-          ...(readOmpSubagentTranscript === undefined
-            ? {}
-            : { readSubagentTranscript: readOmpSubagentTranscript }),
-          rewriteUserText: (text: string) =>
-            Effect.succeed(rewriteOmpSkillMentions(text, ompSkillNames)),
-          normalizeSessionUpdate: (notification) => {
-            const update = notification.update;
-            if (
-              (update.sessionUpdate !== "agent_message_chunk" &&
-                update.sessionUpdate !== "agent_thought_chunk") ||
-              update.content.type !== "text"
-            ) {
-              return notification;
-            }
-            const key = `${notification.sessionId}:${update.sessionUpdate}`;
-            let filter = ansiFilters.get(key);
-            if (filter === undefined) {
-              filter = makeAnsiFilter();
-              ansiFilters.set(key, filter);
-            }
-            return {
-              ...notification,
-              update: {
-                ...update,
-                content: { ...update.content, text: filter.push(update.content.text) },
-              },
-            };
-          },
-        }
       : {}),
     ...(registryAgentId === "mistral-vibe"
       ? { registerExtensions: registerMistralVibeAcpExtensions }

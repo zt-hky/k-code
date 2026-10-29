@@ -1095,6 +1095,80 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerSettings));
   });
 
+  it.effect(
+    "moves Oh My Pi's ACP Registry instances to the ohmypi driver, keeping their id and identity",
+    () =>
+      Effect.gen(function* () {
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        yield* fileSystem.writeFileString(
+          serverConfig.settingsPath,
+          JSON.stringify({
+            providerInstances: {
+              omp_work: {
+                driver: "acpRegistry",
+                displayName: "Oh My Pi (work)",
+                accentColor: "#336699",
+                environment: [{ name: "HOME", value: "/srv/omp-work" }],
+                enabled: true,
+                config: {
+                  source: "registry",
+                  agentId: "omp",
+                  distribution: "npx",
+                  commandPath: "/opt/omp/bin/omp",
+                  commandArgs: [],
+                  authMethodId: "agent",
+                  customModels: ["anthropic/claude-x"],
+                  instructionT3Tools: false,
+                },
+              },
+              omp_local: {
+                driver: "acpRegistry",
+                config: { source: "local", commandPath: "/usr/bin/omp", commandArgs: ["acp"] },
+              },
+              devin: {
+                driver: "acpRegistry",
+                config: { source: "registry", agentId: "devin" },
+              },
+              other_local: {
+                driver: "acpRegistry",
+                config: { source: "local", commandPath: "/usr/bin/omp", commandArgs: ["--other"] },
+              },
+            },
+          }),
+        );
+
+        const settings = yield* serverSettings.getSettings;
+        const instances = settings.providerInstances;
+        assert.deepEqual(instances[ProviderInstanceId.make("omp_work")], {
+          driver: ProviderDriverKind.make("ohmypi"),
+          displayName: "Oh My Pi (work)",
+          accentColor: "#336699",
+          environment: [{ name: "HOME", value: "/srv/omp-work", sensitive: false }],
+          enabled: true,
+          config: {
+            binaryPath: "/opt/omp/bin/omp",
+            customModels: ["anthropic/claude-x"],
+            instructionT3Tools: false,
+          },
+        });
+        assert.deepEqual(instances[ProviderInstanceId.make("omp_local")], {
+          driver: ProviderDriverKind.make("ohmypi"),
+          config: { binaryPath: "/usr/bin/omp" },
+        });
+        // Other registry agents, and local commands that are not `omp acp`, are not Oh My Pi.
+        assert.equal(instances[ProviderInstanceId.make("devin")]?.driver, "acpRegistry");
+        assert.equal(instances[ProviderInstanceId.make("other_local")]?.driver, "acpRegistry");
+
+        // The migration is saved, so the file stops describing Oh My Pi as an ACP Registry agent.
+        const onDisk = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        assert.notInclude(onDisk, '"agentId":"omp"');
+        assert.include(onDisk, '"driver": "ohmypi"');
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("keeps the inline value on disk when secret migration fails", () => {
     const cause = new ServerSecretStore.SecretStorePersistError({
       resource: "provider environment secret",

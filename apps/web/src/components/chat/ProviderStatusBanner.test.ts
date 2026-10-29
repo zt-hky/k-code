@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
 import {
+  canSignInToModelProvider,
   getProviderStatusBannerKey,
   getProviderStatusMessage,
+  hasProviderSetup,
   shouldShowProviderStatusBanner,
 } from "./ProviderStatusBanner";
 
@@ -108,5 +110,26 @@ describe("compatibility banners", () => {
     expect(getProviderStatusMessage({ ...broken, auth: { status: "unauthenticated" } })).toBe(
       broken.message,
     );
+  });
+
+  it("offers a model-provider sign-in only to an installed, signed-out provider that supports it", () => {
+    const { compatibilityAdvisory: _advisory, ...base } = provider;
+    const signedOut: ServerProvider = {
+      ...base,
+      driver: ProviderDriverKind.make("ohmypi"),
+      status: "error",
+      auth: { status: "unauthenticated" },
+      modelProviderLogin: true,
+    };
+    expect(canSignInToModelProvider(signedOut)).toBe(true);
+    expect(hasProviderSetup(signedOut)).toBe(true);
+    expect(getProviderStatusMessage(signedOut)).toBe(
+      "Sign in to a model provider to use its models.",
+    );
+    expect(canSignInToModelProvider({ ...signedOut, installed: false })).toBe(false);
+    expect(canSignInToModelProvider({ ...signedOut, auth: { status: "authenticated" } })).toBe(
+      false,
+    );
+    expect(canSignInToModelProvider({ ...signedOut, modelProviderLogin: false })).toBe(false);
   });
 });

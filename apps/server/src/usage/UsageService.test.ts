@@ -1808,7 +1808,10 @@ describe("UsageService", () => {
       const removed = yield* service.readSummary(WINDOW);
       assert.deepStrictEqual(removed.buckets, summary.buckets);
 
-      const sources = summary.sources.filter((source) => source.status === "ok");
+      // Oh My Pi's default instance is on and reads its own (here empty) session directory.
+      const sources = summary.sources.filter(
+        (source) => source.status === "ok" && source.fingerprint.provider !== "omp",
+      );
       assert.strictEqual(sources.length, 4);
       assert.strictEqual(
         sources.reduce((sum, source) => sum + source.scannedFiles, 0),

@@ -15,7 +15,7 @@ export const PROVIDER_ORDER: readonly UsageProviderKind[] = [
 
 export function usageProviderKind(driver: string): UsageProviderKind | null {
   if (driver === "claudeAgent") return "claude";
-  if (driver === "acpRegistry") return "omp";
+  if (driver === "ohmypi") return "omp";
   return PROVIDER_ORDER.find((kind) => kind === driver) ?? null;
 }
 

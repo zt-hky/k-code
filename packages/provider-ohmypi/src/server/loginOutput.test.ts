@@ -5,7 +5,7 @@ import {
   parseOmpLoginFailure,
   parseOmpLoginProviders,
   parseOmpLogoutCredentialIds,
-} from "./ompLoginOutput.ts";
+} from "./loginOutput.ts";
 
 // Captured from omp 18.13.2 with stdin as a pipe.
 const GITLAB_URL_BLOCK =
@@ -24,6 +24,7 @@ describe("omp login output scanner", () => {
         url: "https://gitlab.com/oauth/authorize?client_id=abc&response_type=code&state=s",
         instructions:
           'Complete GitLab login in browser. If GitLab responds with "The redirect URI included is not valid", register your own app.',
+        userCode: null,
       },
     ]);
   });
@@ -38,7 +39,8 @@ describe("omp login output scanner", () => {
       {
         _tag: "authorization",
         url: "https://github.com/login/device",
-        instructions: "Enter code: 4FBA-425F",
+        instructions: null,
+        userCode: "4FBA-425F",
       },
     ]);
   });
@@ -64,7 +66,12 @@ describe("omp login output scanner", () => {
     const scanner = makeOmpLoginScanner();
     expect(scanner.push("\nOpen this URL in your browser:\nhttps://example.com/a")).toEqual([]);
     expect(scanner.push("?b=c\n\n")).toEqual([
-      { _tag: "authorization", url: "https://example.com/a?b=c", instructions: null },
+      {
+        _tag: "authorization",
+        url: "https://example.com/a?b=c",
+        instructions: null,
+        userCode: null,
+      },
     ]);
   });
 
@@ -75,6 +82,7 @@ describe("omp login output scanner", () => {
         _tag: "authorization",
         url: "https://platform.deepseek.com/api_keys",
         instructions: "Create or copy your API key from the DeepSeek dashboard",
+        userCode: null,
       },
     ]);
     expect(scanner.flush()).toEqual([
@@ -137,5 +145,52 @@ describe("omp login provider list", () => {
         accounts: [{ credentialId: 4, label: "a@b.c" }, { credentialId: "x" }, { credentialId: 9 }],
       }),
     ).toEqual([4, 9]);
+  });
+});
+
+describe("omp login scanner against provider output omp prints today", () => {
+  it("hides the server's credential path and recognises the success line", () => {
+    const scanner = makeOmpLoginScanner();
+    expect(
+      scanner.push(
+        "\nLogged in to Synthetic\nCredentials saved to /home/user/.omp/agent/agent.db\n",
+      ),
+    ).toEqual([{ _tag: "loggedIn" }]);
+  });
+
+  it("keeps device-code instructions other than the code line", () => {
+    const scanner = makeOmpLoginScanner();
+    expect(
+      scanner.push(
+        "\nOpen this URL in your browser:\nhttps://example.com/device\nEnter code: AB12-CD34\nApprove the request in the app.\n\n",
+      ),
+    ).toEqual([
+      {
+        _tag: "authorization",
+        url: "https://example.com/device",
+        instructions: "Approve the request in the app.",
+        userCode: "AB12-CD34",
+      },
+    ]);
+  });
+});
+
+describe("parseOmpLoginFailure", () => {
+  it("keeps the provider's sentence and drops its JSON body", () => {
+    expect(
+      parseOmpLoginFailure(
+        'Login failed: xAI API key validation failed (400): {"code":"invalid-argument","error":"Incorrect API key provided."}\n',
+      ),
+    ).toBe("xAI API key validation failed (400): Incorrect API key provided.");
+    expect(
+      parseOmpLoginFailure(
+        'Login failed: deepseek API key validation failed (401): {"error":{"message":"Authentication Fails","type":"x"}}\n',
+      ),
+    ).toBe("deepseek API key validation failed (401): Authentication Fails");
+  });
+
+  it("returns plain reasons unchanged and ignores other stderr", () => {
+    expect(parseOmpLoginFailure("Login failed: port 1455 is in use\n")).toBe("port 1455 is in use");
+    expect(parseOmpLoginFailure("something else\n")).toBeNull();
   });
 });

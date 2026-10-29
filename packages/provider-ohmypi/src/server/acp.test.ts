@@ -9,7 +9,7 @@ import {
   extractOmpProposedPlanMarkdown,
   extractOmpSubagentUpdate,
   makeOmpSubagentTranscriptReader,
-} from "./ompAcp.ts";
+} from "./acp.ts";
 
 const approvalSchema = {
   type: "object",
