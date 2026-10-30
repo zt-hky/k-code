@@ -124,6 +124,49 @@ describe("new thread model fallback", () => {
     ).toBeDefined();
   });
   it.each([
+    [
+      "every login of the model's upstream is exhausted",
+      [true, true, false],
+      "anthropic/opus",
+      true,
+    ],
+    ["one login of the upstream still has room", [true, false, true], "anthropic/opus", false],
+    ["only another upstream is exhausted", [false, false, true], "openai/gpt", true],
+    ["no upstream in the model and every login is exhausted", [true, true, true], "default", true],
+    ["no upstream in the model and a login has room", [true, true, false], "default", false],
+  ] as const)(
+    "reads Oh My Pi account limits when %s",
+    (_name, exhaustedByAccount, model, usesFallback) => {
+      const accounts = [
+        ["anthropic", "a1"],
+        ["anthropic", "a2"],
+        ["openai", "o1"],
+      ] as const;
+      const defaultSelection = { ...selection, model };
+      expect(
+        resolveNewThreadModelSelection({
+          ...defaults,
+          defaultSelection,
+          providers: [
+            provider({
+              driver: ProviderDriverKind.make("ohmypi"),
+              usageLimitAccounts: accounts.map(([nativeProvider, id], index) => ({
+                id,
+                driver: ProviderDriverKind.make("ohmypi"),
+                nativeProvider,
+                usageLimits: {
+                  checkedAt: limited.checkedAt,
+                  windows: [{ ...window, usedPercent: exhaustedByAccount[index] ? 100 : 10 }],
+                },
+              })),
+            }),
+            available,
+          ],
+        }).selection,
+      ).toEqual(usesFallback ? fallback : defaultSelection);
+    },
+  );
+  it.each([
     ["cursor", ["autoPercentUsed"], "claude-opus-5-5", false],
     ["cursor", ["autoPercentUsed"], "composer-2.5", false],
     ["cursor", ["autoPercentUsed", "apiPercentUsed"], "composer-2.5", true],

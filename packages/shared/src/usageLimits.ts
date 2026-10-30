@@ -22,18 +22,45 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-export function exhaustedUsageWindow(
-  provider: ServerProvider | undefined,
-  now: number,
-  model?: string,
-) {
-  const exhausted = (provider?.usageLimits?.windows ?? []).filter(
+const exhaustedWindowsOf = (limits: ServerProviderUsageLimits | undefined, now: number) =>
+  (limits?.windows ?? []).filter(
     (window) =>
       (window.usedPercent ?? 0) >= 100 &&
       (!window.resetsAt ||
         !Number.isFinite(Date.parse(window.resetsAt)) ||
         Date.parse(window.resetsAt) > now),
   );
+
+/**
+ * A harness that multiplexes upstream logins (Oh My Pi) reports one account per login and no
+ * limits of its own. A model slug reads `<upstream>/<model>`: the provider is out of usage for it
+ * only when every login of that upstream is.
+ */
+function exhaustedAccountWindow(
+  accounts: readonly ServerProviderUsageAccount[],
+  now: number,
+  model: string | undefined,
+) {
+  const separator = model?.indexOf("/") ?? -1;
+  const upstream = model !== undefined && separator > 0 ? model.slice(0, separator) : null;
+  const candidates = upstream
+    ? accounts.filter((account) => account.nativeProvider === upstream)
+    : accounts;
+  const exhausted = candidates.map((account) => exhaustedWindowsOf(account.usageLimits, now));
+  return exhausted.length > 0 && exhausted.every((windows) => windows.length > 0)
+    ? exhausted[0]![0]
+    : undefined;
+}
+
+export function exhaustedUsageWindow(
+  provider: ServerProvider | undefined,
+  now: number,
+  model?: string,
+) {
+  if (provider?.usageLimits === undefined && (provider?.usageLimitAccounts?.length ?? 0) > 0) {
+    return exhaustedAccountWindow(provider!.usageLimitAccounts!, now, model);
+  }
+  const exhausted = exhaustedWindowsOf(provider?.usageLimits, now);
   if (model === undefined) return exhausted[0];
   switch (provider?.driver) {
     case "cursor": {

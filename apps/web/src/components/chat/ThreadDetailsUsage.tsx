@@ -33,6 +33,8 @@ export interface ThreadDetailsUsageInput {
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
   readonly contextWindow: ContextWindowSnapshot | null;
+  /** Upstream login of the selected model (`<upstream>/<model>`); picks the account of a multi-login harness. */
+  readonly upstreamProvider?: string | null;
 }
 
 /**
@@ -44,6 +46,7 @@ export function ThreadDetailsUsage({
   providers,
   sources,
   contextWindow,
+  upstreamProvider = null,
 }: ThreadDetailsUsageInput) {
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
@@ -52,9 +55,17 @@ export function ThreadDetailsUsage({
       ? collectProviderUsageLimits(providerInstanceId, providers, sources, now)
       : null;
   // Only this instance's data: the report keeps one instance per login, and any other entry may be
-  // a different login or workspace, so fall back to the instance's own snapshot.
+  // a different login or workspace, so fall back to the instance's own snapshot. A harness that
+  // multiplexes several upstream logins (Oh My Pi) reports one account each; the selected model's
+  // upstream decides which one this thread draws from.
+  const instanceAccounts =
+    report?.accounts.filter((entry) => entry.instanceId === providerInstanceId) ?? [];
   const limits =
-    report?.accounts.find((entry) => entry.instanceId === providerInstanceId)?.limits ??
+    (
+      instanceAccounts.find(
+        (entry) => upstreamProvider !== null && entry.nativeProvider === upstreamProvider,
+      ) ?? instanceAccounts[0]
+    )?.limits ??
     providers.find((provider) => provider.instanceId === providerInstanceId)?.usageLimits;
   const notice = limits ? limitsNotice(limits) : null;
   if (!limits && !contextWindow) return null;

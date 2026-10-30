@@ -310,6 +310,7 @@ import { useRightPanelSurfaceClose } from "../hooks/useRightPanelSurfaceClose";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { modelFallbackBannerItem } from "./chat/ComposerUsageLimits";
 import { ThreadWorkPanelsDock } from "./chat/ThreadWorkPanels";
+import { modelUpstreamProvider } from "./chat/sessionPin";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
 import {
@@ -1433,6 +1434,13 @@ export default function ChatView(props: ChatViewProps) {
     setComposerDraftPrompt(composerDraftTarget, text);
     composerRef.current?.submit();
   });
+  const activeModelSlug =
+    (composerSelectedModelSelection?.instanceId === activeProviderInstanceId
+      ? composerSelectedModelSelection.model
+      : null) ??
+    (activeThread?.modelSelection.instanceId === activeProviderInstanceId
+      ? activeThread.modelSelection.model
+      : null);
   const {
     banner: usageLimitsBanner,
     offered: usageLimitsOffered,
@@ -1447,13 +1455,7 @@ export default function ChatView(props: ChatViewProps) {
     providerDriver: activeProviderStatus?.driver ?? null,
     providers: providerStatuses,
     sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
-    modelSlug:
-      (composerSelectedModelSelection?.instanceId === activeProviderInstanceId
-        ? composerSelectedModelSelection.model
-        : null) ??
-      (activeThread?.modelSelection.instanceId === activeProviderInstanceId
-        ? activeThread.modelSelection.model
-        : null),
+    modelSlug: activeModelSlug,
     pinDisabled: isWorking || composerHasUserContent,
     sendPinCommand: sendThreadText,
   });
@@ -3850,6 +3852,7 @@ export default function ChatView(props: ChatViewProps) {
                 providers: providerStatuses,
                 sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                 contextWindow: activeContextWindow,
+                upstreamProvider: modelUpstreamProvider(activeModelSlug),
               }}
             />
 
