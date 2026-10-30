@@ -4,6 +4,7 @@ import {
   T3_CODE_DEVICE_TOOL_INSTRUCTIONS,
   T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH,
   T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+  t3AcpInstructionsDue,
   t3AcpPromptWithInstructions,
   t3OrchestrationPrompt,
   t3OrchestrationSystemPrompt,
@@ -75,16 +76,14 @@ describe("T3 device instructions", () => {
       hasDeviceTools: false,
       model: "test-model",
     } as const;
-    const withDevices = t3AcpPromptWithInstructions({
-      prompt: "Check the login screen.",
-      state: { ...state, hasDeviceTools: true },
-      previousState: state,
-    });
-    assert.include(withDevices, T3_CODE_DEVICE_TOOL_INSTRUCTIONS);
-    assert.equal(
-      t3AcpPromptWithInstructions({ prompt: "Again.", state, previousState: state }),
-      "Again.",
+    const prompt = "Check the login screen.";
+    const withDevices = { ...state, hasDeviceTools: true };
+    assert.isTrue(t3AcpInstructionsDue({ prompt, state: withDevices, previousState: state }));
+    assert.include(
+      t3AcpPromptWithInstructions({ prompt, state: withDevices }),
+      T3_CODE_DEVICE_TOOL_INSTRUCTIONS,
     );
+    assert.isFalse(t3AcpInstructionsDue({ prompt: "Again.", state, previousState: state }));
     assert.notInclude(t3AcpPromptWithInstructions({ prompt: "Hi.", state }), "## T3 Code devices");
   });
 });

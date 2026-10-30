@@ -19,7 +19,8 @@ export const reconcileWebPushMigration = Effect.fn("reconcileWebPushMigration")(
         WHERE migration_id = 73 AND name = 'WebPushSubscriptions'
       `;
       if (legacy.length === 0) return;
-      const later = yield* sql`SELECT migration_id FROM effect_sql_migrations WHERE migration_id > 73`;
+      const later =
+        yield* sql`SELECT migration_id FROM effect_sql_migrations WHERE migration_id > 73`;
       if (later.length > 0) {
         return yield* new Migrator.MigrationError({
           kind: "BadState",

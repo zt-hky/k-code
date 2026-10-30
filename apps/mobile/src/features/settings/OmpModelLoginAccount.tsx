@@ -143,7 +143,7 @@ export function OmpModelLoginAccount(props: {
           input: { instanceId, providerId: way.providerId },
         });
         if (last._tag !== "Success") return last;
-        remainingSource ??= last.value.remainingSource;
+        if (remainingSource === undefined) remainingSource = last.value.remainingSource;
       }
       setNote(
         remainingSource === undefined

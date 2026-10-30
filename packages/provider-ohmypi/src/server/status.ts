@@ -28,7 +28,7 @@ import { OMP_MODE_OPTION_ID } from "./acp.ts";
 import { OHMYPI_DRIVER_KIND } from "./kind.ts";
 import { OMP_SEARCH_PROVIDER_IDS } from "./loginOutput.ts";
 
-export const OHMYPI_DOCUMENTATION_URL = "https://omp.sh";
+const OHMYPI_DOCUMENTATION_URL = "https://omp.sh";
 const VERSION_PROBE_TIMEOUT_MS = 10_000;
 const EMPTY_CAPABILITIES = createModelCapabilities({ optionDescriptors: [] });
 const MAX_AUTH_LABEL_PROVIDERS = 3;

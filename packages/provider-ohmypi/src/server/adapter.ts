@@ -53,8 +53,6 @@ import { OHMYPI_DRIVER_KIND } from "./kind.ts";
 import { toAcpRegistrySettings } from "./registrySettings.ts";
 import { OMP_SKILL_PREFIXES, rewriteOmpSkillMentions } from "./skills.ts";
 
-export { OHMYPI_DRIVER_KIND, OHMYPI_DEFAULT_INSTANCE_ID } from "./kind.ts";
-
 const DEFAULT_SETTINGS = Schema.decodeSync(OhMyPiSettings)({});
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
 

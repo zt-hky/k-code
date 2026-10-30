@@ -140,7 +140,10 @@ export function redactServerSettingsForClient(
       ? { value: "", redacted: secret.redacted || secret.value.length > 0 }
       : { value: secret.value, redacted: false },
   );
-  const clientSafe = { ...redacted, secretProviders: withoutUnknownSecretProviderConfigs(redacted) };
+  const clientSafe = {
+    ...redacted,
+    secretProviders: withoutUnknownSecretProviderConfigs(redacted),
+  };
   return managed?.vscodeWebUrl === undefined
     ? clientSafe
     : {

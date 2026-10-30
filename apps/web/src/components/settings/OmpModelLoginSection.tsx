@@ -365,7 +365,7 @@ export function OmpModelLoginSection(props: {
         reportAcpFailure(`Could not sign out of ${provider.name}`, result);
         return;
       }
-      remainingSource ??= result.value.remainingSource;
+      if (remainingSource === undefined) remainingSource = result.value.remainingSource;
     }
     setBusyProviderId(null);
     setStartedFlowId(null);

@@ -9,7 +9,6 @@ import type * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
-export const OMP_AGENT_ID = "omp";
 export const OMP_MODE_OPTION_ID = "mode";
 
 const OMP_PLAN_PATH = /(?:^|[\\/:])[^\\/:]*plan\.md$/i;
