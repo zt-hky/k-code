@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#05080d" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -20,14 +20,14 @@
         const THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
         const SPLASH_COLORS = {
           light: {
-            background: "#ffffff",
-            foreground: "#262626",
-            accent: "#4f46e5",
+            background: "#f5f9ff",
+            foreground: "#0a1220",
+            accent: "#1268e8",
           },
           dark: {
-            background: "#000000",
-            foreground: "#f5f5f5",
-            accent: "#818cf8",
+            background: "#05080d",
+            foreground: "#e6f1ff",
+            accent: "#38bdf8",
           },
         };
         // These are the runtime defaults used to complete a custom palette
@@ -396,15 +396,15 @@
       }
 
       body {
-        background: #ffffff;
-        color: #262626;
+        background: #f5f9ff;
+        color: #0a1220;
         font-family:
           -apple-system, BlinkMacSystemFont, "Inter Variable", "Segoe UI", system-ui, sans-serif;
       }
 
       html.dark body {
-        background: #000000;
-        color: #f5f5f5;
+        background: #05080d;
+        color: #e6f1ff;
       }
 
       #boot-shell {
@@ -668,13 +668,13 @@
         white-space: nowrap;
       }
     </style>
-    <title>T3 Code</title>
+    <title>K-code</title>
   </head>
   <body>
     <div id="root">
       <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="T3 Code splash screen">
-          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
+        <div id="boot-shell-card" aria-label="K-code splash screen">
+          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="K-code" />
         </div>
       </div>
     </div>

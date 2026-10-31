@@ -16,7 +16,7 @@ self.addEventListener("push", (event) => {
   } catch {
     payload = {};
   }
-  const title = typeof payload.title === "string" ? payload.title : "T3 Code";
+  const title = typeof payload.title === "string" ? payload.title : "K-code";
   // WebKit revokes push permission when a push shows no notification, even while the app is focused.
   event.waitUntil(
     self.registration.showNotification(title, {

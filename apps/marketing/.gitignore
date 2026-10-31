@@ -1,2 +1,6 @@
-/public/install.sh
-/public/install.ps1
+/public/brand/
+/public/favicon.svg
+/public/favicon.ico
+/public/apple-touch-icon.png
+/public/og.png
+/src/pages/docs/

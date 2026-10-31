@@ -3,7 +3,7 @@
 The Device panel shows a live iOS Simulator or Android Emulator next to a
 thread, so you can watch an agent verify mobile work and tap the device
 yourself. Agents get the same device through `device_*` tools and the
-`agent-device` command line, which T3 Code sets up for them.
+`agent-device` command line, which K-code sets up for them.
 
 ## Open a device
 
@@ -29,7 +29,7 @@ off.
 Simulators run on the machine that hosts the environment server. iOS needs
 macOS with Xcode. Android needs the SDK Platform-Tools, Android Emulator,
 and Command-line Tools (latest), plus a virtual device created in Android
-Studio's Device Manager. T3 Code detects standard SDK locations; set
+Studio's Device Manager. K-code detects standard SDK locations; set
 `ANDROID_HOME` for a custom location. The panel explains missing dependencies.
 After installing SDK tools, restart the environment server and refresh devices.
 
@@ -136,7 +136,7 @@ later, the first with a lease holder's screen and input.
 
 Turn on **Settings → Labs → Simlock device hosts (alpha)** and **Use devices**
 in Settings → Devices, then choose **Add source → Simlock pool** with an **agent token**
-(`simlock --gateway token create --role agent`). Give each T3 server its own
+(`simlock --gateway token create --role agent`). Give each K-code server its own
 token: Simlock counts every lease made with one token against the same
 requester, and allows one at a time unless the gateway's
 `lease.maxPerRequester` is raised to the host's **Devices at once**. The token
@@ -162,6 +162,6 @@ localhost; use an address its worker can reach.
 
 ## Device tool updates
 
-The connected T3 server manages the device hub and agent tools on its own machine and configured SSH hosts. Required versions install automatically the next time those tools are used. In Settings → Devices, select a version and choose **Check versions** to read installed versions without installing tools or starting devices.
+The connected K-code server manages the device hub and agent tools on its own machine and configured SSH hosts. Required versions install automatically the next time those tools are used. In Settings → Devices, select a version and choose **Check versions** to read installed versions without installing tools or starting devices.
 
-To receive newer tool versions on a remote environment, update that environment's T3 server. Updating only the browser or mobile app does not update the remote server. An offline host keeps its installed files, but an update needs network access before device support can start; T3 does not fall back to an older version. Reconnect the host and use Retry if installation fails. Existing device and agent-access settings are preserved.
+To receive newer tool versions on a remote environment, update that environment's K-code server. Updating only the browser or mobile app does not update the remote server. An offline host keeps its installed files, but an update needs network access before device support can start; T3 does not fall back to an older version. Reconnect the host and use Retry if installation fails. Existing device and agent-access settings are preserved.

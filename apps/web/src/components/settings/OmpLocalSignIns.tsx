@@ -135,7 +135,7 @@ export function OmpLocalSignIns(props: {
           <p className="text-muted-foreground">
             This copies your API keys and sign-in tokens to {label}. Anyone who can use that
             environment can use these accounts. Only copy them to a server you control. They stay on
-            this computer too, and T3 Code does not keep a copy.
+            this computer too, and K-code does not keep a copy.
           </p>
           <div className="flex items-center gap-1.5">
             <Button

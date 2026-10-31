@@ -7,7 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
 
-/** The working row while T3 Code's own compaction runs. */
+/** The working row while K-code's own compaction runs. */
 export const IDLE_COMPACTING_LABELS = {
   beforeCacheExpires: "Compacting before the cache expires…",
   onReturn: "Compacting…",

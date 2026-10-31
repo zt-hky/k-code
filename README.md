@@ -1,108 +1,109 @@
-# T3 Code
+<p align="center">
+  <img src="assets/brand/kcode-logo.svg" alt="K-code" width="320" />
+</p>
 
-T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
+<p align="center"><strong>The open GUI for your coding agents.</strong></p>
 
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, T3 Code can control them.
+<p align="center">
+  Run Claude Code, Codex, Cursor, Oh My Pi, OpenCode and more from one fast app — on desktop, in the browser, or from your phone.
+</p>
 
-## "Wait, what are you selling me?"
+<p align="center">
+  <a href="https://kcode.agentbox.io.vn">Website</a> ·
+  <a href="https://github.com/zt-hky/k-code/releases/latest">Download</a> ·
+  <a href="./docs/user/install.md">Docs</a> ·
+  Part of the <a href="https://agentbox.io.vn">AgentBox</a> family
+</p>
 
-Nothing. We built T3 Code because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
+---
 
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
+K-code is an agent harness control surface. It drives the coding agents already installed on your machine, with your own subscriptions and logins, and gives you one place to start threads, watch them work, review changes, and run commands.
+
+## Features
+
+- **Many agents, one app.** Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, and any ACP agent.
+- **Oh My Pi, first class.** Oh My Pi (`omp`) sessions, models, thinking levels and subagents are supported directly, not through a lowest-common-denominator shim.
+- **Agent Hub.** See every running agent and subagent in a live grid: current tool, progress, latest thinking, and replies, with room for as many panes as you have agents.
+- **Stop a single subagent.** Cancel one subagent without ending the whole turn, on agents that support it.
+- **Full transcript mode.** Switch on complete thinking and complete tool input and output, with no folds or truncation, when you need to audit exactly what an agent did.
+- **Resume sessions.** Pick up conversations that live in an agent's own session store, including ones started outside K-code.
+- **Settings sync.** Appearance and client preferences follow you across your connected environments.
+- **Remote and mobile.** Reach your machine from a browser or phone, see [remote access](./docs/user/remote-access.md).
+- **Real developer tooling.** Git worktrees, diff review, terminals, an in-app browser, pull request integration, keyboard-first navigation.
+- **Ocean blue on black.** A dark-first theme tuned for long sessions, with a matching light variant. Other themes stay one click away.
 
 ## Installation
 
-> [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
->
-> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
-> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-> - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
-> - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
-> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
-> - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
+Install and authenticate at least one agent before use:
+
+- Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
+- Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
+- Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
+- Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
+- OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
+- Oh My Pi: install [Oh My Pi](https://github.com/can1357/oh-my-pi) and sign in with `omp`
+- Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
 
 ### Command line
 
+Linux and macOS:
+
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://kcode.agentbox.io.vn/install.sh | sh
 ```
 
-On Windows, in PowerShell:
+Windows, in PowerShell:
 
 ```powershell
-irm https://t3.codes/install.ps1 | iex
+irm https://kcode.agentbox.io.vn/install.ps1 | iex
 ```
 
-Then run `t3` to start the server and open the local web app. `t3 service install` keeps it running in the background, `t3 update` moves to a newer release, and `t3 --help` has the full reference.
-
-To try it once without installing, run `npx t3@latest` instead.
+Then run `kcode` to start the server and open the local web app. `kcode service install` keeps it running in the background and `kcode --help` has the full reference.
 
 ### Desktop app
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
+Download the installer for your platform from [GitHub Releases](https://github.com/zt-hky/k-code/releases/latest):
 
-#### Windows (`winget`)
+| Platform         | Download                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Linux (AppImage) | [`K-code-linux-x86_64.AppImage`](https://github.com/zt-hky/k-code/releases/latest/download/K-code-linux-x86_64.AppImage) |
+| Debian, Ubuntu   | [`K-code-linux-amd64.deb`](https://github.com/zt-hky/k-code/releases/latest/download/K-code-linux-amd64.deb)             |
+| Windows          | [`K-code-windows-x64-setup.exe`](https://github.com/zt-hky/k-code/releases/latest/download/K-code-windows-x64-setup.exe) |
+| macOS (Apple)    | [`K-code-macos-arm64.dmg`](https://github.com/zt-hky/k-code/releases/latest/download/K-code-macos-arm64.dmg)             |
+| macOS (Intel)    | [`K-code-macos-x64.dmg`](https://github.com/zt-hky/k-code/releases/latest/download/K-code-macos-x64.dmg)                 |
 
-```bash
-winget install T3Tools.T3Code
-```
+Checksums are published in `SHA256SUMS.txt` on every release. Builds are unsigned unless noted otherwise on the release page.
 
-#### Windows (`scoop`)
+On Debian or Ubuntu: `sudo apt install ./K-code-linux-amd64.deb`.
 
-```bash
-scoop install extras/t3code
-```
+## Run from source
 
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
-
-#### Debian, Ubuntu (`.deb`)
-
-Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
+K-code uses [Vite+](https://viteplus.dev/guide/), so install the global `vp` tool first.
 
 ```bash
-sudo apt install ./T3-Code-*.deb
+# macOS / Linux
+curl -fsSL https://vite.plus | bash
 ```
 
-#### Arch Linux (AUR)
+```powershell
+# Windows
+irm https://vite.plus/ps1 | iex
+```
 
-Stable:
+Then:
 
 ```bash
-yay -S t3code-bin
+vp i
+npm run dev
 ```
 
-Nightly:
+`npm run dev` starts the contracts watcher, the web app (Vite) and the server together and prints the ports it chose. Open the pairing URL it prints to connect the browser.
 
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
-
-#### Nix (nixpkgs)
-
-```bash
-nix profile add github:NixOS/nixpkgs/nixos-unstable#t3code
-```
-
-The package is maintained in [nixpkgs](https://github.com/NixOS/nixpkgs/tree/nixos-unstable/pkgs/by-name/t3/t3code)
-and includes the desktop app (`t3code-desktop`) and the `t3` command.
-See [Nix installation](./docs/user/install.md#nix-nixpkgs) for NixOS configuration and updates.
-
-## Some notes
-
-We are very very early in this project. Expect bugs.
-
-We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
+Building from source in depth: [docs/internals/overview.md](./docs/internals/overview.md).
 
 ## Documentation
 
-Full docs live in [docs/](./docs). There's no docs site yet.
+Docs live in [docs/](./docs).
 
 - [FAQ](./docs/user/faq.md)
 - [Install and first run](./docs/user/install.md)
@@ -115,38 +116,15 @@ Full docs live in [docs/](./docs). There's no docs site yet.
 - [Keeping app and server in sync](./docs/user/updating.md)
 - [Source control integrations](./docs/user/source-control.md)
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- [Run T3 Code as a background service](./docs/user/background-service.md)
+- [Oh My Pi](./docs/user/providers-ohmypi.md)
+- [Run K-code as a background service](./docs/user/background-service.md)
 
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
+## Contributing
 
-## If you REALLY want to contribute still.... read this first
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR. Report issues at [github.com/zt-hky/k-code/issues](https://github.com/zt-hky/k-code/issues).
 
-### Install `vp`
+## Credits and license
 
-T3 Code uses Vite+ so you'll need to install the global `vp` command-line tool.
+K-code is based on [T3 Code](https://github.com/pingdotgg/t3code) by T3 Tools Inc. (MIT), and is part of the [AgentBox](https://agentbox.io.vn) family.
 
-#### macOS / Linux
-
-```bash
-curl -fsSL https://vite.plus | bash
-```
-
-#### Windows
-
-```bash
-irm https://vite.plus/ps1 | iex
-```
-
-Checkout their getting started guide for more information: https://viteplus.dev/guide/
-
-### Install dependencies
-
-```bash
-vp i
-```
-
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
-
-Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
-
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+Released under the [MIT License](./LICENSE). Copyright (c) 2026 T3 Tools Inc. and (c) 2026 zt-hky (K-code).

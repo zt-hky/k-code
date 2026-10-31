@@ -54,7 +54,7 @@ import * as ServerConfig from "../config.ts";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-/** T3's record of the branch, named as on the host, that a branch was cut from. */
+/** K-code's record of the branch, named as on the host, that a branch was cut from. */
 const branchBaseConfigKey = (branch: string) => `branch.${branch}.t3-merge-base`;
 /**
  * Where T3 kept that record before it had a key of its own, for every host alike: the GitHub

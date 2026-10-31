@@ -1,12 +1,12 @@
 # Oh My Pi
 
-T3 Code runs [Oh My Pi](https://omp.sh) (`omp`) as its own provider, next to Codex and Claude. It
+K-code runs [Oh My Pi](https://omp.sh) (`omp`) as its own provider, next to Codex and Claude. It
 keeps Oh My Pi's models, extensions, skills, and native session history, and shows the usage limits
 of the accounts it is signed in to.
 
 ## Set up
 
-1. Install Oh My Pi on the machine that runs the T3 Code server. See [omp.sh](https://omp.sh).
+1. Install Oh My Pi on the machine that runs the K-code server. See [omp.sh](https://omp.sh).
 2. Open **Settings → Providers**. Oh My Pi is already there and on; there is nothing to enable.
 3. Choose **Sign in** and pick the model provider you pay for.
 
@@ -25,7 +25,7 @@ signed in. **Settings → Providers → Oh My Pi → Sign in** lists the common 
 find the rest. In a thread whose provider is not signed in, the notice above the composer opens the
 same list.
 
-Choose a service and T3 Code takes you through what it needs. **Sign in** always starts the way
+Choose a service and K-code takes you through what it needs. **Sign in** always starts the way
 that finishes on its own for where you are:
 
 - **Device code** shows a code and a link. Approve on the service's page, from any device, and the
@@ -64,7 +64,7 @@ is real: it copies your API keys and sign-in tokens, so anyone who can use that 
 those accounts. Copy them only to a server you control.
 
 On confirm the app sends them over the connection it already has to the environment (this needs the
-**Manage providers** permission), which runs `omp auth import -` for that Oh My Pi instance. T3 Code
+**Manage providers** permission), which runs `omp auth import -` for that Oh My Pi instance. K-code
 does not log or keep them, on either side, and they stay on this computer too. Status and models
 refresh when it is done. If Oh My Pi is not installed on this computer, the panel says so instead.
 The web and mobile apps do not offer this, since they cannot run Oh My Pi locally.
@@ -79,7 +79,7 @@ mobile apps.
 
 ## What carries over
 
-- **Plan and Build** follow T3 Code's toggle; Oh My Pi's plan becomes a plan card you can
+- **Plan and Build** follow K-code's toggle; Oh My Pi's plan becomes a plan card you can
   implement.
 - **Questions** Oh My Pi asks appear in the composer, including multiple choice and custom
   answers.
@@ -90,7 +90,7 @@ mobile apps.
   `omp`'s own resume list matches. See [Native sessions](./providers-acp.md#native-sessions).
 - **Subagents**: each agent of a parallel batch gets its own entry, status, usage, and transcript.
   Stop on an agent's row, pane, or card cancels only that agent; the rest of the batch and the
-  turn keep running. T3 Code loads a small extension into Oh My Pi (`omp acp --extension`) for
+  turn keep running. K-code loads a small extension into Oh My Pi (`omp acp --extension`) for
   this.
 - **Skills** appear in the `$` menu; selecting one runs `/skill:<name>`.
 - **Usage**: the card and Usage page show each signed-in account's limits. Token totals come from
@@ -98,5 +98,5 @@ mobile apps.
 
 Approvals follow the thread's [permission mode](./permission-modes.md), as for other
 [ACP agents](./providers-acp.md#permissions-and-terminals). Oh My Pi can write commit messages,
-titles, and other text for T3 Code; pick it in **Settings → Providers**. Forking from an earlier turn
+titles, and other text for K-code; pick it in **Settings → Providers**. Forking from an earlier turn
 starts the fork from a summary of the thread, not from Oh My Pi's own session.

@@ -1,0 +1,21 @@
+{
+  "name": "K-code",
+  "colors": {
+    "ink": "#05080D",
+    "abyss": "#0A1220",
+    "tide": "#13233D",
+    "ocean": "#1677FF",
+    "lagoon": "#38BDF8",
+    "foam": "#E6F1FF",
+    "mist": "#8BA3C2"
+  },
+  "gradient": {
+    "angle": "135deg",
+    "stops": ["#1677FF", "#38BDF8"],
+    "css": "linear-gradient(135deg, #1677FF, #38BDF8)"
+  },
+  "fonts": {
+    "sans": "Inter, system-ui, sans-serif",
+    "mono": "JetBrains Mono, ui-monospace, monospace"
+  }
+}

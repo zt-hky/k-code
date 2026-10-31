@@ -23,7 +23,7 @@ export function buildRuntimeInstructions(runtime: {
     ...(runtime.runtimeInfo === false
       ? []
       : [
-          `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images, video, and audio in your response using Markdown image syntax with absolute file paths. Link any other file you produce using its absolute path so the user can open it in T3 Code's files viewer.</runtime_info>`,
+          `<runtime_info>In case you're asked: you are running in K-code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images, video, and audio in your response using Markdown image syntax with absolute file paths. Link any other file you produce using its absolute path so the user can open it in K-code's files viewer.</runtime_info>`,
         ]),
     ...(runtime.pullRequestLinking === false ? [] : [PULL_REQUEST_LINKING_INSTRUCTIONS]),
   ].join("\n\n");

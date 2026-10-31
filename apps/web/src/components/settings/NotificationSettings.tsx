@@ -26,7 +26,7 @@ export function NotificationSettings() {
       {...searchableSetting("thread-notifications")}
       description={
         permissionMessage ??
-        "System alerts when a thread finishes, fails, or needs input or approval. Applies to this device while T3 Code is open."
+        "System alerts when a thread finishes, fails, or needs input or approval. Applies to this device while K-code is open."
       }
       control={
         <Select
@@ -45,7 +45,7 @@ export function NotificationSettings() {
             if (hasDesktopNotifications(value)) {
               if (webPushSupport() === "ios-browser-tab") {
                 setPermissionMessage(
-                  "On iPhone and iPad, add T3 Code to your Home Screen (Share → Add to Home Screen), open it from there, then turn notifications on.",
+                  "On iPhone and iPad, add K-code to your Home Screen (Share → Add to Home Screen), open it from there, then turn notifications on.",
                 );
                 return;
               }
@@ -77,7 +77,7 @@ export function NotificationSettings() {
                 setRequesting(false);
                 if (pushError !== null) {
                   setPermissionMessage(
-                    `Notifications work while T3 Code is open. Background notifications could not be enabled: ${pushError}`,
+                    `Notifications work while K-code is open. Background notifications could not be enabled: ${pushError}`,
                   );
                 }
               }

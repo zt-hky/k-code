@@ -92,7 +92,7 @@ describe("omp first user message", () => {
 
   it("shows the user's request instead of the instructions T3 wraps around it", () => {
     const wrapped =
-      "<t3_code_instructions>\n## T3 Code interaction mode: Default\n</t3_code_instructions>\n\n<user_request>\nAdd a resume dialog\n</user_request>";
+      "<t3_code_instructions>\n## K-code interaction mode: Default\n</t3_code_instructions>\n\n<user_request>\nAdd a resume dialog\n</user_request>";
     expect(firstUserMessageFromPrefix(body(userLine(wrapped)), true)).toBe("Add a resume dialog");
     const handoff =
       "Context handoff (manual_context):\nFrom thread t1\n\nUser message:\nKeep going";

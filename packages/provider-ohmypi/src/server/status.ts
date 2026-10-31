@@ -200,7 +200,7 @@ function buildOhMyPiSnapshotBase(input: OhMyPiSnapshotInput): ServerProvider {
       status: "disabled",
       auth: { status: "unknown" },
       setup: { canAuthenticate: false, canInstall: false },
-      message: "Oh My Pi is disabled in T3 Code settings.",
+      message: "Oh My Pi is disabled in K-code settings.",
       models: ompModelsFromDiscovery(undefined, settings.customModels as ReadonlyArray<string>),
     };
   }

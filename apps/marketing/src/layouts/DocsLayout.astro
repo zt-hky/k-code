@@ -1,0 +1,69 @@
+---
+import Layout from "./Layout.astro";
+import { DOCS } from "../lib/docs";
+import { GITHUB_URL } from "../lib/site";
+
+interface Props {
+  frontmatter: { title: string; slug: string; source: string };
+}
+
+const { frontmatter } = Astro.props;
+const groups = [...new Set(DOCS.map((d) => d.group))];
+const index = DOCS.findIndex((d) => d.slug === frontmatter.slug);
+const prev = index > 0 ? DOCS[index - 1] : undefined;
+const next = index >= 0 && index < DOCS.length - 1 ? DOCS[index + 1] : undefined;
+const current = `/docs/${frontmatter.slug}/`;
+---
+
+<Layout title={`${frontmatter.title} · K-code docs`} path={current}>
+  <div class="wrap docs-shell">
+    <div>
+      <button
+        class="btn btn-sm docs-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="docs-nav"
+        data-docs-toggle>Menu</button
+      >
+      <nav class="docs-nav" id="docs-nav" aria-label="Documentation">
+        {
+          groups.map((group) => (
+            <>
+              <h4>{group}</h4>
+              <ul>
+                {DOCS.filter((d) => d.group === group).map((d) => (
+                  <li>
+                    <a
+                      href={`/docs/${d.slug}/`}
+                      aria-current={d.slug === frontmatter.slug ? "page" : undefined}>{d.title}</a
+                    >
+                  </li>
+                ))}
+              </ul>
+            </>
+          ))
+        }
+      </nav>
+    </div>
+    <article class="prose">
+      <h1>{frontmatter.title}</h1>
+      <slot />
+      <div class="doc-pager">
+        {prev ? <a href={`/docs/${prev.slug}/`}>← {prev.title}</a> : <span />}
+        {next ? <a href={`/docs/${next.slug}/`}>{next.title} →</a> : <span />}
+      </div>
+      <p class="doc-meta">
+        Found a mistake?
+        <a href={`${GITHUB_URL}/blob/main/${frontmatter.source}`} rel="noopener">Edit this page on GitHub</a>.
+      </p>
+    </article>
+  </div>
+  <script>
+    const toggle = document.querySelector<HTMLButtonElement>("[data-docs-toggle]");
+    const nav = document.getElementById("docs-nav");
+    toggle?.addEventListener("click", () => {
+      const open = nav?.classList.toggle("open") ?? false;
+      toggle.setAttribute("aria-expanded", String(open));
+    });
+  </script>
+</Layout>

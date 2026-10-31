@@ -225,7 +225,7 @@ const makeMacPayloadFixture = Effect.fn("test.makeMacPayloadFixture")(function* 
   yield* fs.writeFileString(serverEntryPath, input.serverEntrySource ?? "console.log('server');\n");
 
   const stageDistDir = path.join(tempDir, "dist");
-  const resourcesDir = path.join(stageDistDir, "mac-arm64/T3 Code.app/Contents/Resources");
+  const resourcesDir = path.join(stageDistDir, "mac-arm64/K-code.app/Contents/Resources");
   yield* fs.makeDirectory(resourcesDir, { recursive: true });
   yield* Effect.promise(() =>
     createPackageWithOptions(sourceDir, path.join(resourcesDir, "app.asar"), {}),
@@ -1347,7 +1347,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const stageDistDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-mac-payload-test-" });
-        yield* fs.makeDirectory(`${stageDistDir}/mac-arm64/T3 Code.app/Contents/Resources`, {
+        yield* fs.makeDirectory(`${stageDistDir}/mac-arm64/K-code.app/Contents/Resources`, {
           recursive: true,
         });
         const error = yield* validateMacPackagedPayload({ stageDistDir }).pipe(Effect.flip);
@@ -1389,7 +1389,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
 
     assert.deepStrictEqual(configuration, {
-      appId: "com.t3tools.t3code",
+      appId: "vn.agentbox.kcode",
       teamId: "ABC1234567",
       rpDomains: ["example.clerk.accounts.dev"],
       provisioningProfilePath: "/tmp/t3code.provisionprofile",
@@ -1412,7 +1412,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       "clerk.example.com",
       "example.clerk.accounts.dev",
     ]);
-    assert.include(entitlements, "<string>ABC1234567.com.t3tools.t3code</string>");
+    assert.include(entitlements, "<string>ABC1234567.vn.agentbox.kcode</string>");
     assert.include(entitlements, "<string>webcredentials:clerk.example.com</string>");
     assert.include(entitlements, "<string>webcredentials:example.clerk.accounts.dev</string>");
     assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");

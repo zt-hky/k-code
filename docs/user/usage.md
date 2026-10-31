@@ -19,14 +19,14 @@ Totals depend on the history available on each server. Grok turns without a save
 record are missing from the totals.
 
 OpenCode reads its SQLite database and older JSON history. Antigravity reads local conversation
-databases, including T3-managed profiles. Set `OPENCODE_DATA_DIR` or `ANTIGRAVITY_DATA_DIR` on the
+databases, including K-code-managed profiles. Set `OPENCODE_DATA_DIR` or `ANTIGRAVITY_DATA_DIR` on the
 server to read a different data directory; comma-separated paths read multiple directories.
 
 Cursor reads account usage from Cursor's dashboard API using the CLI login saved on the server.
-This includes headless T3 sessions and desktop usage across machines; the same account counts
-once across connected environments. Without an accessible CLI login, T3 shows a
-notice instead of incomplete local totals. T3 does not estimate missing tokens from conversation text.
-On macOS, choose **Enable Cursor usage** on Usage to allow T3 to read your existing CLI login
+This includes headless K-code sessions and desktop usage across machines; the same account counts
+once across connected environments. Without an accessible CLI login, K-code shows a
+notice instead of incomplete local totals. K-code does not estimate missing tokens from conversation text.
+On macOS, choose **Enable Cursor usage** on Usage to allow K-code to read your existing CLI login
 from Keychain. You can turn it off in **Settings → Providers → Usage providers**. macOS may ask
 you to allow access on the server Mac.
 
@@ -43,8 +43,8 @@ Use absolute paths or `~/` paths in the account's environment settings; relative
 depend on each project's working directory and cannot be reliably discovered by Usage. Accounts
 sharing a history directory count once.
 
-The server saves its first hostname in `<T3 home>/usage-host-id`, so a recreated container keeps
-its usage identity when T3 home is persisted. Set `T3CODE_HOST_ID` to choose the identity
+The server saves its first hostname in `<K-code home>/usage-host-id`, so a recreated container keeps
+its usage identity when K-code home is persisted. Set `T3CODE_HOST_ID` to choose the identity
 explicitly.
 
 When your app and server support different providers, usage totals may cover only the providers

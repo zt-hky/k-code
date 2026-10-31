@@ -58,7 +58,7 @@ describe("tool text output parsing", () => {
     ["structuredContent", { structuredContent: { ok: true } }],
     ["details", { details: { truncated: false, path: "README.md" } }],
   ] as const)("shows the text blocks of a result that also carries %s", (_key, extra) => {
-    const item = toolItem({ content: [{ type: "text", text: "1:# T3 Code\n2:" }], ...extra });
-    expect(turnItemOutputText(item)).toBe("1:# T3 Code\n2:");
+    const item = toolItem({ content: [{ type: "text", text: "1:# K-code\n2:" }], ...extra });
+    expect(turnItemOutputText(item)).toBe("1:# K-code\n2:");
   });
 });

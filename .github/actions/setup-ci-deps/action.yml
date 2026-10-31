@@ -30,7 +30,8 @@ runs:
     # Pinned because release-desktop.yml signs builds with this action in the job.
     - name: Cache Vite+
       id: vp_cache
-      if: steps.vp.outputs.version != ''
+      # Not on Windows: a restored ~/.vite-plus has no `vp` that child processes can spawn.
+      if: steps.vp.outputs.version != '' && runner.os != 'Windows'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.vite-plus

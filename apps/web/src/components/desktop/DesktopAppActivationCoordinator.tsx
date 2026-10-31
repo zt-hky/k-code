@@ -67,7 +67,7 @@ export function DesktopAppActivationCoordinator() {
         });
         if (result._tag === "Failure") {
           const error = squashAtomCommandFailure(result);
-          throw error instanceof Error ? error : new Error("T3 Code could not add the project.");
+          throw error instanceof Error ? error : new Error("K-code could not add the project.");
         }
         void offerSessionResume(scopeProjectRef(environmentId, projectId), title);
         return projectId;

@@ -18,7 +18,7 @@ export type LocalhostAuthBridgeOutcome =
       readonly reason: "invalid_request" | "port_busy" | "cancelled" | "expired";
     };
 
-const PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>T3 Code</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:90vh;margin:0}main{max-width:360px;padding:32px}h1{font-size:24px}p{line-height:1.6;opacity:.7}</style></head><body><main><h1>You can close this tab</h1><p>T3 Code received your sign-in and is finishing it.</p></main></body></html>`;
+const PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>K-code</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:90vh;margin:0}main{max-width:360px;padding:32px}h1{font-size:24px}p{line-height:1.6;opacity:.7}</style></head><body><main><h1>You can close this tab</h1><p>K-code received your sign-in and is finishing it.</p></main></body></html>`;
 
 interface ActiveBridge {
   readonly abort: AbortController;

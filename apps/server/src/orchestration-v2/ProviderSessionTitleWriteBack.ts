@@ -11,7 +11,7 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
 /**
- * Keeps an agent's own session record in step with the T3 thread title, for agents whose
+ * Keeps an agent's own session record in step with the K-code thread title, for agents whose
  * driver can rename a session. Only a title that changes while the server runs is written:
  * a thread's first-seen title is the baseline, so a placeholder title never overwrites a
  * title the agent chose for itself.

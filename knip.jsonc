@@ -30,6 +30,7 @@
         "knip-schemas.ts",
         "mobile-behavior/run.ts",
         "mobile-native-client.ts",
+        "resolve-nightly-release.ts",
         "setup-worktree.ts",
         "sign-macos.ts",
         "smoke-desktop-app.ts",
@@ -96,6 +97,8 @@
     "apps/marketing": {
       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
       "ignoreDependencies": ["@astrojs/check"],
+      // Generated docs pages (stage-site.mjs) name this layout in their frontmatter.
+      "entry": ["src/layouts/DocsLayout.astro"],
     },
     "apps/mobile": {
       // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.

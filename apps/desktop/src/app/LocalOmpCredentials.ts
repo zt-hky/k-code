@@ -73,7 +73,7 @@ export async function readLocalOmpCredentials(
   if (decoded._tag === "None") {
     return {
       status: "failed",
-      message: "Oh My Pi on this computer returned sign-ins in a format T3 Code does not know.",
+      message: "Oh My Pi on this computer returned sign-ins in a format K-code does not know.",
     };
   }
   const providerIds = [...new Set(decoded.value.credentials.map((entry) => entry.provider))];
