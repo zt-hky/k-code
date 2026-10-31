@@ -144,6 +144,23 @@ describe("Oh My Pi snapshot", () => {
     expect(buildOhMyPiSnapshot({ ...base, install: installed }).auth.status).toBe("unknown");
   });
 
+  it("offers text generation only for an enabled, installed omp that is not signed out", () => {
+    const signedIn = signedInModelProviders([{ ...claude, authenticated: true }]);
+    const supports = (input: Parameters<typeof buildOhMyPiSnapshot>[0]) =>
+      buildOhMyPiSnapshot(input).supportsTextGeneration;
+    expect(supports({ ...base, install: installed, signedIn })).toBe(true);
+    expect(supports({ ...base, install: installed })).toBe(true);
+    expect(
+      supports({
+        ...base,
+        install: installed,
+        signedIn: signedInModelProviders([{ ...claude, authenticated: false }]),
+      }),
+    ).toBe(false);
+    expect(supports({ ...base, install: { installed: false, detail: "missing" } })).toBe(false);
+    expect(supports({ ...base, settings: { ...settings, enabled: false } })).toBe(false);
+  });
+
   it("lists discovered models by model provider and leaves plan mode to T3's toggle", () => {
     const snapshot = buildOhMyPiSnapshot({
       ...base,
@@ -166,6 +183,7 @@ describe("Oh My Pi snapshot", () => {
       canResume: true,
       canDelete: false,
       canListProjects: true,
+      canListAllSessions: true,
     });
     expect(snapshot.manageableExtensions).toBe(true);
     expect(snapshot.slashCommands).toEqual([{ name: "model" }]);

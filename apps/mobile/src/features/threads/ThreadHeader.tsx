@@ -7,6 +7,7 @@ import type { ThreadInspectorMode } from "./thread-inspector-content-stack";
 import { useThreadHeaderOptions } from "./useThreadHeaderOptions";
 import { useWorkspaceBackNavigation } from "../workspace/useAndroidWorkspaceNavigation";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 
 export function ThreadHeader(
   props: Parameters<typeof useThreadHeaderOptions>[0] & {
@@ -24,6 +25,7 @@ export function ThreadHeader(
     useAdaptiveWorkspaceLayout();
   const { onOpenTerminal, onMergeBack } = props.gitControls;
   const native = useThreadHeaderOptions(props);
+  const { fullTranscript, setFullTranscript } = useAppearancePreferences();
   const androidHeaderActions = useMemo<ReadonlyArray<AppBarAction>>(() => {
     const actions: AppBarAction[] = [];
     if (props.onReturnToThread) {
@@ -54,6 +56,12 @@ export function ThreadHeader(
       icon: "point.topleft.down.curvedto.point.bottomright.up",
       onPress: props.onOpenGitInspector,
     });
+    actions.push({
+      accessibilityLabel: fullTranscript ? "Hide full transcript" : "Show full transcript",
+      selected: fullTranscript,
+      icon: "doc.text",
+      onPress: () => setFullTranscript(!fullTranscript),
+    });
     if (onMergeBack) {
       actions.push({
         accessibilityLabel: "Merge back to source",
@@ -63,6 +71,8 @@ export function ThreadHeader(
     }
     return actions;
   }, [
+    fullTranscript,
+    setFullTranscript,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,

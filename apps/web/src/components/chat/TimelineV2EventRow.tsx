@@ -9,6 +9,7 @@ import {
 import { memo, use, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
+import { useFullTranscript } from "~/hooks/useFullTranscript";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "../ui/collapsible";
 import { EnvironmentSubagentAvatar, SubagentElapsed, V2LifecycleRow } from "./V2LifecycleRow";
 import { LinkRequestCard } from "./LinkRequestCard";
@@ -58,9 +59,11 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
 }) {
   const ctx = use(TimelineRowCtx);
   const groupId = `subagent-group:${row.id}`;
-  const [expanded, setExpanded] = useState(() =>
+  const fullTranscript = useFullTranscript();
+  const [localExpanded, setExpanded] = useState(() =>
     ctx.workGroupViewState.expandedEntries.has(groupId),
   );
+  const expanded = fullTranscript || localExpanded;
   const members = (row.subagents ?? [row.projectedItem]).flatMap(({ item }) =>
     item.type === "subagent" ? [item] : [],
   );
@@ -83,7 +86,8 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
   const label = `${members.length} ${members.length === 1 ? "subagent" : "subagents"}`;
   const statusSummary = summarizeSubagentStatuses(agents.map(({ status }) => status));
   const toggleExpanded = (open: boolean) => {
-    ctx.onToggleWorkEntry(row.id, expanded);
+    if (fullTranscript) return;
+    ctx.onToggleWorkEntry(row.id, localExpanded);
     if (open) ctx.workGroupViewState.expandedEntries.add(groupId);
     else ctx.workGroupViewState.expandedEntries.delete(groupId);
     setExpanded(open);

@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "../../lib/utils";
+import { useFullTranscript } from "../../hooks/useFullTranscript";
 
 const GroupedRows = createContext(false);
 
@@ -137,6 +138,7 @@ export function WorkLogDetails({
 
   followLive?: boolean;
 }) {
+  const fullTranscript = useFullTranscript();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const atLiveEdgeRef = useRef(true);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pins the scroller's scrollTop to the bottom after each commit while following live output
@@ -156,7 +158,10 @@ export function WorkLogDetails({
       className={cn(
         "cursor-auto",
         kind === "text"
-          ? "ms-7 flex max-h-96 flex-col gap-3 overflow-auto px-0.5 py-1 select-text"
+          ? cn(
+              "ms-7 flex flex-col gap-3 px-0.5 py-1 select-text",
+              fullTranscript ? "overflow-x-auto" : "max-h-96 overflow-auto",
+            )
           : kind === "panel"
             ? "mt-0.5 mb-1.5 pb-2"
             : "mt-1",

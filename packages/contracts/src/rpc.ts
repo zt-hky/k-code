@@ -59,6 +59,7 @@ import {
   AcpRegistryDisableProviderResult,
   AcpRegistryImportSessionInput,
   AcpRegistryImportSessionResult,
+  AcpRegistryListAllSessionsInput,
   AcpRegistryListSessionsInput,
   AcpRegistryListSessionsResult,
   AcpRegistryListProvidersInput,
@@ -371,6 +372,9 @@ import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from ".
 import {
   StorageCleanupReport,
   DatabaseStorageStatus,
+  ClientSettingsSyncError,
+  ClientSettingsSyncSnapshot,
+  ClientSettingsSyncUpdateInput,
   ServerSettings,
   ServerSettingsError,
   ServerSettingsPatch,
@@ -532,6 +536,7 @@ export const WS_METHODS = {
   serverUninstallAcpRegistryManagedBinary: "server.uninstallAcpRegistryManagedBinary",
   serverAcceptAcpRegistryUrlAuth: "server.acceptAcpRegistryUrlAuth",
   serverListAcpRegistrySessions: "server.listAcpRegistrySessions",
+  serverListAllAcpRegistrySessions: "server.listAllAcpRegistrySessions",
   serverImportAcpRegistrySession: "server.importAcpRegistrySession",
   serverDeleteAcpRegistrySession: "server.deleteAcpRegistrySession",
   serverListAcpRegistryProviders: "server.listAcpRegistryProviders",
@@ -564,6 +569,8 @@ export const WS_METHODS = {
   webPushSubscribe: "webPush.subscribe",
   webPushUnsubscribe: "webPush.unsubscribe",
 
+  clientSettingsSubscribe: "clientSettings.subscribe",
+  clientSettingsUpdate: "clientSettings.update",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
   scheduledTasksSetEnabled: "scheduledTasks.setEnabled",
@@ -883,6 +890,15 @@ const WsServerListAcpRegistrySessionsRpc = Rpc.make(WS_METHODS.serverListAcpRegi
   success: AcpRegistryListSessionsResult,
   error: Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]),
 });
+
+const WsServerListAllAcpRegistrySessionsRpc = Rpc.make(
+  WS_METHODS.serverListAllAcpRegistrySessions,
+  {
+    payload: AcpRegistryListAllSessionsInput,
+    success: AcpRegistryListSessionsResult,
+    error: Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]),
+  },
+);
 
 const WsServerImportAcpRegistrySessionRpc = Rpc.make(WS_METHODS.serverImportAcpRegistrySession, {
   payload: AcpRegistryImportSessionInput,
@@ -1964,6 +1980,19 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const WsClientSettingsSubscribeRpc = Rpc.make(WS_METHODS.clientSettingsSubscribe, {
+  payload: Schema.Struct({}),
+  success: ClientSettingsSyncSnapshot,
+  error: Schema.Union([ClientSettingsSyncError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsClientSettingsUpdateRpc = Rpc.make(WS_METHODS.clientSettingsUpdate, {
+  payload: ClientSettingsSyncUpdateInput,
+  success: ClientSettingsSyncSnapshot,
+  error: Schema.Union([ClientSettingsSyncError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksSubscribeRpc = Rpc.make(WS_METHODS.scheduledTasksSubscribe, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -2091,6 +2120,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUninstallAcpRegistryManagedBinaryRpc,
   WsServerAcceptAcpRegistryUrlAuthRpc,
   WsServerListAcpRegistrySessionsRpc,
+  WsServerListAllAcpRegistrySessionsRpc,
   WsServerImportAcpRegistrySessionRpc,
   WsServerDeleteAcpRegistrySessionRpc,
   WsServerListAcpRegistryProvidersRpc,
@@ -2118,6 +2148,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
   WsServerSignalProcessRpc,
+  WsClientSettingsSubscribeRpc,
+  WsClientSettingsUpdateRpc,
   WsScheduledTasksSubscribeRpc,
   WsScheduledTasksUpsertRpc,
   WsScheduledTasksSetEnabledRpc,

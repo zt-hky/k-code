@@ -18,6 +18,7 @@ import {
   type OrchestrationV2ProviderTurnTokenUsage,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2Subagent,
+  type OrchestrationV2SubagentUsage,
   type OrchestrationV2TurnItem,
   type OrchestrationV2UserInputQuestion,
   type OrchestrationV2WebSearchResult,
@@ -352,6 +353,14 @@ export interface AcpAdapterV2Flavor {
     readonly entries: ReadonlyArray<AcpSubagentTranscriptEntry>;
     readonly nextByte: number;
   }>;
+  /**
+   * Stops one running child agent without ending the parent turn. `sessionId` is the parent's
+   * native session; `agentIds` are the child's `transcriptAgentIds`.
+   */
+  readonly stopSubagent?: (input: {
+    readonly sessionId: string;
+    readonly agentIds: ReadonlyArray<string>;
+  }) => Effect.Effect<void, EffectAcpErrors.AcpError>;
   /** Tools whose questions arrive as a form elicitation; the question card replaces their tool row. */
   readonly isUserInputTool?: (toolCall: AcpToolCallState) => boolean;
   readonly normalizeToolCall?: (toolCall: AcpToolCallState) => AcpToolCallState;
@@ -455,10 +464,34 @@ export interface AcpAdapterV2SubagentUpdate {
   readonly progress?: string | null;
   /** Thinking level the child runs with, when the agent reports one. */
   readonly reasoningEffort?: string | null;
+  /** Child resource totals; `undefined` keeps the previous value, which survives completion. */
+  readonly usage?: OrchestrationV2SubagentUsage;
   readonly suppressNormalTool?: boolean;
   /** Child agents whose transcripts `readSubagentTranscript` can read. */
   readonly transcriptAgentIds?: ReadonlyArray<string>;
+  /**
+   * One tool call that fans out into several agents. When set, each child is projected as its own
+   * subagent and the parent's own task fields (prompt, status, …) are only used for tool-level
+   * decisions such as `suppressNormalTool`.
+   */
+  readonly children?: ReadonlyArray<AcpAdapterV2SubagentUpdate>;
 }
+
+const expandSubagentUpdates = (
+  update: AcpAdapterV2SubagentUpdate,
+): ReadonlyArray<AcpAdapterV2SubagentUpdate> => update.children ?? [update];
+
+const subagentUsageEqual = (
+  a: OrchestrationV2SubagentUsage,
+  b: OrchestrationV2SubagentUsage | undefined,
+): boolean =>
+  b !== undefined &&
+  a.tokens === b.tokens &&
+  a.costUsd === b.costUsd &&
+  a.contextTokens === b.contextTokens &&
+  a.contextWindow === b.contextWindow &&
+  a.toolCount === b.toolCount &&
+  a.requests === b.requests;
 
 export type AcpSubagentTranscriptEntry =
   | {
@@ -1639,6 +1672,19 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           flavor.extractSubagentSessionEvent !== undefined && !followsAgentWorkState
             ? undefined
             : flavor.extractSubagentUpdate?.(tool);
+        const extractSubagentUpdates = (tool: AcpToolCallState) => {
+          const update = extractSubagentUpdate(tool);
+          return update === undefined ? [] : expandSubagentUpdates(update);
+        };
+        const subagentToolCalls = new Map<string, AcpToolCallState>();
+        // Update frames after the turn settles can omit the call's input, which some extractors
+        // need; those fall back to the call as the turn saw it.
+        const settledFrameSubagentUpdates = (incoming: AcpToolCallState) => {
+          const alone = extractSubagentUpdates(flavor.normalizeToolCall?.(incoming) ?? incoming);
+          if (alone.length > 0) return alone;
+          const merged = mergeToolCallState(subagentToolCalls.get(incoming.toolCallId), incoming);
+          return extractSubagentUpdates(flavor.normalizeToolCall?.(merged) ?? merged);
+        };
         let turnAttached = yield* Deferred.make<boolean>();
         const activeSessionId = yield* Ref.make<string | null>(null);
         const contextUsageBySessionId = yield* Ref.make(
@@ -2926,7 +2972,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             existing !== undefined &&
             existing.task.status === update.status &&
             updateIsTerminal &&
-            existing.terminalStatusProjected
+            existing.terminalStatusProjected &&
+            // A terminal update that brings a new result or changed usage must still land
+            // (omp sync batches finish a child via progress before the final results arrive).
+            (update.result === null || update.result === existing.task.result) &&
+            (update.usage === undefined || subagentUsageEqual(update.usage, existing.task.usage))
           ) {
             return;
           }
@@ -2957,7 +3007,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const turnItemId = existing?.turnItemId ?? providerTurnItemId(nativeTaskId);
           const turnItemOrdinal =
             existing?.turnItemOrdinal ?? (yield* resolveItemOrdinal(context, nativeTaskId));
-          const taskStatus = update.status;
+          // A provider may re-report a started child as queued (omp's tool-end frame carries the
+          // spawn-time progress snapshot); a started child never goes back to pending.
+          const taskStatus =
+            existing?.task.status === "running" && update.status === "pending"
+              ? ("running" as const)
+              : update.status;
           const baseTask: OrchestrationV2Subagent = {
             ...(existing?.task ?? {
               id: nodeId,
@@ -2988,10 +3043,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               ? existing?.task.progress
               : (update.progress?.trim() ?? undefined) || undefined;
           const reasoningEffort = update.reasoningEffort?.trim();
-          const { progress: _previousProgress, ...taskWithoutProgress } = baseTask;
+          const usage = update.usage ?? existing?.task.usage;
+          const {
+            progress: _previousProgress,
+            usage: _previousUsage,
+            ...taskWithoutProgress
+          } = baseTask;
           const task: OrchestrationV2Subagent = {
             ...taskWithoutProgress,
             ...(progress === undefined ? {} : { progress }),
+            ...(usage === undefined ? {} : { usage }),
             ...(reasoningEffort
               ? {
                   modelSelection: {
@@ -3788,7 +3849,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             ? undefined
             : extractSubagentUpdate(toolCall);
           if (subagentUpdate !== undefined) {
-            yield* emitSubagent(context, subagentUpdate);
+            subagentToolCalls.set(incoming.toolCallId, merged);
+            for (const child of expandSubagentUpdates(subagentUpdate)) {
+              yield* emitSubagent(context, child);
+            }
             if (followsAgentWorkState) yield* syncNativeChildren(context);
             if (subagentUpdate.suppressNormalTool !== false) {
               yield* rearmDeferredFinalize(context);
@@ -4927,32 +4991,29 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             ) {
               for (const event of parseSessionUpdateEvent(notification).events) {
                 if (event._tag !== "ToolCallUpdated") continue;
-                const toolCall = flavor.normalizeToolCall?.(event.toolCall) ?? event.toolCall;
-                const subagentUpdate = extractSubagentUpdate(toolCall);
-                if (subagentUpdate === undefined) continue;
-                if (!acpSubagentStatusIsTerminal(subagentUpdate.status)) {
-                  continue;
-                }
-                if (
-                  yield* updateCarryoverSubagentStatus(
-                    subagentUpdate.nativeTaskId,
-                    subagentUpdate.status,
-                    subagentUpdate.result,
-                    { project: projectCarryover },
-                  )
-                ) {
-                  carryoverTerminalized = true;
-                }
-                if (
-                  subagentUpdate.childSessionId !== null &&
-                  (yield* updateCarryoverSubagentStatus(
-                    subagentUpdate.childSessionId,
-                    subagentUpdate.status,
-                    subagentUpdate.result,
-                    { project: projectCarryover },
-                  ))
-                ) {
-                  carryoverTerminalized = true;
+                for (const subagentUpdate of settledFrameSubagentUpdates(event.toolCall)) {
+                  if (!acpSubagentStatusIsTerminal(subagentUpdate.status)) continue;
+                  if (
+                    yield* updateCarryoverSubagentStatus(
+                      subagentUpdate.nativeTaskId,
+                      subagentUpdate.status,
+                      subagentUpdate.result,
+                      { project: projectCarryover },
+                    )
+                  ) {
+                    carryoverTerminalized = true;
+                  }
+                  if (
+                    subagentUpdate.childSessionId !== null &&
+                    (yield* updateCarryoverSubagentStatus(
+                      subagentUpdate.childSessionId,
+                      subagentUpdate.status,
+                      subagentUpdate.result,
+                      { project: projectCarryover },
+                    ))
+                  ) {
+                    carryoverTerminalized = true;
+                  }
                 }
               }
             }
@@ -5079,13 +5140,15 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               for (const event of parseSessionUpdateEvent(notification).events) {
                 if (event._tag !== "ToolCallUpdated") continue;
                 const toolCall = flavor.normalizeToolCall?.(event.toolCall) ?? event.toolCall;
-                const subagentUpdate = extractSubagentUpdate(toolCall);
-                if (subagentUpdate !== undefined) {
-                  if (
-                    subagentUpdate.nativeTaskId === nativeTaskId ||
-                    subagentUpdate.childSessionId === notification.sessionId
-                  ) {
-                    yield* emitSubagent(context, subagentUpdate);
+                const subagentUpdates = extractSubagentUpdates(toolCall);
+                if (subagentUpdates.length > 0) {
+                  for (const subagentUpdate of subagentUpdates) {
+                    if (
+                      subagentUpdate.nativeTaskId === nativeTaskId ||
+                      subagentUpdate.childSessionId === notification.sessionId
+                    ) {
+                      yield* emitSubagent(context, subagentUpdate);
+                    }
                   }
                   continue;
                 }
@@ -5968,32 +6031,29 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           ) {
             for (const event of parseSessionUpdateEvent(notification).events) {
               if (event._tag !== "ToolCallUpdated") continue;
-              const toolCall = flavor.normalizeToolCall?.(event.toolCall) ?? event.toolCall;
-              const subagentUpdate = extractSubagentUpdate(toolCall);
-              if (
-                subagentUpdate === undefined ||
-                !acpSubagentStatusIsTerminal(subagentUpdate.status)
-              ) {
-                continue;
+              let applied = false;
+              for (const subagentUpdate of settledFrameSubagentUpdates(event.toolCall)) {
+                if (!acpSubagentStatusIsTerminal(subagentUpdate.status)) continue;
+                const subagent =
+                  context.subagents.get(subagentUpdate.nativeTaskId) ??
+                  (subagentUpdate.childSessionId === null
+                    ? undefined
+                    : context.subagentsBySessionId.get(subagentUpdate.childSessionId)) ??
+                  context.subagentsBySessionId.get(notification.sessionId);
+                if (subagent === undefined) continue;
+                const nativeTaskId =
+                  subagent.task.nativeTaskRef?.nativeId ?? String(subagent.task.id);
+                if (
+                  subagentUpdate.nativeTaskId !== nativeTaskId &&
+                  (subagentUpdate.childSessionId === null ||
+                    (subagentUpdate.childSessionId !== subagent.childSessionId &&
+                      subagentUpdate.childSessionId !== notification.sessionId))
+                ) {
+                  continue;
+                }
+                if (yield* applyTerminal(subagent, subagentUpdate)) applied = true;
               }
-              const subagent =
-                context.subagents.get(subagentUpdate.nativeTaskId) ??
-                (subagentUpdate.childSessionId === null
-                  ? undefined
-                  : context.subagentsBySessionId.get(subagentUpdate.childSessionId)) ??
-                context.subagentsBySessionId.get(notification.sessionId);
-              if (subagent === undefined) continue;
-              const nativeTaskId =
-                subagent.task.nativeTaskRef?.nativeId ?? String(subagent.task.id);
-              if (
-                subagentUpdate.nativeTaskId !== nativeTaskId &&
-                (subagentUpdate.childSessionId === null ||
-                  (subagentUpdate.childSessionId !== subagent.childSessionId &&
-                    subagentUpdate.childSessionId !== notification.sessionId))
-              ) {
-                continue;
-              }
-              if (yield* applyTerminal(subagent, subagentUpdate)) return true;
+              if (applied) return true;
             }
           }
 
@@ -8359,6 +8419,65 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 ),
               ),
           ),
+          ...(flavor.stopSubagent === undefined
+            ? {}
+            : {
+                stopTask: Effect.fn("AcpAdapterV2.stopTask")(function* (stopInput: {
+                  readonly providerThread: OrchestrationV2ProviderThread;
+                  readonly taskId: string;
+                }) {
+                  const stopSubagent = flavor.stopSubagent!;
+                  const active = yield* Ref.get(activeTurn);
+                  const carryover = yield* Ref.get(carryoverSubagents);
+                  const owners: ReadonlyArray<{
+                    readonly sessionId: string;
+                    readonly subagents: Iterable<ActiveAcpSubagent>;
+                  }> = [
+                    ...(active === null
+                      ? []
+                      : [
+                          {
+                            sessionId: active.nativeThreadId,
+                            subagents: active.subagents.values(),
+                          },
+                        ]),
+                    ...(carryover === null
+                      ? []
+                      : [{ sessionId: carryover.sessionId, subagents: carryover.subagents }]),
+                  ];
+                  for (const owner of owners) {
+                    for (const subagent of owner.subagents) {
+                      if (
+                        subagent.task.nativeTaskRef?.nativeId !== stopInput.taskId ||
+                        subagent.task.status !== "running"
+                      ) {
+                        continue;
+                      }
+                      const agentIds = [...subagent.transcriptOffsets.keys()];
+                      if (agentIds.length === 0) {
+                        return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                          driver,
+                          detail: "The subagent has not reported its session yet",
+                        });
+                      }
+                      return yield* stopSubagent({ sessionId: owner.sessionId, agentIds }).pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new ProviderAdapter.ProviderAdapterProtocolError({
+                              driver,
+                              detail: "Subagent stop request failed",
+                              cause,
+                            }),
+                        ),
+                      );
+                    }
+                  }
+                  return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                    driver,
+                    detail: "No running subagent belongs to this provider thread",
+                  });
+                }),
+              }),
           interruptTurn: Effect.fn("AcpAdapterV2.interruptTurn")(
             function* (turnInput: ProviderAdapter.ProviderAdapterV2InterruptInput) {
               return yield* Effect.uninterruptibleMask((restore) =>

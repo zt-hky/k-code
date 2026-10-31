@@ -5246,7 +5246,7 @@ describe("AcpAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
-  it.effect("projects subagent progress and reasoning effort from the flavor update", () =>
+  it.effect("projects subagent progress, reasoning effort and usage from the flavor update", () =>
     Effect.gen(function* () {
       const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const idAllocator = yield* IdAllocator.IdAllocatorV2;
@@ -5257,6 +5257,8 @@ describe("AcpAdapterV2", () => {
       );
       const instanceId = ProviderInstanceId.make("acp-test");
       const promptSettled = yield* Deferred.make<void>();
+      const usage = { tokens: 1_200, costUsd: 0.04, toolCount: 3 };
+      let subagentUpdates = 0;
       const adapter = yield* makeAcpAdapterV2({
         testHooks: {
           afterPromptSettledWithBackgroundWork: () =>
@@ -5267,20 +5269,23 @@ describe("AcpAdapterV2", () => {
           driver: ACP_TEST_DRIVER,
           capabilities: AcpProviderCapabilitiesV2,
           deferFinalizeForBackgroundWork: true,
-          extractSubagentUpdate: (toolCall) =>
-            toolCall.toolCallId === "tool-call-generic-1"
-              ? {
-                  nativeTaskId: "task-generic-1",
-                  prompt: "background subagent",
-                  title: "background subagent",
-                  model: "child-model",
-                  status: "running",
-                  childSessionId: null,
-                  result: null,
-                  progress: "bash: vp test run",
-                  reasoningEffort: "high",
-                }
-              : undefined,
+          extractSubagentUpdate: (toolCall) => {
+            if (toolCall.toolCallId !== "tool-call-generic-1") return undefined;
+            subagentUpdates += 1;
+            return {
+              nativeTaskId: "task-generic-1",
+              prompt: "background subagent",
+              title: "background subagent",
+              model: "child-model",
+              status: "running",
+              childSessionId: null,
+              result: null,
+              reasoningEffort: "high",
+              ...(subagentUpdates === 1
+                ? { progress: "bash: vp test run", usage }
+                : { progress: "bash: vp check" }),
+            };
+          },
           makeRuntime: makeMockRuntime({
             childProcessSpawner,
             mockAgentPath,
@@ -5329,12 +5334,461 @@ describe("AcpAdapterV2", () => {
         "high",
       );
       assert.equal(subagent.modelSelection?.model, "child-model");
+      assert.deepStrictEqual(subagent.usage, usage);
+
+      let laterSubagent: OrchestrationV2Subagent | null = null;
+      while (laterSubagent === null) {
+        const event = yield* Queue.take(events);
+        if (event.type === "subagent.updated" && event.subagent.progress === "bash: vp check") {
+          laterSubagent = event.subagent;
+        }
+      }
+      assert.deepStrictEqual(laterSubagent.usage, usage);
 
       const providerTurnId = idAllocator.derive.providerTurn({
         driver: ACP_TEST_DRIVER,
         nativeTurnId: acpScopedNativeId(instanceId, "mock-session-1:turn:1"),
       });
       yield* runtime.interruptTurn({ providerThread, providerTurnId });
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("projects each child of one tool call as its own subagent thread", () =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const path = yield* Path.Path;
+      const selfInvocation = yield* resolveSelfInvocation();
+      const mockAgentPath = yield* path.fromFileUrl(
+        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+      );
+      const instanceId = ProviderInstanceId.make("acp-test");
+      const promptSettled = yield* Deferred.make<void>();
+      const adapter = yield* makeAcpAdapterV2({
+        testHooks: {
+          afterPromptSettledWithBackgroundWork: () =>
+            Deferred.succeed(promptSettled, undefined).pipe(Effect.asVoid),
+        },
+        instanceId,
+        flavor: {
+          driver: ACP_TEST_DRIVER,
+          capabilities: AcpProviderCapabilitiesV2,
+          deferFinalizeForBackgroundWork: true,
+          extractSubagentUpdate: (toolCall) =>
+            toolCall.toolCallId !== "tool-call-generic-1"
+              ? undefined
+              : {
+                  nativeTaskId: "task-generic-1",
+                  prompt: "1. a\n2. b",
+                  title: "2 agents",
+                  model: null,
+                  status: "running",
+                  childSessionId: null,
+                  result: null,
+                  children: [
+                    {
+                      nativeTaskId: "task-generic-1:batch:0",
+                      prompt: "a",
+                      title: "Agent A",
+                      model: null,
+                      status: "running",
+                      childSessionId: null,
+                      result: null,
+                      progress: "a-progress",
+                    },
+                    {
+                      nativeTaskId: "task-generic-1:batch:1",
+                      prompt: "b",
+                      title: "Agent B",
+                      model: null,
+                      status: "completed",
+                      childSessionId: null,
+                      result: "B_DONE",
+                    },
+                  ],
+                },
+          makeRuntime: makeMockRuntime({
+            childProcessSpawner,
+            mockAgentPath,
+            environment: { T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS: "1" },
+          }),
+        },
+        selfInvocation,
+      });
+      const threadId = ThreadId.make("thread-acp-subagent-children");
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const modelSelection = { instanceId, model: "default" } as const;
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-acp-subagent-children"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+      yield* runtime.events.pipe(
+        Stream.runForEach((event) => Queue.offer(events, event)),
+        Effect.forkScoped,
+      );
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      yield* runtime.startTurn(
+        makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now }),
+      );
+      yield* Deferred.await(promptSettled);
+
+      const childThreadIds = new Set<string>();
+      const subagents = new Map<string, OrchestrationV2Subagent>();
+      while (subagents.size < 2 || childThreadIds.size < 2) {
+        const event = yield* Queue.take(events);
+        if (event.type === "app_thread.created") childThreadIds.add(event.appThread.id);
+        if (event.type === "subagent.updated") {
+          subagents.set(event.subagent.nativeTaskRef?.nativeId ?? "", event.subagent);
+        }
+      }
+      const first = subagents.get("task-generic-1:batch:0");
+      const second = subagents.get("task-generic-1:batch:1");
+      assert.equal(first?.status, "running");
+      assert.equal(first?.progress, "a-progress");
+      assert.equal(first?.prompt, "a");
+      assert.equal(second?.status, "completed");
+      assert.equal(second?.result, "B_DONE");
+      assert.notEqual(first?.childThreadId, second?.childThreadId);
+
+      const providerTurnId = idAllocator.derive.providerTurn({
+        driver: ACP_TEST_DRIVER,
+        nativeTurnId: acpScopedNativeId(instanceId, "mock-session-1:turn:1"),
+      });
+      yield* runtime.interruptTurn({ providerThread, providerTurnId });
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("stops one batch child through the flavor hook using its transcript agent ids", () =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const path = yield* Path.Path;
+      const selfInvocation = yield* resolveSelfInvocation();
+      const mockAgentPath = yield* path.fromFileUrl(
+        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+      );
+      const instanceId = ProviderInstanceId.make("acp-test");
+      const promptSettled = yield* Deferred.make<void>();
+      const stops: Array<{ sessionId: string; agentIds: ReadonlyArray<string> }> = [];
+      const adapter = yield* makeAcpAdapterV2({
+        testHooks: {
+          afterPromptSettledWithBackgroundWork: () =>
+            Deferred.succeed(promptSettled, undefined).pipe(Effect.asVoid),
+        },
+        instanceId,
+        flavor: {
+          driver: ACP_TEST_DRIVER,
+          capabilities: AcpProviderCapabilitiesV2,
+          deferFinalizeForBackgroundWork: true,
+          readSubagentTranscript: ({ fromByte }) =>
+            Effect.succeed({ entries: [], nextByte: fromByte }),
+          stopSubagent: (input) =>
+            Effect.sync(() => {
+              stops.push(input);
+            }),
+          extractSubagentUpdate: (toolCall) =>
+            toolCall.toolCallId !== "tool-call-generic-1"
+              ? undefined
+              : {
+                  nativeTaskId: "task-generic-1",
+                  prompt: "1. a\n2. b",
+                  title: "2 agents",
+                  model: null,
+                  status: "running",
+                  childSessionId: null,
+                  result: null,
+                  children: [
+                    {
+                      nativeTaskId: "task-generic-1:batch:0",
+                      prompt: "a",
+                      title: "Agent A",
+                      model: null,
+                      status: "running",
+                      childSessionId: null,
+                      result: null,
+                      transcriptAgentIds: ["0-A"],
+                    },
+                    {
+                      nativeTaskId: "task-generic-1:batch:1",
+                      prompt: "b",
+                      title: "Agent B",
+                      model: null,
+                      status: "completed",
+                      childSessionId: null,
+                      result: "B_DONE",
+                      transcriptAgentIds: ["1-B"],
+                    },
+                  ],
+                },
+          makeRuntime: makeMockRuntime({
+            childProcessSpawner,
+            mockAgentPath,
+            environment: { T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS: "1" },
+          }),
+        },
+        selfInvocation,
+      });
+      const threadId = ThreadId.make("thread-acp-subagent-stop");
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const modelSelection = { instanceId, model: "default" } as const;
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-acp-subagent-stop"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+      yield* runtime.events.pipe(
+        Stream.runForEach((event) => Queue.offer(events, event)),
+        Effect.forkScoped,
+      );
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      yield* runtime.startTurn(
+        makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now }),
+      );
+      yield* Deferred.await(promptSettled);
+      const seen = new Set<string>();
+      while (seen.size < 2) {
+        const event = yield* Queue.take(events);
+        if (event.type === "subagent.updated") {
+          seen.add(event.subagent.nativeTaskRef?.nativeId ?? "");
+        }
+      }
+
+      assert.isDefined(runtime.stopTask);
+      yield* runtime.stopTask!({ providerThread, taskId: "task-generic-1:batch:0" });
+      assert.deepStrictEqual(
+        stops.map((stop) => stop.agentIds),
+        [["0-A"]],
+      );
+      const finished = yield* runtime.stopTask!({
+        providerThread,
+        taskId: "task-generic-1:batch:1",
+      }).pipe(Effect.exit);
+      assert.equal(finished._tag, "Failure");
+      const unknown = yield* runtime.stopTask!({
+        providerThread,
+        taskId: "task-generic-1:batch:9",
+      }).pipe(Effect.exit);
+      assert.equal(unknown._tag, "Failure");
+      assert.equal(stops.length, 1);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("settles batch children from a post-return frame that omits the tool input", () =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const path = yield* Path.Path;
+      const selfInvocation = yield* resolveSelfInvocation();
+      const mockAgentPath = yield* path.fromFileUrl(
+        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+      );
+      const instanceId = ProviderInstanceId.make("acp-test");
+      const adapter = yield* makeAcpAdapterV2({
+        instanceId,
+        flavor: {
+          driver: ACP_TEST_DRIVER,
+          capabilities: AcpProviderCapabilitiesV2,
+          extractSubagentUpdate: (toolCall) => {
+            // Like omp, only what the call's first frame carried identifies it as a task.
+            if (toolCall.toolCallId !== "tool-call-generic-1") return undefined;
+            if (toolCall.data.title !== "Read File") return undefined;
+            const settled =
+              (toolCall.data.rawOutput as { readonly settled?: boolean } | undefined)?.settled ===
+              true;
+            return {
+              nativeTaskId: "task-generic-1",
+              prompt: "1. a\n2. b",
+              title: "2 agents",
+              model: null,
+              status: settled ? "cancelled" : "running",
+              childSessionId: null,
+              result: null,
+              children: [
+                {
+                  nativeTaskId: "task-generic-1:batch:0",
+                  prompt: "a",
+                  title: "Agent A",
+                  model: null,
+                  status: settled ? "cancelled" : "running",
+                  childSessionId: null,
+                  result: null,
+                },
+                {
+                  nativeTaskId: "task-generic-1:batch:1",
+                  prompt: "b",
+                  title: "Agent B",
+                  model: null,
+                  status: settled ? "completed" : "running",
+                  childSessionId: null,
+                  result: settled ? "B_DONE" : null,
+                },
+              ],
+            };
+          },
+          makeRuntime: makeMockRuntime({
+            childProcessSpawner,
+            mockAgentPath,
+            environment: {
+              T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS: "1",
+              T3_ACP_EMIT_LATE_GENERIC_TOOL_UPDATE: "1",
+            },
+          }),
+        },
+        selfInvocation,
+      });
+      const threadId = ThreadId.make("thread-acp-subagent-late-settle");
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const modelSelection = { instanceId, model: "default" } as const;
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-acp-subagent-late-settle"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+      yield* runtime.events.pipe(
+        Stream.runForEach((event) => Queue.offer(events, event)),
+        Effect.forkScoped,
+      );
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      yield* runtime.startTurn(
+        makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now }),
+      );
+      const latest = new Map<string, OrchestrationV2Subagent["status"]>();
+      yield* Effect.gen(function* () {
+        while (
+          latest.get("task-generic-1:batch:0") !== "cancelled" ||
+          latest.get("task-generic-1:batch:1") !== "completed"
+        ) {
+          const event = yield* Queue.take(events);
+          if (event.type === "subagent.updated") {
+            latest.set(event.subagent.nativeTaskRef?.nativeId ?? "", event.subagent.status);
+          }
+        }
+      }).pipe(Effect.timeout("10 seconds"));
+      assert.equal(latest.get("task-generic-1:batch:0"), "cancelled");
+      assert.equal(latest.get("task-generic-1:batch:1"), "completed");
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("applies a late result and usage to a child already completed by progress", () =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const path = yield* Path.Path;
+      const selfInvocation = yield* resolveSelfInvocation();
+      const mockAgentPath = yield* path.fromFileUrl(
+        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+      );
+      const instanceId = ProviderInstanceId.make("acp-test");
+      const finalUsage = { tokens: 900, costUsd: 0.02, toolCount: 2 };
+      const adapter = yield* makeAcpAdapterV2({
+        instanceId,
+        flavor: {
+          driver: ACP_TEST_DRIVER,
+          capabilities: AcpProviderCapabilitiesV2,
+          deferFinalizeForBackgroundWork: true,
+          extractSubagentUpdate: (toolCall) => {
+            if (toolCall.toolCallId !== "tool-call-generic-1") return undefined;
+            const phase =
+              toolCall.status === "completed"
+                ? "final"
+                : toolCall.status === "inProgress"
+                  ? "progress-done"
+                  : "running";
+            return {
+              nativeTaskId: "task-generic-1",
+              prompt: "1. a",
+              title: "1 agent",
+              model: null,
+              status: "running",
+              childSessionId: null,
+              result: null,
+              children: [
+                {
+                  nativeTaskId: "task-generic-1:batch:0",
+                  prompt: "a",
+                  title: "Agent A",
+                  model: null,
+                  status: phase === "running" ? "running" : "completed",
+                  childSessionId: null,
+                  result: phase === "final" ? "A_FINAL" : null,
+                  ...(phase === "final" ? { usage: finalUsage } : {}),
+                },
+              ],
+            };
+          },
+          makeRuntime: makeMockRuntime({
+            childProcessSpawner,
+            mockAgentPath,
+            environment: { T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS: "1" },
+          }),
+        },
+        selfInvocation,
+      });
+      const threadId = ThreadId.make("thread-acp-subagent-late-result");
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const modelSelection = { instanceId, model: "default" } as const;
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-acp-subagent-late-result"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+      yield* runtime.events.pipe(
+        Stream.runForEach((event) => Queue.offer(events, event)),
+        Effect.forkScoped,
+      );
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      yield* runtime.startTurn(
+        makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now }),
+      );
+      let last: OrchestrationV2Subagent | null = null;
+      while (last === null || last.result !== "A_FINAL") {
+        const event = yield* Queue.take(events);
+        if (event.type === "subagent.updated") last = event.subagent;
+      }
+      assert.equal(last.status, "completed");
+      assert.deepStrictEqual(last.usage, finalUsage);
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 

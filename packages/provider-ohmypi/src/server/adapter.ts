@@ -44,6 +44,7 @@ import {
   extractOmpPlanApprovalElicitation,
   extractOmpProposedPlanMarkdown,
   extractOmpSubagentUpdate,
+  makeOmpSubagentStopper,
   makeOmpSubagentTranscriptReader,
   OMP_MODE_OPTION_ID,
 } from "./acp.ts";
@@ -52,6 +53,11 @@ import { extractOmpAskElicitationForm, isOmpAskToolCall } from "./ask.ts";
 import { OHMYPI_DRIVER_KIND } from "./kind.ts";
 import { toAcpRegistrySettings } from "./registrySettings.ts";
 import { OMP_SKILL_PREFIXES, rewriteOmpSkillMentions } from "./skills.ts";
+import {
+  materializeOmpStopExtension,
+  T3_OMP_STOP_DIR_ENV,
+  type OmpStopExtension,
+} from "./stopExtension.ts";
 
 const DEFAULT_SETTINGS = Schema.decodeSync(OhMyPiSettings)({});
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
@@ -73,6 +79,8 @@ export interface OhMyPiAdapterV2Options {
   readonly settings: OhMyPiSettings;
   readonly environment: NodeJS.ProcessEnv;
   readonly selfInvocation: SelfInvocation;
+  /** When set, omp loads the extension that lets one subagent be cancelled on request. */
+  readonly stopExtension?: OmpStopExtension;
   readonly nativeLogging?: Parameters<typeof makeAcpAdapterV2>[0]["nativeLogging"];
   readonly makeRuntime?: (
     input: AcpAdapterV2RuntimeInput,
@@ -109,10 +117,25 @@ function makeOmpRuntime(
       const context = yield* Layer.build(
         AcpSessionRuntime.layer({
           ...runtimeInput,
-          spawn:
-            processEnvironment === undefined
-              ? resolved.spawn
-              : { ...resolved.spawn, env: { ...resolved.spawn.env, ...processEnvironment } },
+          spawn: {
+            ...resolved.spawn,
+            ...(options.stopExtension === undefined
+              ? {}
+              : {
+                  args: [
+                    ...resolved.spawn.args,
+                    "--extension",
+                    options.stopExtension.extensionPath,
+                  ],
+                }),
+            env: {
+              ...resolved.spawn.env,
+              ...(options.stopExtension === undefined
+                ? {}
+                : { [T3_OMP_STOP_DIR_ENV]: options.stopExtension.stopDir }),
+              ...processEnvironment,
+            },
+          },
           customModels: readCustomModelEntries(options.settings.customModels).map(
             (entry) => entry.slug,
           ),
@@ -145,6 +168,18 @@ export const makeOhMyPiAdapterV2 = Effect.fn("makeOhMyPiAdapterV2")(function* (
     fileSystem === undefined || path === undefined || agentDir === undefined
       ? undefined
       : makeOmpSubagentTranscriptReader({ fileSystem, path, agentDir });
+  const stopSubagent =
+    fileSystem === undefined ||
+    path === undefined ||
+    agentDir === undefined ||
+    options.stopExtension === undefined
+      ? undefined
+      : makeOmpSubagentStopper({
+          fileSystem,
+          path,
+          agentDir,
+          stopDir: options.stopExtension.stopDir,
+        });
   const startupKey = `ohmypi:${options.instanceId}`;
   const flavor: AcpAdapterV2Flavor = {
     driver: OHMYPI_DRIVER_KIND,
@@ -167,6 +202,7 @@ export const makeOhMyPiAdapterV2 = Effect.fn("makeOhMyPiAdapterV2")(function* (
     supportsCompaction: true,
     extractSubagentUpdate: extractOmpSubagentUpdate,
     ...(readSubagentTranscript === undefined ? {} : { readSubagentTranscript }),
+    ...(stopSubagent === undefined ? {} : { stopSubagent }),
     rewriteUserText: (text: string) => Effect.succeed(rewriteOmpSkillMentions(text, skillNames)),
     normalizeSessionUpdate: (notification) => {
       const update = notification.update;
@@ -245,12 +281,21 @@ export const OhMyPiAdapterV2Driver: ProviderAdapterDriver<
       const hostEnvironment = yield* HostProcess.Environment;
       const selfInvocation = yield* resolveSelfInvocation();
       const providerEventLoggers = yield* ProviderEventLoggers.ProviderEventLoggers;
+      const providerHost = yield* ProviderHost.ProviderHost;
+      const stopExtension = yield* materializeOmpStopExtension(providerHost.paths.stateDir).pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning("Oh My Pi subagent stop is unavailable", { cause }),
+        ),
+        Effect.option,
+        Effect.map(Option.getOrUndefined),
+      );
       const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
       return yield* makeOhMyPiAdapterV2({
         instanceId: input.instanceId,
         settings: { ...input.config, enabled: input.enabled },
         environment: yield* mergeProviderInstanceEnvironment(input.environment, hostEnvironment),
         selfInvocation,
+        ...(stopExtension === undefined ? {} : { stopExtension }),
         continuationRequests: yield* ProviderContinuationRequests.ProviderContinuationRequests,
         nativeLogging: (threadId) =>
           makeNativeLogger({

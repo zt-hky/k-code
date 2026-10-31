@@ -86,5 +86,5 @@ export const makeHarness = (script?: (child: FakeChild, written: string) => Effe
     );
     const waitFor = (predicate: (state: OmpLoginState) => boolean) =>
       login.state.pipe(Stream.filter(predicate), Stream.runHead, Effect.map(Option.getOrUndefined));
-    return { login, spawned, changed, seen, children, waitFor };
+    return { login, spawner, spawned, changed, seen, children, waitFor };
   });

@@ -1,7 +1,8 @@
-import { PanelBottomIcon, PanelRightIcon, SquareMenuIcon } from "lucide-react";
+import { PanelBottomIcon, PanelRightIcon, ScrollTextIcon, SquareMenuIcon } from "lucide-react";
 import { Maximize2, Minimize2 } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
 import { memo, type ReactNode } from "react";
+import { toggleFullTranscript, useFullTranscript } from "~/hooks/useFullTranscript";
 
 import { cn } from "~/lib/utils";
 
@@ -14,6 +15,8 @@ export interface PanelLayoutControlsProps {
   showThreadPanelControl?: boolean;
   showTerminalControl?: boolean;
   showRightPanelControl?: boolean;
+  showFullTranscriptControl?: boolean;
+  fullTranscriptShortcutLabel?: string | null;
   terminalAvailable: boolean;
   terminalOpen: boolean;
   terminalShortcutLabel: string | null;
@@ -34,6 +37,8 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   showThreadPanelControl = true,
   showTerminalControl = true,
   showRightPanelControl = true,
+  showFullTranscriptControl = false,
+  fullTranscriptShortcutLabel = null,
   terminalAvailable,
   terminalOpen,
   terminalShortcutLabel,
@@ -49,6 +54,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   onToggleThreadPanel,
   onToggleRightPanel,
 }: PanelLayoutControlsProps) {
+  const fullTranscript = useFullTranscript();
   const threadPanelToggle = (
     <Toggle
       className="relative shrink-0 [-webkit-app-region:no-drag]"
@@ -83,6 +89,25 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
       data-panel-layout-controls
     >
       {showThreadPanelControl ? threadPanelControl : null}
+      {showFullTranscriptControl ? (
+        <Tooltip>
+          <TooltipTrigger render={<span className="flex shrink-0" />}>
+            <Toggle
+              className="shrink-0 [-webkit-app-region:no-drag]"
+              pressed={fullTranscript}
+              onPressedChange={toggleFullTranscript}
+              aria-label="Toggle full transcript"
+              variant="ghost"
+              size="sm"
+            >
+              <ScrollTextIcon className="size-4" />
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            {`Toggle full transcript${fullTranscriptShortcutLabel ? ` (${fullTranscriptShortcutLabel})` : ""}`}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
       {showTerminalControl ? (
         <Tooltip>
           <TooltipTrigger render={<span className="flex shrink-0" />}>

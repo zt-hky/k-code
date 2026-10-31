@@ -14,6 +14,7 @@ import * as DateTime from "effect/DateTime";
 
 import {
   nextWorkflowSelection,
+  resolveBatchHints,
   resolveSubagentRowPresentation,
   resolveSubagentStopTarget,
   workflowMemberDetail,
@@ -93,6 +94,48 @@ describe("resolveSubagentRowPresentation", () => {
     });
     expect(row.detail).toBe(`${"x".repeat(280)}…`);
     expect(row.statusLabel).toBe("Failed");
+  });
+});
+
+describe("resolveBatchHints", () => {
+  const member = (id: string, nativeId: string | null) => ({
+    id: id as never,
+    driver: "ohmypi" as never,
+    nativeTaskRef:
+      nativeId === null
+        ? null
+        : { driver: "ohmypi" as never, nativeId: nativeId as never, strength: "strong" as never },
+  });
+
+  it("numbers siblings of one batch tool call", () => {
+    const hints = resolveBatchHints([
+      member("b", "call_1:batch:1"),
+      member("a", "call_1:batch:0"),
+      member("solo", "call_2:batch:0"),
+      member("plain", null),
+    ]);
+
+    expect(hints.get("a")).toBe("Agent 1 of 2");
+    expect(hints.get("b")).toBe("Agent 2 of 2");
+    expect(hints.has("solo")).toBe(false);
+    expect(hints.has("plain")).toBe(false);
+  });
+
+  it("never hints single tasks, including Kimi-style tool call ids ending in :<n>", () => {
+    const hints = resolveBatchHints([
+      member("kimi-a", "functions.task:3"),
+      member("kimi-b", "functions.task:4"),
+      member("bare", "call_1"),
+    ]);
+
+    expect(hints.size).toBe(0);
+  });
+
+  it("uses the highest index when a batch has gaps", () => {
+    const hints = resolveBatchHints([member("a", "call_1:batch:0"), member("c", "call_1:batch:3")]);
+
+    expect(hints.get("a")).toBe("Agent 1 of 4");
+    expect(hints.get("c")).toBe("Agent 4 of 4");
   });
 });
 

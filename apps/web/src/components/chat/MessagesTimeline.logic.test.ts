@@ -1390,6 +1390,52 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  it("expands every fold in full transcript mode without expanded sets", () => {
+    const runId = RunId.make("full-transcript-run");
+    const time = (second: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, second)).toISOString();
+    const entry = (id: string, second: number, kind: "message" | "work"): TimelineEntry =>
+      kind === "message"
+        ? {
+            kind: "message",
+            id,
+            createdAt: time(second),
+            message: {
+              id: MessageId.make(id),
+              role: id === "prompt" ? "user" : "assistant",
+              text: id,
+              runId,
+              ...(id === "prompt" ? { inputIntent: "turn_start" as const } : {}),
+              createdAt: time(second),
+              updatedAt: time(second),
+              streaming: false,
+            },
+          }
+        : {
+            kind: "work",
+            id,
+            createdAt: time(second),
+            entry: { id, createdAt: time(second), runId, label: "Ran command", tone: "tool" },
+          };
+    const rows = (fullTranscript: boolean) =>
+      deriveMessagesTimelineRows({
+        timelineEntries: [
+          entry("prompt", 0, "message"),
+          entry("work-1", 4, "work"),
+          entry("final", 30, "message"),
+        ],
+        latestRun: { runId, status: "completed", startedAt: time(0), completedAt: time(30) },
+        isWorking: false,
+        fullTranscript,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      });
+
+    expect(rows(false).map((row) => row.id)).not.toContain("work-1");
+    const full = rows(true);
+    expect(full.map((row) => row.id)).toContain("work-1");
+    expect(full.find((row) => row.kind === "turn-fold")).toMatchObject({ expanded: true });
+  });
+
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [

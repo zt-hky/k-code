@@ -49,7 +49,9 @@ import {
   type AcpRegistryListProjectsInput,
   type AcpRegistryListProvidersInput,
   type AcpRegistrySetExtensionSourceInput,
+  type AcpRegistryListAllSessionsInput,
   type AcpRegistryListSessionsInput,
+  type AcpRegistrySession,
   type AcpRegistrySetProviderInput,
   OrchestrationGetFullThreadDiffError,
   OrchestrationSearchThreadsError,
@@ -123,6 +125,7 @@ import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts"
 import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts";
 import * as DocumentText from "./provider/DocumentText.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
@@ -183,6 +186,7 @@ import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+import * as ClientSettings from "./clientSettings.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
@@ -1340,6 +1344,7 @@ export const layerWsRpc = (
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
       const databaseStorage = yield* DatabaseStorage.DatabaseStorage;
       const webPushNotifier = yield* WebPushNotifier.WebPushNotifier;
+      const clientSettings = yield* ClientSettings.ClientSettingsService;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const peerLinks = yield* PeerLinks.PeerLinks;
       const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
@@ -1505,6 +1510,50 @@ export const layerWsRpc = (
         return threadIds;
       });
 
+      // T3 owns the title of a bound session; otherwise the agent's own title, then its first prompt.
+      const decorateAcpSessions = Effect.fn("ws.acpRegistry.decorateSessions")(function* (input: {
+        readonly driver: ProviderDriverKind;
+        readonly instanceId: ProviderInstanceId;
+        readonly manager: NonNullable<ProviderInstance["acpSessionManagement"]>;
+        readonly sessions: ReadonlyArray<AcpRegistrySession>;
+      }) {
+        const boundThreadIds = yield* boundAcpThreadIds({
+          driver: input.driver,
+          instanceId: input.instanceId,
+          sessionIds: input.sessions.map((session) => session.sessionId),
+        });
+        const boundTitles = new Map<string, string>();
+        yield* Effect.forEach(
+          boundThreadIds,
+          ([sessionId, threadId]) =>
+            threadManagement.getThreadShell(threadId).pipe(
+              Effect.tap((thread) =>
+                Effect.sync(() => {
+                  if (thread !== null) boundTitles.set(sessionId, thread.title.slice(0, 1_024));
+                }),
+              ),
+              Effect.ignore,
+            ),
+          { concurrency: 16, discard: true },
+        );
+        const untitledIds = input.sessions
+          .filter((session) => session.title === null && !boundTitles.has(session.sessionId))
+          .map((session) => session.sessionId);
+        const firstMessages =
+          untitledIds.length === 0 || input.manager.resolveFirstMessages === undefined
+            ? new Map<string, string>()
+            : yield* input.manager.resolveFirstMessages(untitledIds);
+        return input.sessions.map((session) => ({
+          ...session,
+          title:
+            boundTitles.get(session.sessionId) ??
+            session.title ??
+            firstMessages.get(session.sessionId) ??
+            null,
+          importedThreadId: boundThreadIds.get(session.sessionId) ?? null,
+        }));
+      });
+
       const listAcpRegistrySessions = Effect.fn("ws.acpRegistry.listSessions")(function* (
         input: AcpRegistryListSessionsInput,
       ) {
@@ -1514,16 +1563,54 @@ export const layerWsRpc = (
           cwd: project.workspaceRoot,
           ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
         });
-        const boundThreadIds = yield* boundAcpThreadIds({
+        const sessions = yield* decorateAcpSessions({
           driver: instance.driverKind,
           instanceId: input.instanceId,
-          sessionIds: listed.sessions.map((session) => session.sessionId),
+          manager,
+          sessions: listed.sessions,
         });
-        const sessions = listed.sessions.map((session) => ({
-          ...session,
-          importedThreadId: boundThreadIds.get(session.sessionId) ?? null,
-        }));
         return { ...listed, sessions };
+      });
+
+      const listAllAcpRegistrySessions = Effect.fn("ws.acpRegistry.listAllSessions")(function* (
+        input: AcpRegistryListAllSessionsInput,
+      ) {
+        const { instance, manager } = yield* acpSessionManager(input.instanceId);
+        if (manager.listAllSessions === undefined) {
+          return yield* new AcpRegistryOperationError({
+            reason: "session_list_unsupported",
+            message: "The ACP agent cannot list sessions across projects.",
+          });
+        }
+        const listed = yield* manager.listAllSessions(
+          input.cursor === undefined ? {} : { cursor: input.cursor },
+        );
+        const projectRows = yield* projectStore.list().pipe(
+          Effect.mapError(
+            (cause) =>
+              new AcpRegistryOperationError({
+                reason: "project_not_found",
+                message: "Could not read the T3 projects.",
+                cause,
+              }),
+          ),
+        );
+        const projectIdByRoot = new Map(
+          projectRows.map((project) => [project.workspaceRoot, project.projectId] as const),
+        );
+        const sessions = yield* decorateAcpSessions({
+          driver: instance.driverKind,
+          instanceId: input.instanceId,
+          manager,
+          sessions: listed.sessions,
+        });
+        return {
+          ...listed,
+          sessions: sessions.map((session) => ({
+            ...session,
+            projectId: projectIdByRoot.get(session.cwd) ?? null,
+          })),
+        };
       });
 
       const importAcpRegistrySession = Effect.fn("ws.acpRegistry.importSession")(function* (
@@ -1532,7 +1619,7 @@ export const layerWsRpc = (
         return yield* acpRegistryRuntimeCoordinator.withSessionMutation(
           Effect.gen(function* () {
             yield* acpRegistryProject(input.projectId);
-            const { instance } = yield* acpSessionManager(input.instanceId);
+            const { instance, manager } = yield* acpSessionManager(input.instanceId);
             const providerSnapshot = yield* instance.snapshot.getSnapshot;
             if (
               providerSnapshot.nativeSessions?.canLoad !== true &&
@@ -1562,6 +1649,11 @@ export const layerWsRpc = (
               provider?.models.find((candidate) => candidate.isDefault)?.slug ??
               provider?.models[0]?.slug ??
               "default";
+            const title =
+              input.title ??
+              (manager.resolveFirstMessages === undefined
+                ? undefined
+                : (yield* manager.resolveFirstMessages([input.sessionId])).get(input.sessionId));
             const commandId = CommandId.make(yield* crypto.randomUUIDv4().pipe(Effect.orDie));
             const launched = yield* Effect.result(
               startup.enqueueCommand(
@@ -1569,7 +1661,7 @@ export const layerWsRpc = (
                   commandId,
                   threadId,
                   projectId: input.projectId,
-                  title: input.title ?? "Imported ACP session",
+                  title: title ?? "Imported ACP session",
                   modelSelection: { instanceId: input.instanceId, model },
                   runtimeMode: "approval-required",
                   interactionMode: "default",
@@ -1582,7 +1674,7 @@ export const layerWsRpc = (
                     },
                     metadata: {
                       itemIdentityVersion: 2,
-                      ...(input.title === undefined ? {} : { title: input.title }),
+                      ...(title === undefined ? {} : { title }),
                       ...(input.updatedAt === undefined ? {} : { updatedAt: input.updatedAt }),
                     },
                   },
@@ -2238,6 +2330,16 @@ export const layerWsRpc = (
               Effect.as(commandOutputHub.subscribe(input)),
             ),
           ),
+        [WS_METHODS.clientSettingsSubscribe]: (_input) =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              // Subscribe first so a write between the snapshot and the subscription is not lost.
+              const updates = yield* clientSettings.subscribeChanges;
+              const snapshot = yield* clientSettings.get;
+              return Stream.concat(rpcInitialItems([snapshot]), updates);
+            }),
+          ),
+        [WS_METHODS.clientSettingsUpdate]: (input) => clientSettings.update(input),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
           scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input),
@@ -2309,6 +2411,10 @@ export const layerWsRpc = (
             "provider.instance_id": input.instanceId,
             "project.id": input.projectId,
           }).pipe(Effect.andThen(listAcpRegistrySessions(input))),
+        [WS_METHODS.serverListAllAcpRegistrySessions]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+          }).pipe(Effect.andThen(listAllAcpRegistrySessions(input))),
         [WS_METHODS.serverImportAcpRegistrySession]: (input) =>
           Effect.annotateCurrentSpan({
             "provider.instance_id": input.instanceId,

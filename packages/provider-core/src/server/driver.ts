@@ -106,6 +106,19 @@ export interface ProviderInstance {
       AcpRegistryListProjectsResult,
       AcpRegistryOperationError
     >;
+    /** Sessions across every working directory; the caller attaches T3 project ids. */
+    readonly listAllSessions?: (input: {
+      readonly cursor?: string;
+    }) => Effect.Effect<AcpRegistryListSessionsResult, AcpRegistryOperationError>;
+    /** First user message per session id, for sessions the agent has not titled. Best-effort. */
+    readonly resolveFirstMessages?: (
+      sessionIds: ReadonlyArray<string>,
+    ) => Effect.Effect<ReadonlyMap<string, string>>;
+    /** Writes a T3 thread title back into the agent's own session record. Best-effort. */
+    readonly renameSession?: (input: {
+      readonly sessionId: string;
+      readonly title: string;
+    }) => Effect.Effect<void>;
     readonly listExtensions?: (
       cwd: string,
     ) => Effect.Effect<AcpRegistryListExtensionsResult, AcpRegistryOperationError>;

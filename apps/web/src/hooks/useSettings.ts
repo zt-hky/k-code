@@ -10,6 +10,8 @@ import {
   type ProviderInstanceId,
   ServerSettings,
   type ServerSettingsPatch,
+  type ClientSettingsSyncSnapshot,
+  type SyncedClientSettingsPatch,
   sessionGrantsScope,
 } from "@t3tools/contracts";
 import {
@@ -62,6 +64,13 @@ import {
 } from "~/state/session";
 import { environmentIdsKey } from "~/state/environmentAtomList";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { primaryEnvironmentIdAtom } from "~/state/primaryEnvironment";
+import {
+  PendingClientSettingsWrites,
+  diffSyncedClientSettings,
+  pickSyncedClientPatch,
+  reconcileClientSettings,
+} from "~/clientSettingsSync";
 
 const CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE = "[CLIENT_SETTINGS]";
 
@@ -76,6 +85,12 @@ let clientSettingsHydrationPromise: Promise<void> | null = null;
 let clientSettingsHydrationGeneration = 0;
 let clientSettingsPersistenceQueue: Promise<void> = Promise.resolve();
 let deferredClientSettingsPatchCount = 0;
+let serverClientSettings: {
+  readonly environmentId: EnvironmentId;
+  readonly snapshot: ClientSettingsSyncSnapshot;
+} | null = null;
+const seededEnvironmentIds = new Set<EnvironmentId>();
+const pendingSyncedWrites = new PendingClientSettingsWrites();
 
 function emitClientSettingsChange() {
   for (const listener of clientSettingsListeners) {
@@ -159,6 +174,7 @@ async function hydrateClientSettings(): Promise<void> {
         });
       }
       setClientSettingsHydrationStatus("ready");
+      applyServerClientSettings();
     } catch (error) {
       if (hydrationGeneration === clientSettingsHydrationGeneration) {
         setClientSettingsHydrationStatus("failed");
@@ -205,6 +221,7 @@ export function persistClientSettingsPatch(
   } else {
     replaceClientSettingsSnapshot({ ...getClientSettingsSnapshot(), ...patch });
   }
+  const syncedPatch = beginSyncedClientSettingsWrite(patch);
   return enqueueClientSettingsPersistence(async () => {
     if (deferPatch) {
       try {
@@ -217,12 +234,14 @@ export function persistClientSettingsPatch(
       }
     }
     await persist(getClientSettingsSnapshot());
-  }).catch((error) => {
-    console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} persist failed`, {
-      operation: "persist",
-      ...safeErrorLogAttributes(error),
-    });
-  });
+  })
+    .catch((error) => {
+      console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} persist failed`, {
+        operation: "persist",
+        ...safeErrorLogAttributes(error),
+      });
+    })
+    .then(() => pushSyncedClientSettingsWrite(syncedPatch));
 }
 
 /** Reapply to newer snapshots after pending writes to avoid losing concurrent changes. */
@@ -240,10 +259,123 @@ export async function persistClientSettingsUpdate(
       await persist(next);
       if (getClientSettingsSnapshot() === current) {
         replaceClientSettingsSnapshot(next);
+        void pushSyncedClientSettingsWrite(
+          beginSyncedClientSettingsWrite(diffSyncedClientSettings(current, next)),
+        );
         return next;
       }
     }
   });
+}
+
+/**
+ * Client settings sync through the primary environment only: the server that serves this app
+ * (or the local environment on desktop). Remote environments keep their own copies, because a
+ * setting like the sidebar layout describes how this user works, not what a machine hosts.
+ * localStorage (or the desktop file) stays as the fast-boot cache and the home of device-local keys.
+ */
+function beginSyncedClientSettingsWrite(
+  patch: ClientSettingsPatch,
+): SyncedClientSettingsPatch | null {
+  if (appAtomRegistry.get(primaryEnvironmentIdAtom) === null) return null;
+  const synced = pickSyncedClientPatch(patch);
+  if (Object.keys(synced).length === 0) return null;
+  pendingSyncedWrites.begin(synced);
+  return synced;
+}
+
+async function pushSyncedClientSettingsWrite(
+  synced: SyncedClientSettingsPatch | null,
+): Promise<void> {
+  if (synced === null) return;
+  let failed = false;
+  try {
+    const environmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
+    if (environmentId === null) return;
+    const result = await runAtomCommand(
+      appAtomRegistry,
+      serverEnvironment.updateClientSettings,
+      { environmentId, input: { patch: synced } },
+      { reportFailure: false },
+    );
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      failed = true;
+      console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} sync failed`, {
+        operation: "sync",
+        ...safeErrorLogAttributes(squashAtomCommandFailure(result)),
+      });
+    }
+  } finally {
+    pendingSyncedWrites.settle(synced);
+    // The server never accepted the edit, so show what it actually holds.
+    if (failed) applyServerClientSettings();
+  }
+}
+
+function applyServerClientSettings(): void {
+  if (clientSettingsHydrationStatus !== "ready" || serverClientSettings === null) return;
+  const { environmentId, snapshot } = serverClientSettings;
+  const step = reconcileClientSettings({
+    local: clientSettingsSnapshot,
+    server: snapshot,
+    pending: pendingSyncedWrites.snapshot(),
+  });
+  if (step.kind === "seed") {
+    // One attempt per environment per page load; the server ignores it if another device won.
+    if (seededEnvironmentIds.has(environmentId)) return;
+    seededEnvironmentIds.add(environmentId);
+    void runAtomCommand(
+      appAtomRegistry,
+      serverEnvironment.updateClientSettings,
+      { environmentId, input: { patch: step.patch, onlyIfUnseeded: true } },
+      { reportFailure: false },
+    ).then((result) => {
+      if (result._tag === "Failure") seededEnvironmentIds.delete(environmentId);
+    });
+  } else if (step.kind === "apply") {
+    replaceClientSettingsSnapshot(step.settings);
+    // Refresh the boot cache (and desktop's file) from whatever is newest when the write runs.
+    void enqueueClientSettingsPersistence(() =>
+      defaultClientSettingsPersistence(getClientSettingsSnapshot()),
+    ).catch((error) => {
+      console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} cache refresh failed`, {
+        operation: "cache",
+        ...safeErrorLogAttributes(error),
+      });
+    });
+  }
+}
+
+const clientSettingsSyncAtom = Atom.make((get) => {
+  const environmentId = get(primaryEnvironmentIdAtom);
+  return environmentId === null
+    ? null
+    : {
+        environmentId,
+        result: get(serverEnvironment.clientSettingsLive({ environmentId, input: {} })),
+      };
+}).pipe(Atom.withLabel("web-client-settings-sync"));
+
+function handleClientSettingsSync(): void {
+  const target = appAtomRegistry.get(clientSettingsSyncAtom);
+  if (target === null) {
+    serverClientSettings = null;
+    pendingSyncedWrites.clear();
+    return;
+  }
+  const snapshot = AsyncResult.value(target.result);
+  if (Option.isNone(snapshot)) return;
+  serverClientSettings = { environmentId: target.environmentId, snapshot: snapshot.value };
+  // Hydration applies the stored snapshot itself once the local read lands.
+  void hydrateClientSettings().catch(() => undefined);
+  applyServerClientSettings();
+}
+
+/** Follows the primary server's client settings, so every device on it shows the same ones. */
+export function startClientSettingsSync(): () => void {
+  const unsubscribe = appAtomRegistry.subscribe(clientSettingsSyncAtom, handleClientSettingsSync);
+  handleClientSettingsSync();
+  return unsubscribe;
 }
 
 const SERVER_SETTINGS_KEYS = new Set<string>(Struct.keys(ServerSettings.fields));
@@ -746,6 +878,9 @@ export function __resetClientSettingsPersistenceForTests(): void {
   deferredClientSettingsPatchCount = 0;
   clientSettingsListeners.clear();
   clientSettingsHydrationListeners.clear();
+  serverClientSettings = null;
+  seededEnvironmentIds.clear();
+  pendingSyncedWrites.clear();
 }
 
 export function __setClientSettingsForTests(settings: ClientSettings): void {

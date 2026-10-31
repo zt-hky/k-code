@@ -346,6 +346,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["latex tex katex equations formulas markdown"],
   },
   {
+    id: "full-transcript",
+    title: "Full transcript",
+    to: "/settings/appearance",
+    searchTerms: ["reasoning thinking tool calls expand output transcript"],
+  },
+  {
     id: "panel-animations",
     title: "Panel animations",
     to: "/settings/appearance",

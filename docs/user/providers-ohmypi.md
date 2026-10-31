@@ -85,13 +85,18 @@ mobile apps.
   answers.
 - **Extensions**: turn Oh My Pi's extension sources on and off in the provider settings.
 - **Native sessions**: **Resume session…** lists Oh My Pi's earlier sessions per project folder;
-  see [Native sessions](./providers-acp.md#native-sessions).
-- **Subagents** appear as tasks with their transcripts.
+  **All projects** lists them from every folder and adds the project when you resume one. Sessions
+  Oh My Pi never titled show their first message. Renaming a thread renames its Oh My Pi session, so
+  `omp`'s own resume list matches. See [Native sessions](./providers-acp.md#native-sessions).
+- **Subagents**: each agent of a parallel batch gets its own entry, status, usage, and transcript.
+  Stop on an agent's row, pane, or card cancels only that agent; the rest of the batch and the
+  turn keep running. T3 Code loads a small extension into Oh My Pi (`omp acp --extension`) for
+  this.
 - **Skills** appear in the `$` menu; selecting one runs `/skill:<name>`.
 - **Usage**: the card and Usage page show each signed-in account's limits. Token totals come from
   Oh My Pi's session logs.
 
 Approvals follow the thread's [permission mode](./permission-modes.md), as for other
-[ACP agents](./providers-acp.md#permissions-and-terminals). Oh My Pi does not write commit
-messages, titles, or other text for T3 Code; choose another provider for those in **Settings →
-Providers**.
+[ACP agents](./providers-acp.md#permissions-and-terminals). Oh My Pi can write commit messages,
+titles, and other text for T3 Code; pick it in **Settings → Providers**. Forking from an earlier turn
+starts the fork from a summary of the thread, not from Oh My Pi's own session.

@@ -435,7 +435,7 @@ function migrateLegacyProviderSettings(
 }
 
 const TEXT_GENERATION_UNSUPPORTED_DRIVERS: ReadonlySet<ProviderDriverKind> = new Set(
-  ["acpRegistry", "ohmypi"].map((driver) => ProviderDriverKind.make(driver)),
+  ["acpRegistry"].map((driver) => ProviderDriverKind.make(driver)),
 );
 
 function selectionSupportsTextGeneration(

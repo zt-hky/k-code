@@ -1,4 +1,5 @@
 import {
+  type AcpRegistrySession,
   AcpRegistryListExtensionsResult,
   AcpRegistryListProjectsResult,
   AcpRegistryOperationError,
@@ -10,6 +11,8 @@ import {
   boundedText,
   makeAcpRegistryManagementRuntime,
   managementFailure,
+  normalizeAcpRegistrySession,
+  stripLeadingPrivateUse,
   type AcpRegistryManagementInput,
 } from "@t3tools/provider-acp-registry/server/probe";
 import * as DateTime from "effect/DateTime";
@@ -23,6 +26,7 @@ import {
   OMP_EXTENSIONS_METHOD,
   OMP_EXTENSIONS_TOGGLE_METHOD,
   OMP_PROJECTS_LIST_METHOD,
+  OMP_SESSIONS_LIST_ALL_METHOD,
 } from "./acp.ts";
 import { OMP_USAGE_METHOD, ompUsageToAccounts } from "./usageAccounts.ts";
 
@@ -59,7 +63,8 @@ export const listAcpRegistryProjects = Effect.fn("AcpRegistryProbe.listProjects"
           cwd,
           sessionCount,
           lastActivityAt,
-          lastTitle: boundedText(decoded.value.lastTitle ?? "", 1_024) || null,
+          lastTitle:
+            boundedText(stripLeadingPrivateUse(decoded.value.lastTitle ?? ""), 1_024) || null,
         },
       ];
     });
@@ -85,6 +90,63 @@ export const listAcpRegistryProjects = Effect.fn("AcpRegistryProbe.listProjects"
           ),
       }),
       Effect.mapError((error) => managementFailure("projects_list", error)),
+    ),
+);
+
+const OmpListedSession = Schema.Struct({
+  sessionId: Schema.String,
+  cwd: Schema.String,
+  title: Schema.optional(Schema.NullOr(Schema.String)),
+  updatedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  additionalDirectories: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+  _meta: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
+});
+const OmpSessionsResponse = Schema.Struct({ sessions: Schema.Array(Schema.Unknown) });
+const decodeOmpListedSession = Schema.decodeUnknownOption(OmpListedSession);
+const decodeOmpSessionsResponse = Schema.decodeUnknownOption(OmpSessionsResponse);
+
+export interface OmpAllSessionsListing {
+  readonly sessions: ReadonlyArray<AcpRegistrySession>;
+  readonly canLoad: boolean;
+  readonly canResume: boolean;
+  readonly canDelete: boolean;
+}
+
+/** Every omp session across all working directories, newest first. */
+export const listAllAcpRegistrySessions = Effect.fn("AcpRegistryProbe.listAllSessions")(
+  function* (input: AcpRegistryManagementInput) {
+    const runtime = yield* makeAcpRegistryManagementRuntime(input);
+    const initialized = yield* runtime.initialize();
+    const response = yield* runtime.request(OMP_SESSIONS_LIST_ALL_METHOD, { limit: 5_000 });
+    const entries = Option.getOrUndefined(decodeOmpSessionsResponse(response))?.sessions ?? [];
+    const sessions = entries.flatMap((entry) => {
+      const decoded = decodeOmpListedSession(entry);
+      if (Option.isNone(decoded)) return [];
+      const normalized = normalizeAcpRegistrySession(decoded.value);
+      return normalized === undefined ? [] : [normalized];
+    });
+    const listing: OmpAllSessionsListing = {
+      sessions,
+      canLoad: initialized.agentCapabilities?.loadSession === true,
+      canResume: initialized.agentCapabilities?.sessionCapabilities?.resume != null,
+      canDelete: initialized.agentCapabilities?.sessionCapabilities?.delete != null,
+    };
+    return listing;
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.scoped,
+      Effect.timeoutOrElse({
+        duration: MANAGEMENT_TIMEOUT,
+        orElse: () =>
+          Effect.fail(
+            new AcpRegistryOperationError({
+              reason: "probe_failed",
+              message: "The ACP session list request timed out.",
+            }),
+          ),
+      }),
+      Effect.mapError((error) => managementFailure("list", error)),
     ),
 );
 

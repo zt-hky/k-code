@@ -19,6 +19,7 @@ import {
 } from "../PersistentThreadTerminals";
 import { pullRequestPanelContext } from "../pullRequest/pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
+import { AgentHubPanel } from "../agentHub/AgentHubPanel";
 import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
 import { ThreadPullRequestsPanel } from "../pullRequest/ThreadPullRequestsPanel";
@@ -163,6 +164,8 @@ export function RightPanelSurfaceContent(props: {
         />
       );
     }
+    case "agent-hub":
+      return <AgentHubPanel threadRef={threadRef} surface={surface} />;
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "device":

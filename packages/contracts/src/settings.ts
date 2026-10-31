@@ -9,6 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import {
   ForwardCompatibleNullable,
@@ -192,7 +193,7 @@ export const EnvironmentIdentificationMode = Schema.Literals([
   "none",
 ]);
 export type EnvironmentIdentificationMode = typeof EnvironmentIdentificationMode.Type;
-export const DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE: EnvironmentIdentificationMode = "artwork";
+export const DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE: EnvironmentIdentificationMode = "dev-artwork";
 
 export const SnapShotKeyChord = KeybindingShortcut.check(
   Schema.makeFilter(
@@ -355,7 +356,7 @@ export const ClientSettingsSchema = Schema.Struct({
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
   ),
-  chatWidth: ChatWidth.pipe(Schema.withDecodingDefault(Effect.succeed("comfortable" as const))),
+  chatWidth: ChatWidth.pipe(Schema.withDecodingDefault(Effect.succeed("wide" as const))),
   effortDisplay: EffortDisplay.pipe(Schema.withDecodingDefault(Effect.succeed("label" as const))),
   loadBalancingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   loadBalancingWeights: LoadBalancingWeights.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
@@ -465,8 +466,8 @@ export const ClientSettingsSchema = Schema.Struct({
 
   pullRequestLinksOpenInApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 
-  planModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  contextWindowMeterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  planModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  contextWindowMeterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   composerRichTextEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   sendShortcut: Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("enter")),
@@ -476,16 +477,14 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   proactivePanelsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   showSkillsInSlashMenu: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  boringSidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  boringSidebarMultilineRows: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(false)),
-  ),
+  boringSidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  boringSidebarMultilineRows: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Retired Labs toggle. Still read as the default for the Usage item in threadDetailsItems.
   threadDetailsUsageEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Sparse show/hide overrides for thread details card items. Missing ids use the client's
   // default, so new items appear for everyone and unknown ids survive a downgrade.
   threadDetailsItems: Schema.Record(Schema.String, Schema.Boolean).pipe(
-    Schema.withDecodingDefault(Effect.succeed({})),
+    Schema.withDecodingDefault(Effect.succeed({ usage: true })),
   ),
   // Opt-in for the removed legacy sidebar. Still read so those users land in
   // the boring sidebar; the boring sidebar toggle clears it.
@@ -521,9 +520,11 @@ export const ClientSettingsSchema = Schema.Struct({
   snapShotFlash: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   snapShotAnimations: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   wordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  // Opt-in TeX typesetting in rendered Markdown. Off keeps math parsing and
-  // KaTeX out of the render path entirely.
-  mathRenderingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // TeX typesetting in rendered Markdown. Off keeps math parsing and KaTeX out
+  // of the render path entirely.
+  mathRenderingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Expands every thinking block and tool call inline, with no height caps.
+  fullTranscript: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
@@ -1854,5 +1855,95 @@ export const ClientSettingsPatch = Schema.Struct({
   snapShotAnimations: Schema.optionalKey(Schema.Boolean),
   wordWrap: Schema.optionalKey(Schema.Boolean),
   mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
+  fullTranscript: Schema.optionalKey(Schema.Boolean),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;
+
+/**
+ * Client settings that describe one device rather than the user, so they never sync through the
+ * server: desktop-only shortcuts/capture/window chrome, preview and recording defaults tied to a
+ * display, and typography that depends on the fonts and screen of the machine in use.
+ */
+export const DEVICE_LOCAL_CLIENT_SETTING_KEYS = [
+  "snapShotEnabled",
+  "snapShotIncludeAccessibility",
+  "snapShotShortcut",
+  "snapShotPlaySound",
+  "snapShotSound",
+  "snapShotFlash",
+  "snapShotAnimations",
+  "confirmQuit",
+  "browserProfiles",
+  "browserDefaultProfileId",
+  "browserDefaultViewport",
+  "browserDefaultZoomFactor",
+  "browserRecordingFrameRate",
+  "browserRecordingShowKeyPresses",
+  "browserRecordingShowMousePresses",
+  "panelAnimationDurationMs",
+  "glassOpacity",
+  "fontSizeInterface",
+  "fontSizePrompt",
+  "fontSizeCode",
+  "fontSizeTerminal",
+  "fontFamilyCode",
+  "fontFamilyComposer",
+  "fontFamilySans",
+  "fontFamilyTerminal",
+  "fontSmoothing",
+] as const satisfies ReadonlyArray<keyof ClientSettings>;
+export type DeviceLocalClientSettingKey = (typeof DEVICE_LOCAL_CLIENT_SETTING_KEYS)[number];
+
+const DEVICE_LOCAL_CLIENT_SETTING_KEY_SET: ReadonlySet<string> = new Set(
+  DEVICE_LOCAL_CLIENT_SETTING_KEYS,
+);
+
+export const isSyncedClientSettingKey = (key: string): boolean =>
+  !DEVICE_LOCAL_CLIENT_SETTING_KEY_SET.has(key);
+
+/** Client settings stored on the server and shared by every device connected to it. */
+export const SyncedClientSettingsSchema = ClientSettingsSchema.mapFields(
+  Struct.omit(DEVICE_LOCAL_CLIENT_SETTING_KEYS),
+);
+export type SyncedClientSettings = typeof SyncedClientSettingsSchema.Type;
+
+export const SyncedClientSettingsPatch = ClientSettingsPatch.mapFields(
+  Struct.omit(DEVICE_LOCAL_CLIENT_SETTING_KEYS),
+);
+export type SyncedClientSettingsPatch = typeof SyncedClientSettingsPatch.Type;
+
+export const ClientSettingsSyncSnapshot = Schema.Struct({
+  settings: SyncedClientSettingsSchema,
+  /** False until a client first writes; the first client then seeds it from its local copy. */
+  seeded: Schema.Boolean,
+});
+export type ClientSettingsSyncSnapshot = typeof ClientSettingsSyncSnapshot.Type;
+
+export const ClientSettingsSyncUpdateInput = Schema.Struct({
+  patch: SyncedClientSettingsPatch,
+  /** Applies only while nothing is stored yet, so a late client cannot overwrite shared settings. */
+  onlyIfUnseeded: Schema.optionalKey(Schema.Boolean),
+});
+export type ClientSettingsSyncUpdateInput = typeof ClientSettingsSyncUpdateInput.Type;
+
+export const ClientSettingsSyncOperation = Schema.Literals([
+  "check-exists",
+  "read-file",
+  "decode-file",
+  "encode-file",
+  "write-file",
+]);
+export type ClientSettingsSyncOperation = typeof ClientSettingsSyncOperation.Type;
+
+export class ClientSettingsSyncError extends Schema.TaggedError<ClientSettingsSyncError>()(
+  "ClientSettingsSyncError",
+  {
+    settingsPath: Schema.String,
+    operation: ClientSettingsSyncOperation,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return `Client settings ${this.operation} failed at ${this.settingsPath}.`;
+  }
+}

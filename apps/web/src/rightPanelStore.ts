@@ -21,6 +21,7 @@ const RIGHT_PANEL_KINDS = [
   "terminal",
   "pull-request",
   "pull-requests",
+  "agent-hub",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -74,10 +75,17 @@ export type RightPanelSurface =
       url?: string;
       detailTab?: PullRequestDetailTab;
     }
-  | { id: "pull-requests"; kind: "pull-requests" };
+  | { id: "pull-requests"; kind: "pull-requests" }
+  | {
+      id: "agent-hub";
+      kind: "agent-hub";
+      mode?: "technical";
+      view?: "activity";
+      focusedSubagentId?: string;
+    };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
-const RIGHT_PANEL_STORAGE_VERSION = 14;
+const RIGHT_PANEL_STORAGE_VERSION = 15;
 
 export const PULL_REQUESTS_PANEL_REF = scopeThreadRef(
   EnvironmentId.make("pull-requests-panel"),
@@ -152,6 +160,14 @@ interface RightPanelStoreState {
     surfaceId: string,
     detailTab: PullRequestDetailTab,
   ) => void;
+  updateAgentHub: (
+    ref: ScopedThreadRef,
+    patch: {
+      mode?: "panel" | "technical";
+      view?: "grid" | "activity";
+      focusedSubagentId?: string | null;
+    },
+  ) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
   splitTerminal: (
     ref: ScopedThreadRef,
@@ -211,6 +227,8 @@ const singletonSurface = (
       return { id: "files", kind };
     case "pull-requests":
       return { id: "pull-requests", kind };
+    case "agent-hub":
+      return { id: "agent-hub", kind };
     case "device":
       return { id: "device", kind };
   }
@@ -707,6 +725,40 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
                   ),
                 }
               : next;
+          }),
+        ),
+      updateAgentHub: (ref, patch) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) => {
+            const existing = current.surfaces.find(
+              (surface): surface is Extract<RightPanelSurface, { kind: "agent-hub" }> =>
+                surface.kind === "agent-hub",
+            );
+            const mode = patch.mode === undefined ? existing?.mode : patch.mode;
+            const view = patch.view === undefined ? existing?.view : patch.view;
+            const focusedSubagentId =
+              patch.focusedSubagentId === undefined
+                ? existing?.focusedSubagentId
+                : patch.focusedSubagentId;
+            const surface: Extract<RightPanelSurface, { kind: "agent-hub" }> = {
+              id: "agent-hub",
+              kind: "agent-hub",
+              ...(mode === "technical" ? { mode } : {}),
+              ...(view === "activity" ? { view } : {}),
+              ...(focusedSubagentId ? { focusedSubagentId } : {}),
+            };
+            const next = upsertSurface(
+              {
+                ...current,
+                surfaces: current.surfaces.map((entry) =>
+                  entry.id === surface.id ? surface : entry,
+                ),
+              },
+              surface,
+            );
+            if (patch.mode === undefined) return next;
+            const { maximized: _maximized, ...rest } = next;
+            return patch.mode === "technical" ? { ...rest, maximized: true } : rest;
           }),
         ),
       setPullRequestDetailTab: (ref, surfaceId, detailTab) =>

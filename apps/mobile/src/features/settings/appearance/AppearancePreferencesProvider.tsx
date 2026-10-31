@@ -72,6 +72,8 @@ interface AppearancePreferencesContextValue {
   readonly setCodeWordBreak: (value: boolean) => void;
   readonly mathRenderingEnabled: boolean;
   readonly setMathRenderingEnabled: (value: boolean) => void;
+  readonly fullTranscript: boolean;
+  readonly setFullTranscript: (value: boolean) => void;
 }
 
 const AppearancePreferencesContext = createContext<AppearancePreferencesContextValue | null>(null);
@@ -293,6 +295,9 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   const setMathRenderingEnabled = (value: boolean) =>
     updatePreferences({ mathRenderingEnabled: value });
 
+  const fullTranscript = storedPreferences?.fullTranscript === true;
+  const setFullTranscript = (value: boolean) => updatePreferences({ fullTranscript: value });
+
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({
       appearance,
@@ -316,6 +321,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setCodeFontSize,
       setCodeWordBreak,
       mathRenderingEnabled,
+      fullTranscript,
+      setFullTranscript,
       setMathRenderingEnabled,
     }),
     [
@@ -339,6 +346,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setCodeFontSize,
       setCodeWordBreak,
       mathRenderingEnabled,
+      fullTranscript,
+      setFullTranscript,
       setMathRenderingEnabled,
     ],
   );

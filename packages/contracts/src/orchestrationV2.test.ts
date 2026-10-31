@@ -346,6 +346,7 @@ describe("orchestration V2 contracts", () => {
           title: null,
           model: null,
           status: "running",
+          usage: { tokens: 12_400, costUsd: 0.83, contextTokens: 34_000, contextWindow: 100_000 },
           result: null,
           startedAt: now,
           completedAt: null,
@@ -378,6 +379,12 @@ describe("orchestration V2 contracts", () => {
         const json: unknown = JSON.parse(JSON.stringify(encode(subagent)));
         expect(json).toMatchObject({
           workflow: { agents: [{ prompt: preview, result: preview }] },
+        });
+        expect(decode(json).usage).toEqual({
+          tokens: 12_400,
+          costUsd: 0.83,
+          contextTokens: 34_000,
+          contextWindow: 100_000,
         });
         expect(decode(json).workflow?.agents[0]).toMatchObject({
           prompt: preview,

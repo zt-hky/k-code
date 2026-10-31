@@ -33,6 +33,7 @@ import { startDefaultThemeAdoption } from "./hooks/useDefaultTheme";
 import { startEnvironmentThemeRepaint } from "./hooks/useEnvironmentTheme";
 import {
   getClientSettings,
+  startClientSettingsSync,
   startModelPreferencesMigration,
   subscribeClientSettings,
 } from "./hooks/useSettings";
@@ -174,6 +175,7 @@ export function startAppServices(): AppRouter {
   startEnvironmentThemeRepaint();
   startBrowserChromeThemeSync(router);
   startDefaultThemeAdoption();
+  startClientSettingsSync();
   startModelPreferencesMigration();
   startAgentOpenedPreviews();
   if (isElectron) startElectronBrowserHost();

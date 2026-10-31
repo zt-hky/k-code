@@ -853,6 +853,16 @@ export const OrchestrationV2RemoteTaskChild = Schema.Struct({
 });
 export type OrchestrationV2RemoteTaskChild = typeof OrchestrationV2RemoteTaskChild.Type;
 
+export const OrchestrationV2SubagentUsage = Schema.Struct({
+  tokens: Schema.optional(Schema.Number),
+  costUsd: Schema.optional(Schema.Number),
+  contextTokens: Schema.optional(Schema.Number),
+  contextWindow: Schema.optional(Schema.Number),
+  toolCount: Schema.optional(Schema.Number),
+  requests: Schema.optional(Schema.Number),
+});
+export type OrchestrationV2SubagentUsage = typeof OrchestrationV2SubagentUsage.Type;
+
 export const OrchestrationV2Subagent = Schema.Struct({
   id: NodeId,
   threadId: ThreadId,
@@ -883,6 +893,7 @@ export const OrchestrationV2Subagent = Schema.Struct({
     "interrupted",
   ]),
   progress: Schema.optional(Schema.String),
+  usage: Schema.optional(OrchestrationV2SubagentUsage),
   workflow: Schema.optional(OrchestrationV2SubagentWorkflow),
   result: Schema.NullOr(Schema.String),
   startedAt: Schema.NullOr(Schema.DateTimeUtc),
@@ -3897,13 +3908,13 @@ export class OrchestrationV2StopWorkflowError extends Schema.TaggedError<Orchest
   override get message(): string {
     switch (this.reason) {
       case "not-running":
-        return "This workflow is no longer running.";
+        return "This agent is no longer running.";
       case "unsupported":
-        return "This provider cannot stop a workflow.";
+        return "This provider cannot stop this agent.";
       case "unavailable":
-        return "This workflow has no live provider task.";
+        return "This agent has no live provider task.";
       case "stop-failed":
-        return "Failed to stop the workflow.";
+        return "Failed to stop the agent.";
     }
   }
 }

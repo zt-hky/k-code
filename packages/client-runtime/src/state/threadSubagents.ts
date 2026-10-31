@@ -1,6 +1,11 @@
 import * as DateTime from "effect/DateTime";
-import type { OrchestrationV2Subagent, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import type {
+  OrchestrationV2Subagent,
+  OrchestrationV2SubagentUsage,
+  OrchestrationV2ThreadProjection,
+} from "@t3tools/contracts";
 import { copySorted } from "@t3tools/shared/Array";
+import { formatTokens, formatUsd } from "@t3tools/shared/usageFormat";
 
 import { isActiveSubagentStatus, isTerminalSubagentStatus } from "./subagentRuntime.ts";
 import { resolveActiveThreadRun } from "./threadWorkflows.ts";
@@ -24,19 +29,38 @@ export interface SubagentPillSegment {
   readonly accessibilityLabel: string;
 }
 
+export interface ThreadAgentHub {
+  /** Working agents, oldest first. */
+  readonly live: ReadonlyArray<Subagent>;
+  /** Every other agent, most recently finished first. */
+  readonly settled: ReadonlyArray<Subagent>;
+  readonly totals: {
+    readonly tokens: number;
+    readonly costUsd: number;
+    readonly toolCount: number;
+  };
+}
+
 function orderKey(subagent: Subagent): number {
   return DateTime.toEpochMillis(subagent.startedAt ?? subagent.updatedAt);
+}
+
+function eligibleSubagents(projection: Pick<Projection, "runs" | "subagents">) {
+  const rolledBackRunIds = new Set(
+    projection.runs.filter((run) => run.status === "rolled_back").map((run) => run.id),
+  );
+  return {
+    rolledBackRunIds,
+    eligible: projection.subagents.filter(
+      (subagent) => subagent.runId === null || !rolledBackRunIds.has(subagent.runId),
+    ),
+  };
 }
 
 export function deriveThreadTurnSubagents(
   projection: Pick<Projection, "runs" | "subagents">,
 ): ThreadTurnSubagents | null {
-  const rolledBackRunIds = new Set(
-    projection.runs.filter((run) => run.status === "rolled_back").map((run) => run.id),
-  );
-  const eligible = projection.subagents.filter(
-    (subagent) => subagent.runId === null || !rolledBackRunIds.has(subagent.runId),
-  );
+  const { rolledBackRunIds, eligible } = eligibleSubagents(projection);
   const [first] = eligible;
   if (first === undefined) return null;
   const activeRun = resolveActiveThreadRun(projection);
@@ -88,6 +112,54 @@ export function deriveThreadTurnSubagents(
     liveCount,
     settledCount,
   };
+}
+
+export function deriveThreadAgentHub(
+  projection: Pick<Projection, "runs" | "subagents">,
+): ThreadAgentHub | null {
+  const { eligible } = eligibleSubagents(projection);
+  if (eligible.length === 0) return null;
+  const live: Array<Subagent> = [];
+  const settled: Array<Subagent> = [];
+  const totals = { tokens: 0, costUsd: 0, toolCount: 0 };
+  for (const subagent of eligible) {
+    (isActiveSubagentStatus(subagent.status) ? live : settled).push(subagent);
+    totals.tokens += subagent.usage?.tokens ?? 0;
+    totals.costUsd += subagent.usage?.costUsd ?? 0;
+    totals.toolCount += subagent.usage?.toolCount ?? 0;
+  }
+  const settledKey = (subagent: Subagent) =>
+    DateTime.toEpochMillis(subagent.completedAt ?? subagent.updatedAt);
+  live.sort((left, right) => orderKey(left) - orderKey(right) || left.id.localeCompare(right.id));
+  settled.sort(
+    (left, right) => settledKey(right) - settledKey(left) || left.id.localeCompare(right.id),
+  );
+  return { live, settled, totals };
+}
+
+/** `12.4K tok · $0.83 · ctx 34%`, or null when the agent reported no usage. */
+export function formatSubagentUsage(
+  usage: OrchestrationV2SubagentUsage | undefined,
+): string | null {
+  if (usage === undefined) return null;
+  const parts: Array<string> = [];
+  if (usage.tokens !== undefined) parts.push(`${formatTokens(usage.tokens)} tok`);
+  if (usage.costUsd !== undefined) parts.push(formatUsd(usage.costUsd));
+  if (usage.contextTokens !== undefined && usage.contextWindow) {
+    parts.push(`ctx ${Math.round((usage.contextTokens / usage.contextWindow) * 100)}%`);
+  }
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** `12.4K tok · $0.83 · 57 tools`, leaving out zero totals; null when all are zero. */
+export function formatAgentHubTotals(totals: ThreadAgentHub["totals"]): string | null {
+  const parts: Array<string> = [];
+  if (totals.tokens > 0) parts.push(`${formatTokens(totals.tokens)} tok`);
+  if (totals.costUsd > 0) parts.push(formatUsd(totals.costUsd));
+  if (totals.toolCount > 0) {
+    parts.push(`${totals.toolCount} ${totals.toolCount === 1 ? "tool" : "tools"}`);
+  }
+  return parts.length === 0 ? null : parts.join(" · ");
 }
 
 export function resolveSubagentPillSegment(

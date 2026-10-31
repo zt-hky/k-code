@@ -110,6 +110,40 @@ export function resolveSubagentRowPresentation(
   };
 }
 
+const BATCH_NATIVE_ID = /^(.*):batch:(\d+)$/;
+
+/** omp batch children carry native task ids `${toolCallId}:batch:${index}`; bare tool call ids never match. */
+function batchKeyOf(subagent: Pick<OrchestrationV2Subagent, "driver" | "nativeTaskRef">) {
+  const nativeId = subagent.nativeTaskRef?.nativeId;
+  if (nativeId === null || nativeId === undefined) return null;
+  const match = BATCH_NATIVE_ID.exec(nativeId);
+  if (match === null) return null;
+  return { group: `${subagent.driver}:${match[1]}`, index: Number(match[2]) };
+}
+
+/** "Agent i of N" for each agent that is one of several children of the same batch tool call. */
+export function resolveBatchHints(
+  subagents: ReadonlyArray<Pick<OrchestrationV2Subagent, "id" | "driver" | "nativeTaskRef">>,
+): ReadonlyMap<string, string> {
+  const groups = new Map<string, Array<{ readonly id: string; readonly index: number }>>();
+  for (const subagent of subagents) {
+    const key = batchKeyOf(subagent);
+    if (key === null) continue;
+    const members = groups.get(key.group) ?? [];
+    members.push({ id: subagent.id, index: key.index });
+    groups.set(key.group, members);
+  }
+  const hints = new Map<string, string>();
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const total = Math.max(members.length, ...members.map((member) => member.index + 1));
+    for (const member of members) {
+      hints.set(member.id, `Agent ${member.index + 1} of ${total}`);
+    }
+  }
+  return hints;
+}
+
 export type WorkflowRailTone = SubagentRowTone | "queued";
 
 export interface WorkflowRailItem {

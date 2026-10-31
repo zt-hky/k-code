@@ -155,7 +155,11 @@ function TasksCard({ todoList }: { readonly todoList: LatestTodoListState }) {
   );
 }
 
-function SubagentStatusIcon({ status }: { readonly status: OrchestrationV2Subagent["status"] }) {
+export function SubagentStatusIcon({
+  status,
+}: {
+  readonly status: OrchestrationV2Subagent["status"];
+}) {
   switch (status) {
     case "running":
     case "waiting":
@@ -193,7 +197,13 @@ function SubagentRow(props: {
   const model = subagent.model?.trim()
     ? resolveSubagentMetadata({ model: subagent.model, provider }).modelLabel
     : null;
-  const meta = [model, getReasoningEffortOptionValue(subagent.modelSelection)]
+  const outcome =
+    subagent.status === "cancelled" || subagent.status === "interrupted"
+      ? "Stopped"
+      : subagent.status === "failed"
+        ? "Failed"
+        : null;
+  const meta = [outcome, model, getReasoningEffortOptionValue(subagent.modelSelection)]
     .filter(Boolean)
     .join(" · ");
   const runningTool = !isTerminalSubagentStatus(subagent.status) && subagent.progress;
@@ -284,13 +294,13 @@ function SubagentsCard(props: {
                       <ChevronRightIcon className="transition-transform group-data-[panel-open]/settled:rotate-90 motion-reduce:transition-none" />
                     </ComposerBanner.Icon>
                     <ComposerBanner.Content className="text-muted-foreground">
-                      Completed ({settled.length})
+                      Finished ({settled.length})
                     </ComposerBanner.Content>
                   </CollapsibleTrigger>
                   <CollapsiblePanel>
                     <ComposerBanner.Children
                       render={<ul role="list" />}
-                      aria-label="Completed subagents"
+                      aria-label="Finished subagents"
                     >
                       {settled.map((subagent) => (
                         <SubagentRow

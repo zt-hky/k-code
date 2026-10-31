@@ -3,6 +3,7 @@ import {
   CommandId,
   EnvironmentId,
   MessageId,
+  NodeId,
   type OrchestrationV2Command,
   type OrchestrationV2Run,
   type OrchestrationV2ProviderThread,
@@ -595,4 +596,95 @@ it.effect.each([
 
     expect(dispatched).toEqual(settles ? ["thread.settle"] : []);
   }),
+);
+
+it.effect.each(["capable", "incapable-runtime", "app-owned", "claude-plain"] as const)(
+  "routes a single-agent stop to the provider runtime when it can stop tasks: %s",
+  (state) =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread:subagent-stop");
+      const runId = RunId.make("run:subagent-stop");
+      const providerThreadId = ProviderThreadId.make("provider-thread:subagent-stop");
+      const providerSessionId = ProviderSessionId.make("provider-session:subagent-stop");
+      const driver = ProviderDriverKind.make(state === "claude-plain" ? "claudeAgent" : "ohmypi");
+      const instanceId = ProviderInstanceId.make(driver);
+      const subagentId = NodeId.make("node:subagent-stop");
+      const now = yield* DateTime.now;
+      const providerThread = {
+        id: providerThreadId,
+        driver,
+        providerInstanceId: instanceId,
+        providerSessionId,
+        appThreadId: threadId,
+        nativeThreadRef: { driver, nativeId: "native-thread", strength: "strong" },
+      } as unknown as OrchestrationV2ProviderThread;
+      const subagent = {
+        id: subagentId,
+        threadId,
+        runId,
+        driver,
+        providerInstanceId: instanceId,
+        providerThreadId,
+        origin: state === "app-owned" ? "app_owned" : "provider_native",
+        status: "running",
+        nativeTaskRef: { driver, nativeId: "call-1:batch:1", strength: "strong" },
+        startedAt: now,
+      } as unknown as OrchestrationV2ThreadProjection["subagents"][number];
+      const stopped: Array<{ providerThreadId: ProviderThreadId; taskId: string }> = [];
+      const runtime = {
+        driver,
+        providerSessionId,
+        ...(state === "incapable-runtime"
+          ? {}
+          : {
+              stopTask: (input: {
+                readonly providerThread: OrchestrationV2ProviderThread;
+                readonly taskId: string;
+              }) =>
+                Effect.sync(() => {
+                  stopped.push({ providerThreadId: input.providerThread.id, taskId: input.taskId });
+                }),
+            }),
+      } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime;
+      const layerTest = ThreadManagementService.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(Orchestrator.OrchestratorV2)({
+              getThreadRecords: () =>
+                Effect.succeed({
+                  thread: { id: threadId, deletedAt: null },
+                  subagents: [subagent],
+                  runs: [],
+                  providerThreads: [providerThread],
+                } as unknown as OrchestrationV2ThreadProjection),
+            }),
+            Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({
+              get: () => Effect.succeedSome(runtime),
+            }),
+          ),
+        ),
+        Layer.provide(ServerSettings.layerTest()),
+        Layer.provide(layerReceiptsTest),
+      );
+      const result = yield* Effect.gen(function* () {
+        const service = yield* ThreadManagementService.ThreadManagementService;
+        return yield* service.stopWorkflow({ threadId, subagentId }).pipe(Effect.result);
+      }).pipe(Effect.provide(Layer.merge(layerTest, ThreadCommandExecutor.layer)));
+
+      if (state === "capable") {
+        expect(result._tag).toBe("Success");
+        expect(stopped).toEqual([{ providerThreadId, taskId: "call-1:batch:1" }]);
+      } else {
+        expect(result).toMatchObject({
+          failure: {
+            _tag: "OrchestrationV2StopWorkflowError",
+            reason:
+              state === "incapable-runtime" || state === "app-owned"
+                ? "unsupported"
+                : "not-running",
+          },
+        });
+        expect(stopped).toEqual([]);
+      }
+    }),
 );

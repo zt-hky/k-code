@@ -256,7 +256,12 @@ the snooze. Enable **Snooze until limits reset** in thread behavior settings to
 snooze limit stops by default. Providers without a reset time offer manual
 retry and the normal snooze choices.
 
-On web and desktop, use **Agents** to follow work delegated to subagents.
+On web and desktop, use **Agents** to follow work delegated to subagents. For every subagent of
+the thread at once, open **Agent Hub** from the Lineage section of the thread details card or the
+command palette. **Technical** fills the screen with each agent's live log in a grid, or merges
+their logs into one **Activity** feed. Token and cost totals appear when the provider reports them.
+**Agents** in the sidebar footer (or **Open running agents** in the command palette) shows every
+running subagent across your threads in one grid, grouped by the thread that started them.
 On mobile, open a subagent from its conversation card or **Agents**. On iOS
 layouts with an inspector, its thread opens beside the parent. Maximize it to
 fill the screen; close the full-screen view to return to the parent and inspector.
@@ -266,7 +271,11 @@ Subagent threads started by the agent can't take messages; message the parent
 thread instead. When such a subagent needs an approval or an answer, the parent
 thread asks for it.
 
-Expand a tool call in the conversation to see its full command and output.
+Expand a tool call in the conversation to see its full command and output. To expand everything,
+turn on **Full transcript** with the button in the thread header, the command palette, `Ctrl+Alt+Shift+E`
+(`Cmd+Option+Shift+E` on macOS), or **Settings → Appearance**: every thinking block, tool call, and
+output then shows in full, including in Agent Hub. On mobile the switch is in the thread header and
+Appearance settings.
 Summaries shorten shell wrappers and can still describe the latest call after it
 finishes; the call's own result shows its status.
 

@@ -7,6 +7,7 @@ import { useDeviceType } from "../../native/native-layout-metrics";
 import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspaceColumns";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
   ThreadGitControls,
   useThreadGitCenterHeaderItems,
@@ -32,6 +33,17 @@ export function useThreadHeaderOptions(props: {
   const sidebarHeaderItem = useWorkspaceSidebarHeaderItem();
   const threadCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
   const compactRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const { fullTranscript, setFullTranscript } = useAppearancePreferences();
+  const fullTranscriptItem = withNativeGlassHeaderItem({
+    accessibilityLabel: fullTranscript ? "Hide full transcript" : "Show full transcript",
+    icon: { name: fullTranscript ? "doc.text.fill" : "doc.text", type: "sfSymbol" as const },
+    identifier: "thread-right-full-transcript",
+    label: "Full transcript",
+    onPress: () => setFullTranscript(!fullTranscript),
+    sharesBackground: true,
+    type: "button" as const,
+    variant: "plain" as const,
+  });
   const splitLeftHeaderItems: NativeHeaderItems = [
     ...(!usesDuoHeader
       ? [
@@ -89,7 +101,9 @@ export function useThreadHeaderOptions(props: {
         : () => compactHomeHeaderItems,
     // The workspace navigator adds compose to the Duo detail column's bar.
     unstable_headerRightItems: () =>
-      usesDuoHeader || layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems,
+      usesDuoHeader || layout.usesSplitView
+        ? [...threadCenterHeaderItems, fullTranscriptItem]
+        : [...compactRightHeaderItems, fullTranscriptItem],
     unstable_headerToolbarItems: () => [],
     unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
     contentStyle: undefined,
@@ -108,6 +122,7 @@ export function useThreadHeaderOptions(props: {
       gitStatus?.isDefaultRef,
       gitStatus?.refName,
       gitStatus?.pr?.url,
+      fullTranscript,
     ],
     sidebar: false,
     fallback:

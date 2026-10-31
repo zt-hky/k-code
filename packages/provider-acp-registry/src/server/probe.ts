@@ -623,46 +623,60 @@ export function managementFailure(
     : new AcpRegistryOperationError({ ...failure, cause: error });
 }
 
+/** Strips the Nerd Font / private-use icon prefix some agents put before session titles. */
+export const stripLeadingPrivateUse = (value: string): string => value.replace(/^[\p{Co}\s]+/u, "");
+
+export interface AcpRegistryRawSession {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly additionalDirectories?: ReadonlyArray<string> | null | undefined;
+  readonly title?: string | null | undefined;
+  readonly updatedAt?: string | null | undefined;
+  readonly _meta?: { readonly [key: string]: unknown } | null | undefined;
+}
+
+export const normalizeAcpRegistrySession = (session: AcpRegistryRawSession) => {
+  const sessionId = boundedOpaqueValue(session.sessionId, 1_024);
+  const cwd = boundedOpaqueValue(session.cwd, 4_096);
+  if (sessionId === undefined || cwd === undefined) return undefined;
+  const rawMessageCount = (session._meta as { readonly messageCount?: unknown } | undefined | null)
+    ?.messageCount;
+  const messageCount =
+    typeof rawMessageCount === "number" &&
+    Number.isSafeInteger(rawMessageCount) &&
+    rawMessageCount >= 0
+      ? rawMessageCount
+      : undefined;
+  return {
+    sessionId,
+    cwd,
+    additionalDirectories: (session.additionalDirectories ?? [])
+      .flatMap((directory) => {
+        const normalized = boundedOpaqueValue(directory, 4_096);
+        return normalized === undefined ? [] : [normalized];
+      })
+      .slice(0, 32),
+    title:
+      session.title === undefined || session.title === null
+        ? null
+        : boundedText(stripLeadingPrivateUse(session.title), 1_024) || null,
+    updatedAt:
+      session.updatedAt === undefined || session.updatedAt === null
+        ? null
+        : boundedText(session.updatedAt, 128) || null,
+    importedThreadId: null,
+    ...(messageCount === undefined ? {} : { messageCount }),
+  };
+};
+
 export const listAcpRegistrySessions = Effect.fn("AcpRegistryProbe.listSessions")(
   function* (input: AcpRegistryManagementInput & { readonly cursor?: string }) {
     const runtime = yield* makeAcpRegistryManagementRuntime(input);
     const initialized = yield* runtime.initialize();
     const listed = yield* runtime.listSessions(input.cursor);
     const sessions = listed.sessions.slice(0, 256).flatMap((session) => {
-      const sessionId = boundedOpaqueValue(session.sessionId, 1_024);
-      const cwd = boundedOpaqueValue(session.cwd, 4_096);
-      if (sessionId === undefined || cwd === undefined) return [];
-      const rawMessageCount = (
-        session._meta as { readonly messageCount?: unknown } | undefined | null
-      )?.messageCount;
-      const messageCount =
-        typeof rawMessageCount === "number" &&
-        Number.isSafeInteger(rawMessageCount) &&
-        rawMessageCount >= 0
-          ? rawMessageCount
-          : undefined;
-      return [
-        {
-          sessionId,
-          cwd,
-          additionalDirectories: (session.additionalDirectories ?? [])
-            .flatMap((directory) => {
-              const normalized = boundedOpaqueValue(directory, 4_096);
-              return normalized === undefined ? [] : [normalized];
-            })
-            .slice(0, 32),
-          title:
-            session.title === undefined || session.title === null
-              ? null
-              : boundedText(session.title, 1_024) || null,
-          updatedAt:
-            session.updatedAt === undefined || session.updatedAt === null
-              ? null
-              : boundedText(session.updatedAt, 128) || null,
-          importedThreadId: null,
-          ...(messageCount === undefined ? {} : { messageCount }),
-        },
-      ];
+      const normalized = normalizeAcpRegistrySession(session);
+      return normalized === undefined ? [] : [normalized];
     });
     return AcpRegistryListSessionsResult.make({
       sessions,

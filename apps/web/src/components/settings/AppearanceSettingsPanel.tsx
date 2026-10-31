@@ -333,6 +333,27 @@ export function AppearanceSettingsPanel() {
             />
           }
         />
+        <SettingsRow
+          {...searchableSetting("full-transcript")}
+          description="Expand every turn and tool group, show reasoning in full, and remove height limits on tool input and output."
+          resetAction={
+            settings.fullTranscript !== DEFAULT_UNIFIED_SETTINGS.fullTranscript ? (
+              <SettingResetButton
+                label="full transcript"
+                onClick={() =>
+                  updateSettings({ fullTranscript: DEFAULT_UNIFIED_SETTINGS.fullTranscript })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.fullTranscript}
+              onCheckedChange={(checked) => updateSettings({ fullTranscript: Boolean(checked) })}
+              aria-label="Full transcript"
+            />
+          }
+        />
         <AdvancedSettings
           targetIds={[
             searchableSetting("panel-animations").id,

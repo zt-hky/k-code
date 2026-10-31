@@ -5,8 +5,14 @@ the project and environment a change applies to. Pages that only hold device pre
 Appearance, don't show it. They start at **All projects** and **All environments**
 and stay selected as you move between categories or search for a setting.
 
-Preferences saved on this device, such as appearance, confirmations and browser profiles, always
-show and ignore the selection. Everything else is stored on a server. Choose one environment to
+Preferences that only describe how you use T3 Code, such as appearance, confirmations and
+sidebar layout, are saved on the server you connect to (the one serving the web app, or the
+desktop app's local environment) and shared by every browser and device connected to it, so a
+change on your desktop shows up on your phone's browser. A device's first connection to a server
+with no saved preferences uploads its own once. Settings tied to one machine, such as fonts and
+text size, window effects, quit confirmation, browser profiles and recording defaults, desktop
+shortcuts and snapshots, stay on that device and ignore the selection above. Everything else is
+stored on a server. Choose one environment to
 edit its settings, or leave **All environments** to edit every connected environment at once.
 Offline environments keep their current values; this is a bulk edit, not a synced global default.
 

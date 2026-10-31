@@ -485,6 +485,45 @@ describe("rightPanelStore", () => {
     expect(store.getUserActionRevision(refA)).toBe(revision);
   });
 
+  it("opens the agent hub as a singleton and updates its mode, view and focus", () => {
+    const store = useRightPanelStore.getState();
+    const state = () =>
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    store.open(refA, "agent-hub");
+    store.open(refA, "agent-hub");
+    expect(state().surfaces).toEqual([{ id: "agent-hub", kind: "agent-hub" }]);
+    expect(state().activeSurfaceId).toBe("agent-hub");
+
+    store.updateAgentHub(refA, { mode: "technical", view: "activity", focusedSubagentId: "a-1" });
+    expect(state().surfaces).toEqual([
+      {
+        id: "agent-hub",
+        kind: "agent-hub",
+        mode: "technical",
+        view: "activity",
+        focusedSubagentId: "a-1",
+      },
+    ]);
+    expect(state().maximized).toBe(true);
+
+    store.updateAgentHub(refA, { focusedSubagentId: null, view: "grid" });
+    expect(state().surfaces).toEqual([{ id: "agent-hub", kind: "agent-hub", mode: "technical" }]);
+    expect(state().maximized).toBe(true);
+
+    store.updateAgentHub(refA, { mode: "panel" });
+    expect(state().surfaces).toEqual([{ id: "agent-hub", kind: "agent-hub" }]);
+    expect(state().maximized).toBeUndefined();
+  });
+
+  it("creates the agent hub surface when updating before it is open", () => {
+    useRightPanelStore.getState().updateAgentHub(refA, { focusedSubagentId: "a-2" });
+    const current = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(current.isOpen).toBe(true);
+    expect(current.surfaces).toEqual([
+      { id: "agent-hub", kind: "agent-hub", focusedSubagentId: "a-2" },
+    ]);
+  });
+
   it("restores a saved maximized panel during migration", () => {
     const migrated = migratePersistedRightPanelState({
       byThreadKey: {
@@ -668,6 +707,32 @@ describe("rightPanelStore", () => {
         },
       },
       threadPanelVisibilityByThreadKey: {},
+    });
+  });
+
+  it("keeps a persisted agent-hub surface through migration while still dropping agents", () => {
+    const surface = {
+      id: "agent-hub",
+      kind: "agent-hub",
+      mode: "technical",
+      view: "activity",
+      focusedSubagentId: "node-1",
+    } as const;
+    const { byThreadKey } = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "agent-hub",
+          surfaces: [{ id: "agents", kind: "agents" }, surface],
+          maximized: true,
+        },
+      },
+    });
+    expect(selectThreadRightPanelState(byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "agent-hub",
+      surfaces: [surface],
+      maximized: true,
     });
   });
 

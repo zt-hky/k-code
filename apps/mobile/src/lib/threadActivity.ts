@@ -1281,6 +1281,7 @@ interface ThreadFeedPresentationBuild {
   readonly expandedWorkGroupIds: ReadonlySet<string>;
   readonly activeWorkStartedAt: string | null;
   readonly runlessWorkActive: boolean;
+  readonly fullTranscript: boolean;
   readonly rows: ReadonlyArray<ThreadFeedEntry>;
   /** Feed entry `entry` is a user message whose rows start at `rowsLength`. */
   readonly restarts: ReadonlyArray<{ readonly entry: number; readonly rowsLength: number }>;
@@ -1323,9 +1324,11 @@ function presentationRestart(
   expandedWorkGroupIds: ReadonlySet<string>,
   activeWorkStartedAt: string | null,
   runlessWorkActive: boolean,
+  fullTranscript: boolean,
 ): { readonly entry: number; readonly rowsLength: number; readonly index: number } | null {
   if (
     previous === null ||
+    previous.fullTranscript !== fullTranscript ||
     !latestRunsEqual(previous.latestRun, latestRun) ||
     previous.activeWorkStartedAt !== activeWorkStartedAt ||
     previous.runlessWorkActive !== runlessWorkActive ||
@@ -1347,6 +1350,14 @@ function presentationRestart(
   return { ...restart, index };
 }
 
+class AllWorkGroupsExpanded extends Set<string> {
+  override has() {
+    return true;
+  }
+}
+
+const allWorkGroupsExpanded: ReadonlySet<string> = new AllWorkGroupsExpanded();
+
 export function deriveThreadFeedPresentation(
   feed: ReadonlyArray<ThreadFeedEntry>,
   latestRun: ThreadFeedLatestRun | null,
@@ -1355,7 +1366,9 @@ export function deriveThreadFeedPresentation(
   activeWorkStartedAt: string | null = null,
   runlessWorkActive = false,
   cache?: ThreadFeedCache,
+  fullTranscript = false,
 ): ThreadFeedEntry[] {
+  const workGroupExpansion = fullTranscript ? allWorkGroupsExpanded : expandedWorkGroupIds;
   const previous = cache?.presentation ?? null;
   const restart = presentationRestart(
     previous,
@@ -1365,6 +1378,7 @@ export function deriveThreadFeedPresentation(
     expandedWorkGroupIds,
     activeWorkStartedAt,
     runlessWorkActive,
+    fullTranscript,
   );
   const start = restart?.entry ?? 0;
   const result: ThreadFeedEntry[] =
@@ -1425,7 +1439,7 @@ export function deriveThreadFeedPresentation(
   );
   const collapsedEntryIds = new Set<string>();
   for (const fold of foldsByAnchorId.values()) {
-    if (!expandedRunIds.has(fold.runId)) {
+    if (!fullTranscript && !expandedRunIds.has(fold.runId)) {
       for (const entryId of fold.hiddenEntryIds) collapsedEntryIds.add(entryId);
     }
   }
@@ -1449,7 +1463,7 @@ export function deriveThreadFeedPresentation(
       entry.runId === activeRunId;
     const fold = foldsByAnchorId.get(entry.id);
     if (fold) {
-      const expanded = expandedRunIds.has(fold.runId);
+      const expanded = fullTranscript || expandedRunIds.has(fold.runId);
       let row = runFoldRowsCache.get(entry);
       if (
         !row ||
@@ -1510,7 +1524,7 @@ export function deriveThreadFeedPresentation(
       appendPresentedFeedEntry(
         result,
         entry,
-        expandedWorkGroupIds,
+        workGroupExpansion,
         activeRunId,
         isWorking,
         isActiveTailGroup,
@@ -1604,6 +1618,7 @@ export function deriveThreadFeedPresentation(
       expandedRunIds,
       expandedWorkGroupIds,
       activeWorkStartedAt,
+      fullTranscript,
       runlessWorkActive,
       rows: result,
       restarts: cleanRestarts,

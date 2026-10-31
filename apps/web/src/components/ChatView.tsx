@@ -3223,6 +3223,11 @@ export default function ChatView(props: ChatViewProps) {
     <PanelLayoutControls
       {...panelToggleControlProps}
       showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
+      showFullTranscriptControl
+      fullTranscriptShortcutLabel={shortcutLabelForCommand(
+        keybindings,
+        "chat.fullTranscript.toggle",
+      )}
     />
   );
   const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;

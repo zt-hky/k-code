@@ -164,6 +164,15 @@ const SIGN_IN_MESSAGE =
 
 /** One pure mapping from what was observed to the snapshot clients render. */
 export function buildOhMyPiSnapshot(input: OhMyPiSnapshotInput): ServerProvider {
+  const snapshot = buildOhMyPiSnapshotBase(input);
+  return {
+    ...snapshot,
+    supportsTextGeneration:
+      snapshot.enabled && snapshot.installed && snapshot.auth.status !== "unauthenticated",
+  };
+}
+
+function buildOhMyPiSnapshotBase(input: OhMyPiSnapshotInput): ServerProvider {
   const { settings } = input;
   const base = {
     instanceId: input.instanceId,
@@ -172,6 +181,7 @@ export function buildOhMyPiSnapshot(input: OhMyPiSnapshotInput): ServerProvider 
     ...(input.accentColor ? { accentColor: input.accentColor } : {}),
     continuation: { groupKey: input.continuationKey },
     supportsTextGeneration: false,
+    supportsSubagentStop: true,
     enabled: settings.enabled,
     checkedAt: input.checkedAt,
     showInteractionModeToggle: true,
@@ -311,6 +321,7 @@ function nativeSessionFlags(probe: AcpRegistryConfigurationProbeResult) {
       canResume: management.canResume,
       canDelete: management.canDelete,
       canListProjects: true,
+      canListAllSessions: true,
     },
     configurableProviders: management.canConfigureProviders,
     manageableExtensions: true,

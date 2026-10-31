@@ -43,6 +43,8 @@ import { deriveSubagentElapsedMs } from "@t3tools/shared/orchestrationTiming";
 import { groupBy } from "effect/Array";
 import * as DateTime from "effect/DateTime";
 import { useNavigate } from "@tanstack/react-router";
+import { useRightPanelStore } from "../../rightPanelStore";
+import { deriveThreadAgentHub } from "@t3tools/client-runtime/state/thread-subagents";
 import {
   ArrowRightIcon,
   BotIcon,
@@ -53,6 +55,7 @@ import {
   PlusIcon,
   SquareIcon,
   UnplugIcon,
+  ChevronRightIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -188,6 +191,46 @@ function relationshipThreadTitle(input: {
 }): string {
   if (!input.isSubagent) return input.title;
   return formatSubagentDisplayTitle(input.title);
+}
+
+interface StoppableSubagent {
+  readonly origin: OrchestrationV2Subagent["origin"];
+  readonly driver: OrchestrationV2Subagent["driver"];
+  readonly runId: OrchestrationV2Subagent["runId"] | undefined;
+  readonly nativeTaskRef: OrchestrationV2Subagent["nativeTaskRef"] | undefined;
+  readonly startedAt: unknown;
+  readonly status: string;
+}
+
+export function canStopSubagent(
+  agent: StoppableSubagent,
+  nativeStatus: string = agent.status,
+): boolean {
+  return (
+    (agent.origin === "app_owned" ||
+      (agent.origin === "provider_native" &&
+        agent.driver === "claudeAgent" &&
+        agent.runId != null &&
+        agent.nativeTaskRef?.strength === "strong" &&
+        agent.nativeTaskRef.nativeId !== null &&
+        ["pending", "running", "waiting"].includes(nativeStatus))) &&
+    Boolean(agent.startedAt) &&
+    ["pending", "running", "waiting"].includes(agent.status)
+  );
+}
+
+/** Provider-native subagents of drivers that advertise `supportsSubagentStop`, stopped one at a time. */
+export function canStopCapableNativeSubagent(
+  agent: StoppableSubagent,
+  supportsSubagentStop: boolean | undefined,
+): boolean {
+  return (
+    supportsSubagentStop === true &&
+    agent.origin === "provider_native" &&
+    agent.nativeTaskRef?.strength === "strong" &&
+    Boolean(agent.startedAt) &&
+    agent.status === "running"
+  );
 }
 
 function currentSubagent<Agent extends RuntimeSubagent>(
@@ -470,6 +513,7 @@ export function ThreadRelationshipsPanel(props: {
     (projection?.subagents.filter(
       (agent) => agent.childThreadId === null && agent.status === "running",
     ).length ?? 0) + active.filter(({ edge }) => edge.status === "running").length;
+  const agentHubLiveCount = projection ? (deriveThreadAgentHub(projection)?.live.length ?? 0) : 0;
 
   // A linked environment's agent may have delegated this thread from there.
   const delegatedFrom = currentThread?.delegatedFrom;
@@ -478,7 +522,8 @@ export function ThreadRelationshipsPanel(props: {
     relationshipRows.length === 0 &&
     runningCount === 0 &&
     remoteSubagents.length === 0 &&
-    delegatedFrom === undefined
+    delegatedFrom === undefined &&
+    projected.length === 0
   ) {
     return null;
   }
@@ -518,13 +563,19 @@ export function ThreadRelationshipsPanel(props: {
   const stopSubagent = async (
     childThreadId: ThreadId,
     agent: Pick<OrchestrationV2Subagent, "id" | "threadId">,
+    native: boolean,
   ) => {
     if (stoppingId !== null) return;
     setStoppingId(childThreadId);
-    const result = await interruptTurn({
-      environmentId: props.environmentId,
-      input: { threadId: agent.threadId, subagentId: agent.id },
-    });
+    const result = native
+      ? await stopWorkflowCommand({
+          environmentId: props.environmentId,
+          input: { threadId: agent.threadId, subagentId: NodeId.make(agent.id) },
+        })
+      : await interruptTurn({
+          environmentId: props.environmentId,
+          input: { threadId: agent.threadId, subagentId: agent.id },
+        });
     setStoppingId(null);
     if (result._tag === "Failure") {
       toastManager.add({ type: "error", title: "Could not stop subagent" });
@@ -624,17 +675,18 @@ export function ThreadRelationshipsPanel(props: {
                 ? projectedAgent
                 : currentSubagent(projectedAgent, node?.thread);
               const failed = rowStatus === "failed" || rowStatus === "error";
+              const provider = providers?.find(
+                (entry) =>
+                  entry.instanceId ===
+                  (agent?.providerInstanceId ?? node?.thread?.providerInstanceId),
+              );
+              const canStopNative =
+                canOperateWorkflow &&
+                agent !== undefined &&
+                !workflowGroup &&
+                canStopCapableNativeSubagent(agent, provider?.supportsSubagentStop);
               const canStop =
-                agent &&
-                (agent.origin === "app_owned" ||
-                  (agent.origin === "provider_native" &&
-                    agent.driver === "claudeAgent" &&
-                    agent.runId != null &&
-                    agent.nativeTaskRef?.strength === "strong" &&
-                    agent.nativeTaskRef.nativeId !== null &&
-                    ["pending", "running", "waiting"].includes(agent.nativeStatus))) &&
-                agent.startedAt &&
-                ["pending", "running", "waiting"].includes(agent.status);
+                canStopNative || (agent && canStopSubagent(agent, agent.nativeStatus));
               const threadTitle = relationshipThreadTitle({
                 title:
                   workflowGroup?.workflow.workflowName ??
@@ -643,11 +695,6 @@ export function ThreadRelationshipsPanel(props: {
                   threadId,
                 isSubagent,
               });
-              const provider = providers?.find(
-                (entry) =>
-                  entry.instanceId ===
-                  (agent?.providerInstanceId ?? node?.thread?.providerInstanceId),
-              );
               const providerDriver = agent?.driver ?? provider?.driver;
               const canStopWorkflow =
                 canOperateWorkflow &&
@@ -836,7 +883,7 @@ export function ThreadRelationshipsPanel(props: {
                               tone="destructive"
                               aria-label={`Stop subagent ${threadTitle}`}
                               disabled={stoppingId !== null}
-                              onClick={() => void stopSubagent(threadId, agent)}
+                              onClick={() => void stopSubagent(threadId, agent, canStopNative)}
                             />
                           }
                         >
@@ -869,6 +916,20 @@ export function ThreadRelationshipsPanel(props: {
             />
           ))}
         </ThreadLineageRowList>
+      ) : null}
+      {projected.length > 0 ? (
+        <ThreadDetailsControl onClick={() => useRightPanelStore.getState().open(ref, "agent-hub")}>
+          <BotIcon aria-hidden className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+          <span className={cn(THREAD_DETAILS_PANEL_LABEL_CLASS, "min-w-0 flex-1 truncate")}>
+            Agent Hub
+          </span>
+          {agentHubLiveCount > 0 ? (
+            <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
+              {agentHubLiveCount} running
+            </span>
+          ) : null}
+          <ChevronRightIcon aria-hidden className={THREAD_DETAILS_PANEL_CHEVRON_CLASS} />
+        </ThreadDetailsControl>
       ) : null}
     </ThreadDetailsSection>
   );

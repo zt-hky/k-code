@@ -8,6 +8,7 @@ import { observeResize } from "~/lib/observeResize";
 import { tickTextContent } from "~/lib/tickTextContent";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
 import { memo, use, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useFullTranscript } from "~/hooks/useFullTranscript";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
@@ -121,7 +122,47 @@ function WorkingTimer({ createdAt }: { createdAt: string }) {
 
 const compactWorkEntryHeight = 24;
 
-function ExpandedWorkGroupEntries({
+function ExpandedWorkGroupEntries(props: {
+  anchorKey: string;
+  disclosureAnchorKey: string;
+  entries: TimelineWorkEntry[];
+  workspaceRoot: string | undefined;
+}) {
+  const fullTranscript = useFullTranscript();
+  return fullTranscript ? (
+    <FullWorkGroupEntries {...props} />
+  ) : (
+    <ScrollingWorkGroupEntries {...props} />
+  );
+}
+
+function FullWorkGroupEntries({
+  disclosureAnchorKey,
+  entries,
+  workspaceRoot,
+}: {
+  anchorKey: string;
+  disclosureAnchorKey: string;
+  entries: TimelineWorkEntry[];
+  workspaceRoot: string | undefined;
+}) {
+  const { workGroupViewState: viewState, onToggleWorkEntry } = use(TimelineRowCtx);
+  const groupView = {
+    state: viewState,
+    onToggleEntry: (collapsed: boolean) => onToggleWorkEntry(disclosureAnchorKey, collapsed),
+  };
+  return (
+    <WorkGroupViewCtx value={groupView}>
+      <WorkLogList>
+        {entries.map((entry) => (
+          <SimpleWorkEntryRow key={entry.id} workEntry={entry} workspaceRoot={workspaceRoot} />
+        ))}
+      </WorkLogList>
+    </WorkGroupViewCtx>
+  );
+}
+
+function ScrollingWorkGroupEntries({
   anchorKey,
   disclosureAnchorKey,
   entries,

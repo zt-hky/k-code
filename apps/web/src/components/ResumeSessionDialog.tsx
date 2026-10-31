@@ -76,6 +76,22 @@ function sessionUpdatedAtMs(session: AcpRegistrySession): number {
   return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
 }
 
+type SessionScope = "project" | "all";
+
+const sessionsKey = (scope: SessionScope, instanceId: string) =>
+  scope === "all" ? `all:${instanceId}` : instanceId;
+
+function sessionTitle(session: AcpRegistrySession): string {
+  if (session.title !== null) return session.title;
+  const updatedAtMs = Date.parse(session.updatedAt ?? "");
+  return Number.isNaN(updatedAtMs)
+    ? "Untitled session"
+    : `Untitled · ${new Date(updatedAtMs).toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+}
+
 function ResumeSessionContent(props: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
@@ -88,7 +104,8 @@ function ResumeSessionContent(props: {
     serverEnvironment.importAcpRegistrySession.permissionAtom(environmentId),
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { listSessions, importSession, listProjects } = useAcpNativeSessionCommands(environmentId);
+  const { listSessions, listAllSessions, importSession, listProjects } =
+    useAcpNativeSessionCommands(environmentId);
   const createProject = useAtomCommand(projectEnvironment.create, { reportFailure: false });
   const canCreateProject = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const [query, setQuery] = useState("");
@@ -99,25 +116,31 @@ function ResumeSessionContent(props: {
   >({});
   const [loadingMore, setLoadingMore] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [scope, setScope] = useState<SessionScope>("project");
   const instanceKey = instances.map((entry) => entry.instanceId).join("\n");
   const environmentProjects = useProjects().filter(
     (project) => project.environmentId === environmentId,
   );
 
-  const loadPage = async (instanceId: ProviderInstanceId, cursor?: string) => {
-    const result = await listSessions({
-      instanceId,
-      projectId,
-      ...(cursor === undefined ? {} : { cursor }),
-    });
+  const loadPage = async (
+    instanceId: ProviderInstanceId,
+    cursor?: string,
+    pageScope: SessionScope = "project",
+  ) => {
+    const cursorInput = cursor === undefined ? {} : { cursor };
+    const result =
+      pageScope === "all"
+        ? await listAllSessions({ instanceId, ...cursorInput })
+        : await listSessions({ instanceId, projectId, ...cursorInput });
+    const key = sessionsKey(pageScope, instanceId);
     if (result._tag === "Success") {
       setByInstance((current) => {
-        const previous = current[instanceId];
+        const previous = current[key];
         const earlier =
           cursor !== undefined && previous?.status === "ready" ? previous.sessions : [];
         return {
           ...current,
-          [instanceId]: {
+          [key]: {
             status: "ready",
             sessions: [...earlier, ...result.value.sessions],
             nextCursor: result.value.nextCursor,
@@ -133,7 +156,7 @@ function ResumeSessionContent(props: {
     }
     setByInstance((current) => ({
       ...current,
-      [instanceId]: {
+      [key]: {
         status: "error",
         message: acpFailureMessage(result) ?? "Could not list sessions.",
       },
@@ -172,43 +195,41 @@ function ResumeSessionContent(props: {
     loadFirstPages(instanceKey);
   }, [instanceKey, loadFirstPages]);
 
+  const scopedInstances =
+    scope === "all"
+      ? instances.filter((entry) => entry.snapshot.nativeSessions?.canListAllSessions === true)
+      : instances;
+  const canListAll = instances.some(
+    (entry) => entry.snapshot.nativeSessions?.canListAllSessions === true,
+  );
+
+  const toggleScope = () => {
+    const next: SessionScope = scope === "all" ? "project" : "all";
+    setScope(next);
+    setHighlightedItemValue(null);
+    if (next === "project") return;
+    for (const entry of instances) {
+      if (entry.snapshot.nativeSessions?.canListAllSessions !== true) continue;
+      if (byInstance[sessionsKey("all", entry.instanceId)] === undefined) {
+        void loadPage(entry.instanceId, undefined, "all");
+      }
+    }
+  };
+
   const loadMore = async () => {
     setLoadingMore(true);
     await Promise.all(
-      instances.flatMap((entry) => {
-        const state = byInstance[entry.instanceId];
+      scopedInstances.flatMap((entry) => {
+        const state = byInstance[sessionsKey(scope, entry.instanceId)];
         return state?.status === "ready" && state.nextCursor !== null
-          ? [loadPage(entry.instanceId, state.nextCursor)]
+          ? [loadPage(entry.instanceId, state.nextCursor, scope)]
           : [];
       }),
     );
     setLoadingMore(false);
   };
 
-  const resume = async (instanceId: ProviderInstanceId, session: AcpRegistrySession) => {
-    if (resuming) return;
-    if (session.importedThreadId !== null) {
-      props.onOpenThread(scopeThreadRef(environmentId, session.importedThreadId));
-      return;
-    }
-    setResuming(true);
-    const result = await importSession({
-      instanceId,
-      projectId,
-      sessionId: session.sessionId,
-      title: session.title,
-      updatedAt: session.updatedAt,
-    });
-    setResuming(false);
-    if (result._tag === "Success") {
-      props.onOpenThread(scopeThreadRef(environmentId, result.value.threadId));
-      return;
-    }
-    reportAcpFailure("Could not resume session", result);
-  };
-
-  const addProject = async (cwd: string, title: string) => {
-    if (resuming) return;
+  const createNativeProject = async (cwd: string, title: string): Promise<ProjectId | null> => {
     const newId = newProjectId();
     const created = await createProject({
       environmentId,
@@ -222,18 +243,67 @@ function ResumeSessionContent(props: {
     });
     if (created._tag === "Failure") {
       reportAcpFailure("Could not add project", created);
+      return null;
+    }
+    await waitForProject(scopeProjectRef(environmentId, newId));
+    return newId;
+  };
+
+  // A session from another folder resumes into that folder's project, created on first use.
+  const projectForSession = async (session: AcpRegistrySession): Promise<ProjectId | null> =>
+    session.projectId ??
+    findProjectByPath(environmentProjects, session.cwd)?.id ??
+    createNativeProject(session.cwd, inferProjectTitleFromPath(session.cwd));
+
+  const resume = async (
+    instanceId: ProviderInstanceId,
+    session: AcpRegistrySession,
+    sessionScope: SessionScope,
+  ) => {
+    if (resuming) return;
+    if (session.importedThreadId !== null) {
+      props.onOpenThread(scopeThreadRef(environmentId, session.importedThreadId));
       return;
     }
-    const projectRef = scopeProjectRef(environmentId, newId);
-    await waitForProject(projectRef);
-    openResumeSessionDialog(projectRef);
+    setResuming(true);
+    const targetProjectId = sessionScope === "all" ? await projectForSession(session) : projectId;
+    if (targetProjectId === null) {
+      setResuming(false);
+      return;
+    }
+    const result = await importSession({
+      instanceId,
+      projectId: targetProjectId,
+      sessionId: session.sessionId,
+      title: sessionTitle(session),
+      updatedAt: session.updatedAt,
+    });
+    setResuming(false);
+    if (result._tag === "Success") {
+      props.onOpenThread(scopeThreadRef(environmentId, result.value.threadId));
+      return;
+    }
+    reportAcpFailure("Could not resume session", result);
+  };
+
+  const addProject = async (cwd: string, title: string) => {
+    if (resuming) return;
+    const newId = await createNativeProject(cwd, title);
+    if (newId !== null) openResumeSessionDialog(scopeProjectRef(environmentId, newId));
   };
 
   const normalizedQuery = query.trim().toLowerCase();
   const groups: CommandPaletteGroup[] = [];
-  for (const entry of instances) {
-    const state = byInstance[entry.instanceId];
-    const label = instances.length > 1 ? entry.displayName : props.projectName;
+  for (const entry of scopedInstances) {
+    const state = byInstance[sessionsKey(scope, entry.instanceId)];
+    const label =
+      scope === "all"
+        ? scopedInstances.length > 1
+          ? `${entry.displayName} · All projects`
+          : "All projects"
+        : instances.length > 1
+          ? entry.displayName
+          : props.projectName;
     const statusRow = (title: string, description?: string): CommandPaletteActionItem => ({
       kind: "action",
       value: `resume-session:${entry.instanceId}:status`,
@@ -261,38 +331,53 @@ function ResumeSessionContent(props: {
       continue;
     }
     const items = state.sessions
+      .map((session) => ({ session, title: sessionTitle(session) }))
       .filter(
-        (session) =>
+        ({ session, title }) =>
           normalizedQuery.length === 0 ||
-          (session.title ?? "").toLowerCase().includes(normalizedQuery) ||
+          title.toLowerCase().includes(normalizedQuery) ||
+          (scope === "all" && session.cwd.toLowerCase().includes(normalizedQuery)) ||
           session.sessionId.toLowerCase().includes(normalizedQuery),
       )
-      .toSorted((left, right) => sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left))
-      .map((session): CommandPaletteActionItem => ({
-        kind: "action",
-        value: `resume-session:${entry.instanceId}:${session.sessionId}`,
-        searchTerms: [session.title ?? "", session.sessionId],
-        title: session.title ?? "Untitled session",
-        description: sessionDescription(session),
-        disabled: session.importedThreadId === null && !canImport,
-        icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
-        ...(session.importedThreadId === null
-          ? {}
-          : {
-              titleTrailingContent: (
-                <Badge size="sm" variant="secondary">
-                  Open
-                </Badge>
-              ),
-            }),
-        ...(session.updatedAt === null
-          ? {}
-          : { timestamp: formatRelativeTimeLabel(session.updatedAt) }),
-        run: () => resume(entry.instanceId, session),
-      }));
+      .toSorted(
+        (left, right) => sessionUpdatedAtMs(right.session) - sessionUpdatedAtMs(left.session),
+      )
+      .map(({ session, title }): CommandPaletteActionItem => {
+        const needsProject =
+          scope === "all" &&
+          session.projectId == null &&
+          findProjectByPath(environmentProjects, session.cwd) === undefined;
+        return {
+          kind: "action",
+          value: `resume-session:${entry.instanceId}:${session.sessionId}`,
+          searchTerms: [title, session.sessionId, ...(scope === "all" ? [session.cwd] : [])],
+          title,
+          description:
+            scope === "all"
+              ? `${inferProjectTitleFromPath(session.cwd)} · ${sessionDescription(session)}`
+              : sessionDescription(session),
+          disabled:
+            session.importedThreadId === null &&
+            (!canImport || (needsProject && !canCreateProject)),
+          icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+          ...(session.importedThreadId === null
+            ? {}
+            : {
+                titleTrailingContent: (
+                  <Badge size="sm" variant="secondary">
+                    Open
+                  </Badge>
+                ),
+              }),
+          ...(session.updatedAt === null
+            ? {}
+            : { timestamp: formatRelativeTimeLabel(session.updatedAt) }),
+          run: () => resume(entry.instanceId, session, scope),
+        };
+      });
     if (items.length > 0) groups.push({ value: entry.instanceId, label, items });
   }
-  for (const entry of instances) {
+  for (const entry of scope === "all" ? [] : instances) {
     const state = projectsByInstance[entry.instanceId];
     if (state === undefined) continue;
     const label = `Projects in ${entry.displayName}`;
@@ -347,9 +432,10 @@ function ResumeSessionContent(props: {
       groups.push({ value: `${entry.instanceId}:projects`, label, items: projectItems });
     }
   }
-  const hasMore = Object.values(byInstance).some(
-    (state) => state.status === "ready" && state.nextCursor !== null,
-  );
+  const hasMore = scopedInstances.some((entry) => {
+    const state = byInstance[sessionsKey(scope, entry.instanceId)];
+    return state?.status === "ready" && state.nextCursor !== null;
+  });
 
   return (
     <CommandPaletteContent
@@ -358,10 +444,19 @@ function ResumeSessionContent(props: {
       escapeLabel="Close"
       footerActionLabel="Resume"
       footerTrailing={
-        hasMore ? (
-          <CommandFooterAction disabled={loadingMore} onClick={() => void loadMore()}>
-            {loadingMore ? "Loading…" : "Load more"}
-          </CommandFooterAction>
+        hasMore || canListAll ? (
+          <>
+            {canListAll ? (
+              <CommandFooterAction onClick={toggleScope}>
+                {scope === "all" ? "This project" : "All projects"}
+              </CommandFooterAction>
+            ) : null}
+            {hasMore ? (
+              <CommandFooterAction disabled={loadingMore} onClick={() => void loadMore()}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </CommandFooterAction>
+            ) : null}
+          </>
         ) : null
       }
       inputProps={{ placeholder: "Search sessions…" }}
@@ -381,7 +476,9 @@ function ResumeSessionContent(props: {
         emptyStateMessage={
           normalizedQuery.length > 0
             ? "No matching sessions."
-            : "No sessions found for this project."
+            : scope === "all"
+              ? "No sessions found."
+              : "No sessions found for this project."
         }
         groups={groups}
         highlightedItemValue={highlightedItemValue}

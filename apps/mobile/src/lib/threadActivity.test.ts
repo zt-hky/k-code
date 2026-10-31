@@ -442,6 +442,28 @@ describe("buildThreadFeed", () => {
     },
   );
 
+  it("expands run folds and work groups in full transcript mode", () => {
+    const feed = buildThreadFeed([
+      projected(userMessage(), 0),
+      projected(command(), 1),
+      projected(assistantMessage(), 2),
+    ]);
+    const collapsed = deriveThreadFeedPresentation(feed, null, new Set());
+    const full = deriveThreadFeedPresentation(
+      feed,
+      null,
+      new Set(),
+      new Set(),
+      null,
+      false,
+      undefined,
+      true,
+    );
+    expect(collapsed.find((entry) => entry.type === "run-fold")).toMatchObject({ expanded: false });
+    expect(full.find((entry) => entry.type === "run-fold")).toMatchObject({ expanded: true });
+    expect(full.length).toBeGreaterThan(collapsed.length);
+  });
+
   it.each([false, true])(
     "carries a late checkpoint to only the final answer without changing cached messages (cache: %s)",
     (cached) => {

@@ -6,6 +6,10 @@ import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import {
   ClientSettingsSchema,
   ClientSettingsPatch,
+  DEVICE_LOCAL_CLIENT_SETTING_KEYS,
+  isSyncedClientSettingKey,
+  SyncedClientSettingsPatch,
+  SyncedClientSettingsSchema,
   ClaudeSettings,
   DEFAULT_SERVER_SETTINGS,
   globalIdleCompaction,
@@ -439,5 +443,26 @@ describe("server model preferences", () => {
     const input = { favorites: [], providerModelPreferences: {} };
     expect(encodeServerSettings(decodeServerSettings(input))).toMatchObject(input);
     expect(decodeServerSettingsPatch(input)).toEqual(input);
+  });
+});
+
+const decodeSyncedClientSettings = Schema.decodeSync(SyncedClientSettingsSchema);
+
+describe("synced client settings", () => {
+  it("splits every client setting into device-local or synced, with matching patch keys", () => {
+    const synced = Object.keys(SyncedClientSettingsSchema.fields);
+    const all = Object.keys(ClientSettingsSchema.fields);
+
+    expect([...synced, ...DEVICE_LOCAL_CLIENT_SETTING_KEYS].toSorted()).toEqual(all.toSorted());
+    expect(Object.keys(SyncedClientSettingsPatch.fields).toSorted()).toEqual(synced.toSorted());
+    expect(isSyncedClientSettingKey("snapShotEnabled")).toBe(false);
+    expect(isSyncedClientSettingKey("chatWidth")).toBe(true);
+  });
+
+  it("fills defaults for synced keys a stored document lacks", () => {
+    const decoded = decodeSyncedClientSettings({ chatWidth: "full" });
+
+    expect(decoded.chatWidth).toBe("full");
+    expect(decoded.wordWrap).toBe(true);
   });
 });

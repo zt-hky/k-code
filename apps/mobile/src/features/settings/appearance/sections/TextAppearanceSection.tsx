@@ -13,8 +13,15 @@ import { FontSizeSliderRow } from "../components/FontSizeSliderRow";
 import { SettingsSwitchRow } from "../../components/SettingsSwitchRow";
 
 export function TextAppearanceSection() {
-  const { isReady, appearance, setBaseFontSize, mathRenderingEnabled, setMathRenderingEnabled } =
-    useAppearancePreferences();
+  const {
+    isReady,
+    appearance,
+    setBaseFontSize,
+    mathRenderingEnabled,
+    setMathRenderingEnabled,
+    fullTranscript,
+    setFullTranscript,
+  } = useAppearancePreferences();
 
   return (
     <SettingsSection title="Text">
@@ -37,6 +44,13 @@ export function TextAppearanceSection() {
         label="Render math"
         value={mathRenderingEnabled}
         onValueChange={setMathRenderingEnabled}
+      />
+      <SettingsSwitchRow
+        disabled={!isReady}
+        icon="text.alignleft"
+        label="Full transcript"
+        value={fullTranscript}
+        onValueChange={setFullTranscript}
       />
     </SettingsSection>
   );

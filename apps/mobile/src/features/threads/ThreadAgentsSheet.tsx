@@ -3,7 +3,10 @@ import {
   deriveWorkflowGroups,
   projectedSubagentsToRuntime,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { ThreadTurnSubagents } from "@t3tools/client-runtime/state/thread-subagents";
+import {
+  formatAgentHubTotals,
+  type ThreadTurnSubagents,
+} from "@t3tools/client-runtime/state/thread-subagents";
 import {
   isOrchestrationV2WorkActive,
   type EnvironmentId,
@@ -32,7 +35,7 @@ import { SubagentStopButton } from "./SubagentStopButton";
 import { ThreadWorkflowGroup } from "./ThreadWorkflowGroup";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
-import { subagentThreadTarget } from "./threadAgentsPresentation";
+import { resolveBatchHints, subagentThreadTarget } from "./threadAgentsPresentation";
 
 import { useOpenThreadInspector } from "./thread-inspector-navigation";
 
@@ -58,18 +61,21 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
   const navigation = useNavigation();
   const openInspector = useOpenThreadInspector();
   const insets = useSafeAreaInsets();
-  const turn = useThreadTurnSubagents(target);
-  const subagents = turn?.subagents ?? [];
-  const hasLiveAgent = (turn?.liveCount ?? 0) > 0;
+  const hub = useAtomValue(environmentThreadDetails.agentHubAtom(target));
+  const hasLiveAgent = (hub?.live.length ?? 0) > 0;
+  const totalsLine = hub === null ? null : formatAgentHubTotals(hub.totals);
   const workflowGroups = useMemo(
     () =>
       new Map(
-        deriveWorkflowGroups(projectedSubagentsToRuntime(subagents)).map((group) => [
-          group.workflow.id,
-          group,
-        ]),
+        deriveWorkflowGroups(
+          projectedSubagentsToRuntime(hub === null ? [] : [...hub.live, ...hub.settled]),
+        ).map((group) => [group.workflow.id, group]),
       ),
-    [subagents],
+    [hub],
+  );
+  const batchHints = useMemo(
+    () => resolveBatchHints(hub === null ? [] : [...hub.live, ...hub.settled]),
+    [hub],
   );
 
   const openChildThread = (child: { environmentId: EnvironmentId; threadId: ThreadId }) => {
@@ -91,6 +97,39 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
     );
   };
 
+  const renderSubagent = (subagent: OrchestrationV2Subagent) => {
+    const group = workflowGroups.get(subagent.id);
+    return group === undefined ? (
+      <View key={subagent.id} className="border-b border-border">
+        <AgentRow
+          subagent={subagent}
+          environmentId={target.environmentId}
+          tickSeconds={hasLiveAgent}
+          batchHint={batchHints.get(subagent.id)}
+          onOpen={openChildThread}
+        />
+      </View>
+    ) : (
+      <ThreadWorkflowGroup
+        key={subagent.id}
+        environmentId={target.environmentId}
+        subagent={subagent}
+        group={group}
+        onOpen={(threadId) => openChildThread({ environmentId: target.environmentId, threadId })}
+      />
+    );
+  };
+
+  const renderSection = (title: string, agents: ReadonlyArray<OrchestrationV2Subagent>) =>
+    agents.length === 0 ? null : (
+      <View key={title}>
+        <Text className="pb-1 pt-4 text-xs font-t3-medium uppercase text-foreground-muted">
+          {title}
+        </Text>
+        {agents.map(renderSubagent)}
+      </View>
+    );
+
   const content = (
     <ScrollView
       nestedScrollEnabled
@@ -100,34 +139,18 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
       contentContainerClassName="px-5 pb-6"
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
     >
-      {subagents.length === 0 ? (
+      {hub === null ? (
         <Text className="pt-6 text-center text-sm text-foreground-muted">
-          No agents in this turn.
+          No agents in this thread yet.
         </Text>
       ) : (
-        subagents.map((subagent) => {
-          const group = workflowGroups.get(subagent.id);
-          return group === undefined ? (
-            <View key={subagent.id} className="border-b border-border">
-              <AgentRow
-                subagent={subagent}
-                environmentId={target.environmentId}
-                tickSeconds={hasLiveAgent}
-                onOpen={openChildThread}
-              />
-            </View>
-          ) : (
-            <ThreadWorkflowGroup
-              key={subagent.id}
-              environmentId={target.environmentId}
-              subagent={subagent}
-              group={group}
-              onOpen={(threadId) =>
-                openChildThread({ environmentId: target.environmentId, threadId })
-              }
-            />
-          );
-        })
+        <>
+          {totalsLine !== null ? (
+            <Text className="pt-3 text-xs text-foreground-muted">{totalsLine}</Text>
+          ) : null}
+          {renderSection("Running", hub.live)}
+          {renderSection("Finished", hub.settled)}
+        </>
       )}
     </ScrollView>
   );
@@ -176,6 +199,7 @@ function AgentRow(props: {
   readonly environmentId: EnvironmentId;
   readonly subagent: OrchestrationV2Subagent;
   readonly tickSeconds: boolean;
+  readonly batchHint?: string | undefined;
   readonly onOpen: (child: { environmentId: EnvironmentId; threadId: ThreadId }) => void;
 }) {
   const { subagent } = props;
@@ -190,6 +214,7 @@ function AgentRow(props: {
         environmentId={props.environmentId}
         subagent={subagent}
         canOpenRemote={target !== null}
+        batchHint={props.batchHint}
         elapsed={<AgentElapsed subagent={subagent} tickSeconds={props.tickSeconds} />}
       />
     </View>

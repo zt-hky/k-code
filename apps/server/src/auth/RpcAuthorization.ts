@@ -90,6 +90,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverUninstallAcpRegistryManagedBinary]: AuthProvidersManageScope,
   [WS_METHODS.serverAcceptAcpRegistryUrlAuth]: AuthProvidersManageScope,
   [WS_METHODS.serverListAcpRegistrySessions]: AuthOrchestrationReadScope,
+  [WS_METHODS.serverListAllAcpRegistrySessions]: AuthOrchestrationReadScope,
   [WS_METHODS.serverImportAcpRegistrySession]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverDeleteAcpRegistrySession]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverListAcpRegistryProviders]: AuthOrchestrationReadScope,
@@ -116,6 +117,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.webPushGetPublicKey]: AuthOrchestrationReadScope,
   [WS_METHODS.webPushSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.webPushUnsubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.clientSettingsSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.scheduledTasksSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.secretsAnswerRequest]: AuthOrchestrationOperateScope,
   // Delivery logs hold request bodies, so they need the same scope as the URL.

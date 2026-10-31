@@ -1159,7 +1159,21 @@ export function createServerEnvironmentAtoms<R, E>(
     concurrency: configConcurrency,
   });
 
+  /** Settings shared by every device on one server; see the web client's settings sync. */
+  const clientSettingsLive = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:server:client-settings:live",
+    tag: WS_METHODS.clientSettingsSubscribe,
+  });
+  const updateClientSettings = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:server:client-settings:update",
+    tag: WS_METHODS.clientSettingsUpdate,
+    scheduler: configScheduler,
+    concurrency: configConcurrency,
+  });
+
   return {
+    clientSettingsLive,
+    updateClientSettings,
     configValueAtom,
     runStorageCleanup: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:run-storage-cleanup",
@@ -1433,6 +1447,15 @@ export function createServerEnvironmentAtoms<R, E>(
         mode: "singleFlight",
         key: ({ environmentId, input }) =>
           `${environmentId}:${input.instanceId}:${input.projectId}:${input.cursor ?? "first"}`,
+      },
+    }),
+    listAllAcpRegistrySessions: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:acp-registry:list-all-sessions",
+      tag: WS_METHODS.serverListAllAcpRegistrySessions,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          `${environmentId}:${input.instanceId}:${input.cursor ?? "first"}`,
       },
     }),
     importAcpRegistrySession: createEnvironmentRpcCommand(runtime, {

@@ -24,6 +24,7 @@ import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/s
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { useFullTranscript } from "~/hooks/useFullTranscript";
 
 const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const EMPTY_PENDING_APPROVALS: ReadonlyArray<PendingApproval> = [];
@@ -393,6 +394,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   topFadeEnabled = false,
   historyControls,
 }: MessagesTimelineProps) {
+  const fullTranscript = useFullTranscript();
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
   // Snapshot restore positions on identity changes; ongoing scroll writes must not move them.
   // Find open at the opening is part of the snapshot: opening find later
@@ -673,6 +675,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     expandedRunIds: visibleExpandedRunIds,
     expandedAttemptIds: visibleExpandedAttemptIds,
     expandedWorkGroupIds,
+    fullTranscript,
     isWorking,
     runlessWorkActive,
     activeTurnStartedAt,
@@ -1303,7 +1306,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
               data={rows}
               extraData={listExtraData}
               keyExtractor={keyExtractor}
-              getItemType={getItemType}
+              getItemType={(row) => getItemType(row, fullTranscript)}
               renderItem={renderItem}
               estimatedItemSize={90}
               initialScrollAtEnd={
@@ -1408,8 +1411,8 @@ function keyExtractor(item: MessagesTimelineRow) {
 }
 
 // LegendList averages by type; length buckets prevent inflated estimates and nested-update loops.
-function getItemType(item: MessagesTimelineRow) {
-  if (item.kind !== "message") return item.kind;
+function getItemType(item: MessagesTimelineRow, fullTranscript: boolean) {
+  if (item.kind !== "message") return fullTranscript ? `${item.kind}:full` : item.kind;
   const lengthBucket = Math.max(0, Math.floor(Math.log2(item.message.text.length / 1000)));
   return `message:${item.message.role}:${lengthBucket}`;
 }

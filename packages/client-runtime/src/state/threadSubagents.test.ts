@@ -9,7 +9,11 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import { deriveThreadTurnSubagents, resolveSubagentPillSegment } from "./threadSubagents.ts";
+import {
+  deriveThreadAgentHub,
+  deriveThreadTurnSubagents,
+  resolveSubagentPillSegment,
+} from "./threadSubagents.ts";
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 
@@ -322,5 +326,59 @@ describe("deriveThreadTurnSubagents", () => {
       label: "1 done",
       accessibilityLabel: "1 agent done",
     });
+  });
+});
+
+describe("deriveThreadAgentHub", () => {
+  it("lists every turn's agents except rolled-back ones, live oldest first and settled newest first", () => {
+    const hub = deriveThreadAgentHub({
+      runs: [run("run-0", "rolled_back"), finishedRun, run("run-2", "running")],
+      subagents: [
+        subagent({ id: "rolled-back", runId: RunId.make("run-0"), status: "completed" }),
+        subagent({
+          id: "older-turn",
+          status: "completed",
+          completedAt: at("2026-06-20T00:00:03.000Z"),
+        }),
+        subagent({
+          id: "recent-done",
+          runId: RunId.make("run-2"),
+          status: "failed",
+          completedAt: at("2026-06-20T00:00:08.000Z"),
+        }),
+        subagent({ id: "idle", status: "idle", updatedAt: at("2026-06-20T00:00:05.000Z") }),
+        subagent({ id: "late-live", startedAt: at("2026-06-20T00:00:06.000Z") }),
+        subagent({
+          id: "early-live",
+          status: "waiting",
+          startedAt: at("2026-06-20T00:00:02.000Z"),
+        }),
+      ],
+    });
+
+    expect(hub?.live.map((entry) => entry.id)).toEqual(["early-live", "late-live"]);
+    expect(hub?.settled.map((entry) => entry.id)).toEqual(["recent-done", "idle", "older-turn"]);
+  });
+
+  it("sums usage, counting missing fields as zero", () => {
+    const hub = deriveThreadAgentHub({
+      runs: [finishedRun],
+      subagents: [
+        subagent({ id: "a", usage: { tokens: 1_000, costUsd: 0.5, toolCount: 3 } }),
+        subagent({ id: "b", status: "completed", usage: { tokens: 250 } }),
+        subagent({ id: "c", status: "completed" }),
+      ],
+    });
+
+    expect(hub?.totals).toEqual({ tokens: 1_250, costUsd: 0.5, toolCount: 3 });
+  });
+
+  it("is empty when only rolled-back agents remain", () => {
+    expect(
+      deriveThreadAgentHub({
+        runs: [run("run-0", "rolled_back")],
+        subagents: [subagent({ id: "a", runId: RunId.make("run-0") })],
+      }),
+    ).toBeNull();
   });
 });

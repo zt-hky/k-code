@@ -37,7 +37,11 @@ function textFromBlocks(
   const keys = Object.keys(value).filter((key) => key !== "isError" && key !== "is_error");
   if (keys.length === 1 && keys[0] === "content")
     return textFromBlocks(value.content, depth + 1, imageBlocks);
-  if (keys.length === 2 && keys.includes("content") && keys.includes("structuredContent")) {
+  // MCP results add `structuredContent`; omp and Pi tool results add `details`.
+  if (
+    keys.includes("content") &&
+    keys.every((key) => key === "content" || key === "structuredContent" || key === "details")
+  ) {
     const text = textFromBlocks(value.content, depth + 1, imageBlocks);
     return text?.trim() ? text : null;
   }

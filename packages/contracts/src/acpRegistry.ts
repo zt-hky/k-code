@@ -165,6 +165,7 @@ export const AcpRegistrySession = Schema.Struct({
   updatedAt: Schema.NullOr(Schema.String.check(Schema.isMaxLength(128))),
   importedThreadId: Schema.NullOr(ThreadId),
   messageCount: Schema.optionalKey(NonNegativeInt),
+  projectId: Schema.optionalKey(Schema.NullOr(ProjectId)),
 });
 export type AcpRegistrySession = typeof AcpRegistrySession.Type;
 
@@ -174,6 +175,12 @@ export const AcpRegistryListSessionsInput = Schema.Struct({
   cursor: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_048))),
 });
 export type AcpRegistryListSessionsInput = typeof AcpRegistryListSessionsInput.Type;
+
+export const AcpRegistryListAllSessionsInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  cursor: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_048))),
+});
+export type AcpRegistryListAllSessionsInput = typeof AcpRegistryListAllSessionsInput.Type;
 
 export const AcpRegistryListSessionsResult = Schema.Struct({
   sessions: Schema.Array(AcpRegistrySession).check(Schema.isMaxLength(256)),

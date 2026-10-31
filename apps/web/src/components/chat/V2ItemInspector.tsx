@@ -13,6 +13,8 @@ import { ExternalLinkIcon } from "lucide-react";
 import { memo, type ReactNode, Suspense, use } from "react";
 
 import { useRenderedAppearance } from "../../hooks/useTheme";
+import { useFullTranscript } from "../../hooks/useFullTranscript";
+import { useNearViewport } from "../../hooks/useNearViewport";
 import { cn } from "../../lib/utils";
 import { resolveDiffThemeName } from "../../lib/diffRendering";
 import { getSyntaxHighlighterPromise } from "../../lib/syntaxHighlighting";
@@ -83,11 +85,18 @@ function StructuredValue({
   readonly highlightJson?: boolean;
   readonly language?: "typescript";
 }) {
+  const fullTranscript = useFullTranscript();
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   const isJson = highlightJson && isJsonText(text);
   if (!text) return null;
   return (
-    <pre className={cn("max-h-80 overflow-auto text-muted-foreground", monoClassName)}>
+    <pre
+      className={cn(
+        "text-muted-foreground",
+        fullTranscript ? "overflow-x-auto" : "max-h-80 overflow-auto",
+        monoClassName,
+      )}
+    >
       {language || isJson ? (
         <RenderErrorBoundary fallback={text}>
           <Suspense fallback={text}>
@@ -151,6 +160,7 @@ interface ToolOutputState {
 }
 
 function ToolOutput(props: ToolOutputState) {
+  const fullTranscript = useFullTranscript();
   const images = props.images.map((resource) => (
     <ChatMarkdownAssetImage
       key={resource.index}
@@ -162,7 +172,14 @@ function ToolOutput(props: ToolOutputState) {
     />
   ));
   const text = props.output ? (
-    <div className="max-h-80 overflow-auto text-muted-foreground">{props.output}</div>
+    <div
+      className={cn(
+        "text-muted-foreground",
+        fullTranscript ? "overflow-x-auto" : "max-h-80 overflow-auto",
+      )}
+    >
+      {props.output}
+    </div>
   ) : props.pending ? (
     <div className="text-muted-foreground italic">Loading output…</div>
   ) : props.error ? (
@@ -184,9 +201,15 @@ export function FetchedToolOutput(props: {
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   readonly source?: TurnItemSource | undefined;
 }) {
-  const { output } = useFetchedTurnItem(props.projectedItem, props.environmentId, props.source);
+  const { ref, near } = useNearViewport(useFullTranscript());
+  const { output } = useFetchedTurnItem(
+    props.projectedItem,
+    props.environmentId,
+    props.source,
+    !near,
+  );
   return (
-    <div className={cn("mt-1.5 space-y-1.5", monoClassName)}>
+    <div ref={ref} className={cn("mt-1.5 space-y-1.5", monoClassName)}>
       <ToolOutput {...output} onImageExpand={props.onImageExpand} />
     </div>
   );
@@ -235,16 +258,17 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
   const streamsOutput =
     (props.source !== undefined || environmentStreamsOutput) &&
     props.projectedItem.item.type === "command_execution";
+  const { ref, near } = useNearViewport(useFullTranscript());
   const fetched = useFetchedTurnItem(
     props.projectedItem,
     props.environmentId,
     props.source,
-    streamsOutput,
+    streamsOutput || !near,
   );
   const item = fetched.item;
   const outputState = fetched.output;
   return (
-    <div className="space-y-2 text-xs" data-v2-item-inspector={item.type}>
+    <div ref={ref} className="space-y-2 text-xs" data-v2-item-inspector={item.type}>
       {item.type === "reasoning" && item.text ? (
         <div className="rounded-md border border-border/45 bg-muted/15 p-2 italic text-muted-foreground">
           <ChatMarkdown
@@ -267,12 +291,16 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
           onImageExpand={props.onImageExpand}
           outputSlot={
             streamsOutput ? (
-              <CommandOutputPanel
-                environmentId={props.environmentId}
-                threadId={props.projectedItem.sourceThreadId}
-                itemId={props.projectedItem.sourceItemId}
-                source={props.source?.commandOutput}
-              />
+              near ? (
+                <CommandOutputPanel
+                  environmentId={props.environmentId}
+                  threadId={props.projectedItem.sourceThreadId}
+                  itemId={props.projectedItem.sourceItemId}
+                  source={props.source?.commandOutput}
+                />
+              ) : (
+                <div className="min-h-6" />
+              )
             ) : undefined
           }
         />

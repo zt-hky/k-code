@@ -125,7 +125,7 @@ it("lists working subagents, keeps settled ones collapsed, and opens a child thr
   await expect.element(screen.getByText("bash: vp test run apps/web")).toBeVisible();
   expect(screen.container.textContent).not.toContain("Reviewer");
 
-  await page.getByRole("button", { name: "Completed (2)" }).click();
+  await page.getByRole("button", { name: "Finished (2)" }).click();
   await expect.element(screen.getByText("Reviewer")).toBeVisible();
   await expect.element(screen.getByText(/GPT-5\.4/)).toBeVisible();
   await expect.element(screen.getByText("Looks fine")).toBeVisible();

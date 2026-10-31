@@ -29,6 +29,13 @@ describe("resolveEffortGlyph", () => {
     expect(resolveEffortGlyph(claude, "max")?.special).toBe("Max");
   });
 
+  it("names Auto instead of drawing it as a level above off", () => {
+    const omp = descriptor(["off", "auto", "minimal", "low", "medium", "high"]);
+    expect(resolveEffortGlyph(omp, "auto")).toMatchObject({ count: 4, special: "Auto" });
+    expect(resolveEffortGlyph(omp, "off")).toMatchObject({ count: 4, filled: 0, special: null });
+    expect(resolveEffortGlyph(omp, "minimal")).toMatchObject({ count: 4, filled: 1 });
+  });
+
   it("names Ultracode and Ultrathink instead of drawing a level", () => {
     expect(resolveEffortGlyph(claude, "ultracode")?.special).toBe("Ultracode");
     expect(resolveEffortGlyph(claude, "ultrathink")?.special).toBe("Ultrathink");

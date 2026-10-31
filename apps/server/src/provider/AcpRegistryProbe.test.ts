@@ -18,6 +18,7 @@ import {
   logoutAcpRegistry,
   normalizeAcpRegistryAuthMethods,
   normalizeAcpRegistryCommands,
+  normalizeAcpRegistrySession,
 } from "@t3tools/provider-acp-registry/testing";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 
@@ -316,6 +317,20 @@ describe("ACP Registry probe", () => {
         },
       ],
     });
+  });
+
+  it("strips leading private-use glyphs from native session titles", () => {
+    const normalize = (title: string | null | undefined) =>
+      normalizeAcpRegistrySession({
+        sessionId: "s1",
+        cwd: "/work/repo",
+        updatedAt: "2026-01-01T00:00:00Z",
+        ...(title === undefined ? {} : { title }),
+      })?.title;
+    expect(normalize("\u{F0866} \uE0A0 ATHENA: write SQL")).toBe("ATHENA: write SQL");
+    expect(normalize("Plain title")).toBe("Plain title");
+    expect(normalize("\uE0A0 \u{F0866}")).toBeNull();
+    expect(normalize(null)).toBeNull();
   });
 
   it.effect("lists native sessions and logs out through generic ACP lifecycle methods", () => {

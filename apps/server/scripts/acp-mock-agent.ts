@@ -25,6 +25,7 @@ const emitV2Fidelity = process.env.T3_ACP_EMIT_V2_FIDELITY === "1";
 const emitNotice = process.env.T3_ACP_EMIT_NOTICE === "1";
 const vibeRetryOutcome = process.env.T3_ACP_VIBE_RETRY_OUTCOME;
 const emitGenericToolPlaceholders = process.env.T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
+const emitLateGenericToolUpdate = process.env.T3_ACP_EMIT_LATE_GENERIC_TOOL_UPDATE === "1";
 const emitInTurnTaskOutputThenLateDuplicate =
   process.env.T3_ACP_EMIT_IN_TURN_TASKOUTPUT_THEN_LATE_DUPLICATE === "1";
 const emitBackgroundToolDuringAnswer =
@@ -1713,7 +1714,25 @@ const program = Effect.gen(function* () {
           },
         });
 
-        return yield* finishPrompt(requestedSessionId, "end_turn");
+        const finished = yield* finishPrompt(requestedSessionId, "end_turn");
+        if (emitLateGenericToolUpdate) {
+          // Like omp's background jobs: the call returned, then its settle frame arrives without rawInput.
+          yield* Effect.sleep("300 millis").pipe(
+            Effect.andThen(
+              agent.client.sessionUpdate({
+                sessionId: requestedSessionId,
+                update: {
+                  sessionUpdate: "tool_call_update",
+                  toolCallId,
+                  status: "failed",
+                  rawOutput: { settled: true },
+                },
+              }),
+            ),
+            Effect.forkDetach,
+          );
+        }
+        return finished;
       }
 
       if (emitInTurnTaskOutputThenLateDuplicate) {

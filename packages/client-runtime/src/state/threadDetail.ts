@@ -13,7 +13,12 @@ import {
   getUserQueuedThreadRuns,
   type ThreadQueueWorkflowState,
 } from "./threadWorkflows.ts";
-import { deriveThreadTurnSubagents, type ThreadTurnSubagents } from "./threadSubagents.ts";
+import {
+  deriveThreadAgentHub,
+  deriveThreadTurnSubagents,
+  type ThreadAgentHub,
+  type ThreadTurnSubagents,
+} from "./threadSubagents.ts";
 import {
   deriveThreadCheckpointSummaries,
   type ThreadCheckpointSummary,
@@ -331,6 +336,26 @@ export function createEnvironmentThreadDetailAtoms<E>(
     }).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-turn-subagents:${key}`));
   });
 
+  const agentHubAtomFamily = Atom.family((key: string) => {
+    let previous: Pick<OrchestrationV2ThreadProjection, "runs" | "subagents"> | null = null;
+    let value: ThreadAgentHub | null = null;
+    return Atom.make((get) => {
+      const projection = Option.getOrNull(get(threadStateValueAtomFamily(key)).data);
+      if (projection === null) {
+        previous = null;
+        value = null;
+      } else if (
+        projection.runs !== previous?.runs ||
+        projection.subagents !== previous?.subagents
+      ) {
+        const { runs, subagents } = projection;
+        previous = { runs, subagents };
+        value = deriveThreadAgentHub(previous);
+      }
+      return value;
+    }).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-agent-hub:${key}`));
+  });
+
   const checkpointSummariesAtomFamily = Atom.family((key: string) => {
     let previous: Pick<OrchestrationV2ThreadProjection, "checkpoints" | "messages"> | null = null;
     let value = EMPTY_CHECKPOINT_SUMMARIES;
@@ -436,6 +461,7 @@ export function createEnvironmentThreadDetailAtoms<E>(
     queueWorkflowAtom: (ref: ScopedThreadRef) => queueWorkflowAtomFamily(threadKey(ref)),
     queuedCountAtom: (ref: ScopedThreadRef) => queuedCountAtomFamily(threadKey(ref)),
     turnSubagentsAtom: (ref: ScopedThreadRef) => turnSubagentsAtomFamily(threadKey(ref)),
+    agentHubAtom: (ref: ScopedThreadRef) => agentHubAtomFamily(threadKey(ref)),
     checkpointSummariesAtom: (ref: ScopedThreadRef) =>
       checkpointSummariesAtomFamily(threadKey(ref)),
     stateAtom: (ref: ScopedThreadRef) => threadStateValueAtomFamily(threadKey(ref)),

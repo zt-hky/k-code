@@ -12,6 +12,7 @@ import { render } from "../../test/render";
 
 const commands = vi.hoisted(() => ({
   list: vi.fn(),
+  listAll: vi.fn(),
   import: vi.fn(),
   projects: vi.fn(),
   create: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock(import("../state/server"), async (original) => {
         canResume: true,
         canDelete: false,
         canListProjects: true,
+        canListAllSessions: true,
       },
       checkedAt: "2026-08-23T00:00:00.000Z",
       models: [],
@@ -75,13 +77,15 @@ vi.mock(import("../state/use-atom-command"), async (original) => {
     useAtomCommand: ((atom: unknown) =>
       atom === serverEnvironment.listAcpRegistrySessions
         ? commands.list
-        : atom === serverEnvironment.importAcpRegistrySession
-          ? commands.import
-          : atom === serverEnvironment.listAcpRegistryProjects
-            ? commands.projects
-            : atom === projectEnvironment.create
-              ? commands.create
-              : vi.fn()) as never,
+        : atom === serverEnvironment.listAllAcpRegistrySessions
+          ? commands.listAll
+          : atom === serverEnvironment.importAcpRegistrySession
+            ? commands.import
+            : atom === serverEnvironment.listAcpRegistryProjects
+              ? commands.projects
+              : atom === projectEnvironment.create
+                ? commands.create
+                : vi.fn()) as never,
   };
 });
 
@@ -110,6 +114,7 @@ const session = (
 });
 
 function setup() {
+  commands.listAll.mockReset();
   commands.projects.mockReset().mockResolvedValue({ _tag: "Success", value: { projects: [] } });
   commands.create.mockReset().mockResolvedValue({ _tag: "Success", value: undefined });
   commands.list.mockReset().mockResolvedValue({
@@ -152,7 +157,7 @@ it("lists native sessions newest first, filters, resumes and opens already-bound
   );
 
   await expect.element(page.getByText("Fix flaky tests")).toBeVisible();
-  await expect.element(page.getByText("Untitled session")).toBeVisible();
+  await expect.element(page.getByText(/^Untitled · /)).toBeVisible();
   await expect.element(page.getByText("Open", { exact: true })).toBeVisible();
   expect(commands.list).toHaveBeenCalledWith({
     environmentId,
@@ -164,7 +169,7 @@ it("lists native sessions newest first, filters, resumes and opens already-bound
       .elements()
       .map((element) => element.textContent),
   ).toEqual([
-    expect.stringContaining("Untitled session"),
+    expect.stringMatching(/^Untitled · /),
     expect.stringContaining("Refactor sidebar"),
     expect.stringContaining("Fix flaky tests"),
   ]);
@@ -253,4 +258,76 @@ it("offers agent projects not yet in T3 and adds one before reopening the dialog
       projectId: commands.create.mock.calls[0]![0].input.projectId,
     }),
   );
+});
+
+it("resumes a session from an unregistered folder by creating its project first", async () => {
+  setup();
+  commands.listAll.mockResolvedValue({
+    _tag: "Success",
+    value: {
+      sessions: [
+        {
+          ...session("dddddddd-4444", "Elsewhere task", "2026-08-23T00:00:00Z"),
+          cwd: "/work/elsewhere",
+          projectId: null,
+        },
+        {
+          ...session("eeeeeeee-5555", "Current task", "2026-08-19T00:00:00Z"),
+          cwd: "/work/current",
+          projectId,
+        },
+      ],
+      nextCursor: null,
+      canLoad: true,
+      canResume: true,
+      canDelete: false,
+    },
+  });
+  const onOpenThread = vi.fn();
+  await using _screen = await render(
+    <ResumeSessionDialog
+      environmentId={environmentId}
+      projectId={projectId}
+      projectName="omp"
+      open
+      onOpenChange={vi.fn()}
+      onOpenThread={onOpenThread}
+    />,
+  );
+
+  await expect.element(page.getByText("Fix flaky tests")).toBeVisible();
+  // The footer sits outside the unstyled test layout, so click the element directly.
+  (page.getByRole("button", { name: "All projects" }).element() as HTMLElement).click();
+  await expect.element(page.getByText("Elsewhere task")).toBeVisible();
+  await expect.element(page.getByText("Fix flaky tests")).not.toBeInTheDocument();
+  expect(commands.listAll).toHaveBeenCalledWith({ environmentId, input: { instanceId } });
+
+  await userEvent.click(page.getByText("Elsewhere task"));
+  await vi.waitFor(() => expect(onOpenThread).toHaveBeenCalledTimes(1));
+  expect(commands.create).toHaveBeenCalledWith({
+    environmentId,
+    input: expect.objectContaining({
+      title: "elsewhere",
+      workspaceRoot: "/work/elsewhere",
+      createWorkspaceRootIfMissing: false,
+    }),
+  });
+  expect(commands.import).toHaveBeenCalledWith({
+    environmentId,
+    input: {
+      instanceId,
+      projectId: commands.create.mock.calls[0]![0].input.projectId,
+      sessionId: "dddddddd-4444",
+      title: "Elsewhere task",
+      updatedAt: "2026-08-23T00:00:00Z",
+    },
+  });
+
+  await userEvent.click(page.getByText("Current task"));
+  await vi.waitFor(() => expect(commands.import).toHaveBeenCalledTimes(2));
+  expect(commands.create).toHaveBeenCalledTimes(1);
+  expect(commands.import).toHaveBeenLastCalledWith({
+    environmentId,
+    input: expect.objectContaining({ projectId, sessionId: "eeeeeeee-5555" }),
+  });
 });

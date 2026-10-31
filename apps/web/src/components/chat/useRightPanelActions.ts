@@ -333,6 +333,9 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       if (!event.repeat) closeRightPanelSurface(activeRightPanelSurface);
     },
     "diff.toggle": () => onToggleDiff(),
+    "agentHub.toggle": () => {
+      if (activeThreadRef) useRightPanelStore.getState().toggle(activeThreadRef, "agent-hub");
+    },
   } satisfies ChatShortcutCommands;
 
   return {

@@ -473,6 +473,7 @@ interface ThreadWorkLogProps {
   readonly workspaceRoot?: string | null | undefined;
   readonly copiedRowId: string | null;
   readonly expandedRows: Readonly<Record<string, boolean>>;
+  readonly fullTranscript: boolean;
   readonly rowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
   readonly scrollPositions: Map<string, ThreadWorkGroupScrollPosition>;
   readonly iconSubtleColor: ColorValue;
@@ -493,7 +494,8 @@ export function ThreadWorkLog(props: ThreadWorkLogProps) {
       row={row}
       anchorKey={props.anchorKey}
       copied={props.copiedRowId === row.id}
-      expanded={props.expandedRows[row.id] ?? false}
+      expanded={props.fullTranscript || (props.expandedRows[row.id] ?? false)}
+      fullTranscript={props.fullTranscript}
       environmentId={props.environmentId}
       iconSubtleColor={props.iconSubtleColor}
       onCopyRow={props.onCopyRow}
@@ -530,7 +532,10 @@ export function ThreadWorkLog(props: ThreadWorkLogProps) {
     props.activities.every((row) => row.projectedItem.item.type === "reasoning")
   ) {
     return (
-      <ScrollView nestedScrollEnabled className="ml-7 max-h-96 py-1">
+      <ScrollView
+        nestedScrollEnabled
+        className={props.fullTranscript ? "ml-7 py-1" : "ml-7 max-h-96 py-1"}
+      >
         {props.activities.map((row) => (
           <View key={row.id}>{props.renderReasoning(row.workEntry.detail ?? "")}</View>
         ))}
@@ -540,7 +545,7 @@ export function ThreadWorkLog(props: ThreadWorkLogProps) {
 
   return (
     <WorkLogBlock continues={props.continuesWorkLog}>
-      {props.activities[0]?.groupedToolDetail ? (
+      {props.activities[0]?.groupedToolDetail && !props.fullTranscript ? (
         <ThreadWorkGroupList
           activities={props.activities}
           edgeFadeColor={props.edgeFadeColor}
@@ -1194,7 +1199,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
             nestedScrollEnabled
             directionalLockEnabled
             showsVerticalScrollIndicator
-            className="max-h-60"
+            className={props.fullTranscript ? undefined : "max-h-60"}
             contentContainerStyle={{ paddingRight: 8 }}
           >
             {reasoning ? (

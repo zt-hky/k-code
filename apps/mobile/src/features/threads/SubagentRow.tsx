@@ -1,6 +1,7 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveProviderInstanceDisplayName } from "@t3tools/client-runtime/state/provider-instance-display";
 import { resolveSubagentMetadata } from "@t3tools/client-runtime/state/subagent-display";
+import { formatSubagentUsage } from "@t3tools/client-runtime/state/thread-subagents";
 import type { EnvironmentId, OrchestrationV2Subagent } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 import { View } from "react-native";
@@ -27,6 +28,7 @@ type SubagentRowSubagent = Pick<
   | "progress"
   | "result"
   | "remoteChild"
+  | "usage"
 >;
 
 export function SubagentRow(props: {
@@ -35,9 +37,12 @@ export function SubagentRow(props: {
   readonly elapsed: ReactNode;
   /** The task runs in a linked environment this app is connected to. */
   readonly canOpenRemote?: boolean;
+  /** "Agent i of N" when this agent is one of several from a single batch tool call. */
+  readonly batchHint?: string | undefined;
 }) {
   const presentation = resolveSubagentRowPresentation(props.subagent, props.canOpenRemote);
   const detail = subagentCardDetail(presentation.detail);
+  const usage = formatSubagentUsage(props.subagent.usage);
   return (
     <View className="flex-row gap-3">
       <View className="h-5 justify-center">
@@ -79,11 +84,16 @@ export function SubagentRow(props: {
           ) : null}
         </View>
         <SubagentMetadata environmentId={props.environmentId} subagent={props.subagent} />
+        {props.batchHint ? (
+          <Text className="text-xs text-foreground-muted">{props.batchHint}</Text>
+        ) : null}
+        {usage !== null ? <Text className="text-xs text-foreground-muted">{usage}</Text> : null}
         {detail ? (
           <Text
-            numberOfLines={3}
+            numberOfLines={presentation.live ? 6 : 3}
             className={cn(
-              "text-xs text-foreground-muted",
+              "text-xs",
+              presentation.live ? "text-foreground-secondary" : "text-foreground-muted",
               presentation.tone === "failed" && SUBAGENT_TONE_TEXT_CLASS.failed,
             )}
           >

@@ -26,6 +26,7 @@ import { restrictToFirstScrollableAncestor, restrictToHorizontalAxis } from "@dn
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  BotIcon,
   Smartphone,
   ChevronDown,
   ChevronLeft,
@@ -553,6 +554,8 @@ function surfaceTitle(
       );
     case "pull-request":
       return `#${surface.number}`;
+    case "agent-hub":
+      return "Agent Hub";
     case "pull-requests":
       return "Pull requests";
     case "device":
@@ -643,6 +646,8 @@ function SurfaceIcon({
           seed={pullRequestStatusSeed}
         />
       );
+    case "agent-hub":
+      return <BotIcon className="size-3 shrink-0" />;
     case "pull-requests":
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "device":

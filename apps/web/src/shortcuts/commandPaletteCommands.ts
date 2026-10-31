@@ -9,6 +9,7 @@ import { overlayModeForCommand } from "../components/CommandPalette.logic";
 import { APPEARANCE_OPTIONS, notifyThemeSaveFailure } from "../components/CommandPaletteThemeItems";
 import { toggleThemeEditorForTheme } from "../components/settings/themeEditorStore";
 import { toastManager } from "../components/ui/toast";
+import { toggleFullTranscript } from "../hooks/useFullTranscript";
 import { getThemeSnapshot, setAppearanceMode } from "../hooks/useTheme";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { type CommandHandler, type CommandScopeOptions, registerCommands } from "./dispatcher";
@@ -77,6 +78,11 @@ export function installCommandPaletteCommands(
           timeout: 1500,
         });
       },
+      "chat.fullTranscript.toggle": (event) => {
+        consume(event);
+        if (event.repeat) return;
+        toggleFullTranscript();
+      },
       "theme.select": (event) => {
         consume(event);
         if (event.repeat) return;
@@ -86,6 +92,11 @@ export function installCommandPaletteCommands(
         consume(event);
         const { theme, themeHalves, resolvedTheme } = getThemeSnapshot();
         toggleThemeEditorForTheme({ theme, themeHalves, initialAppearance: resolvedTheme });
+      },
+      "agents.open": (event) => {
+        consume(event);
+        dispatchCommandPalette({ _tag: "SetOpen", open: false });
+        void router.navigate({ to: "/agents", search: {} });
       },
       "usage.open": (event) => {
         consume(event);

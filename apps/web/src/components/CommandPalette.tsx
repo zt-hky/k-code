@@ -52,6 +52,7 @@ import {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
+  BotIcon,
   BugIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
@@ -67,6 +68,7 @@ import {
   MessageSquareIcon,
   PaletteIcon,
   RotateCcwIcon,
+  ScrollTextIcon,
   SettingsIcon,
   MonitorIcon,
   SquarePenIcon,
@@ -102,6 +104,7 @@ import {
 } from "./promptLinks/copyPromptLink";
 import { useClientSettings } from "../hooks/useSettings";
 import { useStableCallback } from "../hooks/useStableCallback";
+import { toggleFullTranscript, useFullTranscript } from "../hooks/useFullTranscript";
 import { readLocalApi } from "../localApi";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
@@ -410,6 +413,7 @@ function OpenCommandPaletteDialog(props: {
     setHighlightedItemValue(null);
   }
   const clientSettings = useClientSettings(selectCommandPaletteClientSettings);
+  const fullTranscript = useFullTranscript();
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -1223,6 +1227,19 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
+  actionItems.push({
+    kind: "action",
+    value: "action:toggle-full-transcript",
+    searchTerms: ["full transcript", "expand", "reasoning", "tool calls", "thinking", "output"],
+    title: fullTranscript ? "Hide full transcript" : "Show full transcript",
+    description: "Expand reasoning and tool calls with their full input and output",
+    icon: <ScrollTextIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "chat.fullTranscript.toggle",
+    run: async () => {
+      toggleFullTranscript();
+    },
+  });
+
   if (activeThreadKey !== null && supportsThreadFind) {
     actionItems.push({
       kind: "action",
@@ -1330,6 +1347,21 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:open-agent-hub",
+    searchTerms: ["agent hub", "agents", "subagents", "tasks"],
+    title: "Open Agent Hub",
+    disabled: activeThread === null,
+    icon: <BotIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      if (activeThread === null) return;
+      useRightPanelStore
+        .getState()
+        .open(scopeThreadRef(activeThread.environmentId, activeThread.id), "agent-hub");
+    },
+  });
 
   if (
     currentProjectEnvironmentId !== null &&
@@ -1517,6 +1549,18 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:open-running-agents",
+    searchTerms: ["running agents", "agents", "subagents", "live", "tasks", "hub"],
+    title: "Open running agents",
+    icon: <BotIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "agents.open",
+    run: async () => {
+      await navigate({ to: "/agents", search: {} });
+    },
+  });
 
   actionItems.push({
     kind: "action",

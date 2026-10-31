@@ -1,6 +1,6 @@
 import {
+  AcpRegistryListSessionsResult,
   AcpRegistryOperationError,
-  TextGenerationError,
   type ServerProvider,
 } from "@t3tools/contracts";
 import * as AcpRegistryRuntimeCoordinator from "@t3tools/provider-acp-registry/server/AcpRegistryRuntimeCoordinator";
@@ -32,12 +32,12 @@ import {
   makeProviderSnapshotSettingsSource,
   type ProviderSnapshotSettings,
 } from "@t3tools/provider-core/server/snapshotSettings";
-import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
@@ -54,12 +54,16 @@ import { makeOmpLogin } from "./login.ts";
 import {
   listAcpRegistryExtensions,
   listAcpRegistryProjects,
+  listAllAcpRegistrySessions,
   readAcpRegistryUsageAccounts,
   setAcpRegistryExtensionSource,
+  type OmpAllSessionsListing,
 } from "./management.ts";
 import { ompMaintenance } from "./maintenance.ts";
 import { toAcpRegistrySettings } from "./registrySettings.ts";
+import { makeOmpSessionFiles, ompAgentDir } from "./sessionFiles.ts";
 import { OMP_SKILL_PREFIXES } from "./skills.ts";
+import { makeOhMyPiTextGeneration } from "./textGeneration.ts";
 import {
   applyOhMyPiLiveConfiguration,
   buildOhMyPiSnapshot,
@@ -74,23 +78,8 @@ const decodeSettings = Schema.decodeSync(OhMyPiSettings);
 // Cache only successful probes so sign-in changes remain visible.
 const PROBE_SUCCESS_TTL_MS = 15 * 60 * 1_000;
 const SIGNED_IN_READ_TIMEOUT_MS = 15_000;
-
-const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
-  const unsupported = (operation: string) =>
-    Effect.fail(
-      new TextGenerationError({
-        operation,
-        detail: "Oh My Pi instances do not provide application text generation.",
-      }),
-    );
-  return {
-    generateCommitMessage: () => unsupported("generateCommitMessage"),
-    generatePrContent: () => unsupported("generatePrContent"),
-    generateBranchName: () => unsupported("generateBranchName"),
-    generateThreadTitle: () => unsupported("generateThreadTitle"),
-    generateReviewGuide: () => unsupported("generateReviewGuide"),
-  };
-};
+const ALL_SESSIONS_CACHE_TTL_MS = 30_000;
+const ALL_SESSIONS_PAGE_SIZE = 256;
 
 export type OhMyPiDriverEnv =
   | OhMyPiAdapterV2DriverEnv
@@ -227,6 +216,14 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
     // Readiness snapshots replace the published one before enrichment lands; keep the last read.
     const lastUsageAccounts = yield* Ref.make<ServerProvider["usageLimitAccounts"]>(undefined);
     const usageSessionId = yield* Ref.make<string | undefined>(undefined);
+    const allSessionsCache = yield* Ref.make<
+      { readonly expiresAt: number; readonly listing: OmpAllSessionsListing } | undefined
+    >(undefined);
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const agentDir = ompAgentDir(processEnvironment, path);
+    const sessionFiles =
+      agentDir === undefined ? undefined : makeOmpSessionFiles({ fileSystem, path, agentDir });
 
     // The login service and the snapshot depend on each other: sign-in refreshes the snapshot,
     // and the snapshot reads which providers are signed in.
@@ -253,6 +250,17 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       Effect.provideService(Crypto.Crypto, crypto),
     );
+    const textGeneration = yield* makeOhMyPiTextGeneration({
+      resolveSpawn: (cwd) =>
+        catalog.resolve(registrySettings, cwd, processEnvironment).pipe(
+          Effect.map(({ spawn }) => ({
+            command: spawn.command,
+            env: spawn.env ?? processEnvironment,
+            cwd,
+          })),
+          Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError),
+        ),
+    }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
 
     const readInstall = probeOhMyPiInstall(effectiveConfig, processEnvironment).pipe(
       provideSpawner,
@@ -485,6 +493,37 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
     );
     refreshSnapshot = snapshot.refresh.pipe(Effect.asVoid);
 
+    const listAllSessions = Effect.fn("OhMyPiDriver.listAllSessions")(function* (input: {
+      readonly cursor?: string;
+    }) {
+      const now = yield* Clock.currentTimeMillis;
+      const cached = yield* Ref.get(allSessionsCache);
+      // omp has no cursor for listAll: one fetch serves every page of a walk.
+      const listing =
+        input.cursor !== undefined && cached !== undefined && cached.expiresAt > now
+          ? cached.listing
+          : yield* provideAcpManagementServices(
+              listAllAcpRegistrySessions(managementInput(host.paths.cwd)),
+            ).pipe(
+              Effect.tap((fresh) =>
+                Ref.set(allSessionsCache, {
+                  expiresAt: now + ALL_SESSIONS_CACHE_TTL_MS,
+                  listing: fresh,
+                }),
+              ),
+            );
+      const parsedOffset = Number.parseInt(input.cursor ?? "0", 10);
+      const offset = Number.isSafeInteger(parsedOffset) && parsedOffset > 0 ? parsedOffset : 0;
+      const end = Math.min(offset + ALL_SESSIONS_PAGE_SIZE, listing.sessions.length);
+      return AcpRegistryListSessionsResult.make({
+        sessions: listing.sessions.slice(offset, end),
+        nextCursor: end < listing.sessions.length ? String(end) : null,
+        canLoad: listing.canLoad,
+        canResume: listing.canResume,
+        canDelete: listing.canDelete,
+      });
+    });
+
     return {
       instanceId,
       driverKind: OHMYPI_DRIVER_KIND,
@@ -494,9 +533,38 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
       enabled,
       snapshot,
       orchestrationAdapter,
-      textGeneration: makeUnsupportedTextGeneration(),
+      textGeneration,
       modelProviderLogin: login,
       acpSessionManagement: {
+        listAllSessions,
+        resolveFirstMessages: (sessionIds) =>
+          sessionFiles === undefined
+            ? Effect.succeed(new Map<string, string>())
+            : sessionFiles
+                .readFirstMessages(sessionIds)
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("could not read omp first messages", { cause }).pipe(
+                      Effect.as(new Map<string, string>() as ReadonlyMap<string, string>),
+                    ),
+                  ),
+                ),
+        renameSession: ({ sessionId, title }) =>
+          sessionFiles === undefined
+            ? Effect.void
+            : DateTime.now.pipe(
+                Effect.flatMap((now) =>
+                  sessionFiles.writeSessionTitle({
+                    sessionId,
+                    title,
+                    updatedAt: DateTime.formatIso(now),
+                  }),
+                ),
+                Effect.asVoid,
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("could not write omp session title", { cause }),
+                ),
+              ),
         listSessions: ({ cwd, cursor }) =>
           provideAcpManagementServices(
             listAcpRegistrySessions({

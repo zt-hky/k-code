@@ -1104,15 +1104,14 @@ const make = Effect.gen(function* () {
         return yield* new OrchestrationV2StopWorkflowError({ ...input, reason: "unavailable" });
       }
       const task = records.subagents.find((candidate) => candidate.id === input.subagentId);
-      if (
-        task === undefined ||
-        task.threadId !== input.threadId ||
-        task.workflow === undefined ||
-        task.status !== "running"
-      ) {
+      if (task === undefined || task.threadId !== input.threadId || task.status !== "running") {
         return yield* new OrchestrationV2StopWorkflowError({ ...input, reason: "not-running" });
       }
-      if (task.origin !== "provider_native" || task.driver !== "claudeAgent") {
+      // Claude stops only its workflow coordinators; other drivers opt in with `stopTask`.
+      if (task.driver === "claudeAgent" && task.workflow === undefined) {
+        return yield* new OrchestrationV2StopWorkflowError({ ...input, reason: "not-running" });
+      }
+      if (task.origin !== "provider_native") {
         return yield* new OrchestrationV2StopWorkflowError({ ...input, reason: "unsupported" });
       }
       const providerThreadId =

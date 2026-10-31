@@ -1308,6 +1308,7 @@ function renderFeedEntry(
   > & {
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
+    readonly fullTranscript: boolean;
     readonly workRowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
     readonly workGroupScrollPositions: Map<string, ThreadWorkGroupScrollPosition>;
     readonly terminalAssistantMessageIds: ReadonlySet<string>;
@@ -1563,7 +1564,7 @@ function renderFeedEntry(
           context={message.context}
           scheduledTaskId={presentation.scheduledTaskId}
           timestampLabel={timestampLabel}
-          expanded={props.expandedWorkRows[rowId] ?? false}
+          expanded={props.fullTranscript || (props.expandedWorkRows[rowId] ?? false)}
           onToggle={() => props.onToggleWorkRow(rowId, entry.id)}
           bubbleColor={userBubbleColor}
           bubbleMaxWidth={props.duoColumns ? "85%" : props.userBubbleMaxWidth}
@@ -1580,7 +1581,9 @@ function renderFeedEntry(
     if (isUser) {
       const enterAnimated = isFreshTimestamp(message.createdAt);
       const foldRowId = presentation.attribution === "agent" ? `agent:${message.id}` : null;
-      const foldExpanded = foldRowId !== null && (props.expandedWorkRows[foldRowId] ?? false);
+      const foldExpanded =
+        foldRowId !== null &&
+        (props.fullTranscript || (props.expandedWorkRows[foldRowId] ?? false));
       const bubbleBodyVisible = foldRowId === null || foldExpanded;
       const intentBadge = resolveUserMessageIntentBadge(message.inputIntent);
       const referenceIds = new Set(
@@ -1899,6 +1902,7 @@ function renderFeedEntry(
       anchorKey={entry.id}
       copiedRowId={props.copiedRowId}
       expandedRows={props.expandedWorkRows}
+      fullTranscript={props.fullTranscript}
       rowSizing={props.workRowSizing}
       scrollPositions={props.workGroupScrollPositions}
       iconSubtleColor={iconSubtleColor}
@@ -2155,6 +2159,7 @@ function useThreadFeedPresentation(
   props: ThreadFeedProps,
   expandedTurnIds: ReadonlySet<RunId>,
   expandedWorkGroups: Record<string, boolean>,
+  fullTranscript: boolean,
 ) {
   const [feedCache] = useState(createThreadFeedCache);
   return appendPendingThreadMessages(
@@ -2170,6 +2175,7 @@ function useThreadFeedPresentation(
       props.activeWorkStartedAt,
       props.runlessWorkActive ?? false,
       feedCache,
+      fullTranscript,
     ),
     props.feed,
     props.queuedMessages,
@@ -2209,7 +2215,7 @@ export const ThreadFeed = memo(function ThreadFeed({
   const userScrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerMaterialVisibleRef = useRef(false);
   const { width: windowWidth, fontScale } = useWindowDimensions();
-  const { appearance } = useAppearancePreferences();
+  const { appearance, fullTranscript } = useAppearancePreferences();
   const workRowSizing = deriveThreadWorkLogSizing({
     baseFontSize: appearance.baseFontSize,
     fontScale,
@@ -2724,6 +2730,7 @@ export const ThreadFeed = memo(function ThreadFeed({
     copiedRowId,
     expandedWorkGroups,
     expandedWorkRows,
+    fullTranscript,
     workRowSizing,
     iconSubtleColor,
     markdownStyles,
@@ -2813,7 +2820,7 @@ export const ThreadFeed = memo(function ThreadFeed({
   const { jumpToMessageId } = props;
   const jumpReady = !!jumpToMessageId && loadedListKey === `${feedThreadKey}:filled`;
   const presentedFeed = appendGuestPendingMessages(
-    useThreadFeedPresentation(props, expandedTurnIds, expandedWorkGroups),
+    useThreadFeedPresentation(props, expandedTurnIds, expandedWorkGroups, fullTranscript),
     guestShare,
   );
   const jumpRunId =
@@ -3098,6 +3105,7 @@ export const ThreadFeed = memo(function ThreadFeed({
     if (entry.type === "html-render") {
       return htmlRenderRowHeight(htmlRenderFrameHeight(entry.render, contentWidth));
     }
+    if (fullTranscript) return undefined;
     if (workRowSizing.fixedRowHeight === undefined || entry.checkpointSummary) {
       return undefined;
     }
@@ -3122,7 +3130,7 @@ export const ThreadFeed = memo(function ThreadFeed({
           return undefined;
         }
         return entry.activities.some(
-          (activity) => activity.prominent || expandedWorkRows[activity.id],
+          (activity) => activity.prominent || fullTranscript || expandedWorkRows[activity.id],
         )
           ? undefined
           : collapsedWorkLogHeight(entry.activities, entry.continuesWorkLog);
@@ -3136,18 +3144,28 @@ export const ThreadFeed = memo(function ThreadFeed({
   // re-caches old sizes.
   const { textSizeKey } = workRowSizing;
   const hasHtmlRenders = presentedFeed.some((entry) => entry.type === "html-render");
-  const previousRowGeometry = useRef({ textSizeKey, contentWidth });
+  const previousRowGeometry = useRef({ textSizeKey, contentWidth, fullTranscript });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears LegendList size caches and starts a reflow after the commit that brings new row geometry
   useLayoutEffect(() => {
     const previous = previousRowGeometry.current;
-    if (previous.textSizeKey === textSizeKey && previous.contentWidth === contentWidth) return;
-    previousRowGeometry.current = { textSizeKey, contentWidth };
+    if (
+      previous.textSizeKey === textSizeKey &&
+      previous.contentWidth === contentWidth &&
+      previous.fullTranscript === fullTranscript
+    ) {
+      return;
+    }
+    previousRowGeometry.current = { textSizeKey, contentWidth, fullTranscript };
     // Rows re-rendered at this width are measured in the next commit, after this effect.
     if (previous.contentWidth !== contentWidth) beginReflow();
-    if (previous.textSizeKey !== textSizeKey || hasHtmlRenders) {
+    if (
+      previous.textSizeKey !== textSizeKey ||
+      previous.fullTranscript !== fullTranscript ||
+      hasHtmlRenders
+    ) {
       listRef.current?.clearCaches({ mode: "sizes" });
     }
-  }, [textSizeKey, contentWidth, hasHtmlRenders, beginReflow, listRef]);
+  }, [textSizeKey, contentWidth, fullTranscript, hasHtmlRenders, beginReflow, listRef]);
 
   const renderItem = (info: { item: ThreadFeedRow; index: number }) => (
     <Animated.View
@@ -3169,6 +3187,7 @@ export const ThreadFeed = memo(function ThreadFeed({
             threadId: props.threadId,
             copiedRowId,
             expandedWorkRows,
+            fullTranscript,
             workRowSizing,
             workGroupScrollPositions,
             terminalAssistantMessageIds,
@@ -3290,12 +3309,13 @@ export const ThreadFeed = memo(function ThreadFeed({
             viewabilityConfig={THREAD_MEDIA_VIEWABILITY_CONFIG}
             keyExtractor={(entry) => entry.id}
             getItemType={(entry) => {
-              if (entry.type !== "message") return entry.type;
-              if (isCompactionCommandFeedEntry(entry)) return "message:compaction";
+              const suffix = fullTranscript ? ":full" : "";
+              if (entry.type !== "message") return `${entry.type}${suffix}`;
+              if (isCompactionCommandFeedEntry(entry)) return `message:compaction${suffix}`;
               const { attribution } = resolveUserMessagePresentation(entry.message);
               return attribution === "automation" || attribution === "agent"
-                ? `message:${attribution}`
-                : `message:${entry.message.role}`;
+                ? `message:${attribution}${suffix}`
+                : `message:${entry.message.role}${suffix}`;
             }}
             getFixedItemSize={getFixedItemSize}
             // Native layout transitions retain stale row positions during sync, even at duration zero.
