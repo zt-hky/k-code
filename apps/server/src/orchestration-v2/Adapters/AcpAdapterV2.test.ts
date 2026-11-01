@@ -2810,6 +2810,70 @@ describe("AcpAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.effect(
+    "merges the flavor's session metadata into the provider thread when a turn settles",
+    () =>
+      Effect.gen(function* () {
+        const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const path = yield* Path.Path;
+        const selfInvocation = yield* resolveSelfInvocation();
+        const mockAgentPath = yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        );
+        const instanceId = ProviderInstanceId.make("acp-test-session-metadata");
+        const adapter = yield* makeAcpAdapterV2({
+          instanceId,
+          flavor: {
+            driver: ACP_TEST_DRIVER,
+            capabilities: AcpProviderCapabilitiesV2,
+            readSessionMetadata: () => Effect.succeed({ credentialPins: { anthropic: "hash-1" } }),
+            makeRuntime: makeMockRuntime({ childProcessSpawner, mockAgentPath }),
+          },
+          selfInvocation,
+        });
+        const threadId = ThreadId.make("thread-acp-session-metadata");
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: "default" } as const;
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make("provider-session-acp-session-metadata"),
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        yield* runtime.startTurn(
+          makeTurnInput({
+            threadId,
+            providerThread,
+            instanceId,
+            runtimePolicy,
+            now: yield* DateTime.now,
+          }),
+        );
+        const events = yield* runtime.events.pipe(
+          Stream.takeUntil((event) => event.type === "turn.terminal"),
+          Stream.runCollect,
+        );
+        const settled = [...events]
+          .reverse()
+          .find((event) => event.type === "provider_thread.updated");
+        assert.deepStrictEqual(
+          settled?.type === "provider_thread.updated"
+            ? settled.providerThread.nativeMetadata?.credentialPins
+            : undefined,
+          { anthropic: "hash-1" },
+        );
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.live(
     "loads the persisted ACP session during startup without creating a throwaway session",
     () =>

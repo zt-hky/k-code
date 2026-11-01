@@ -310,7 +310,11 @@ import { useRightPanelSurfaceClose } from "../hooks/useRightPanelSurfaceClose";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { modelFallbackBannerItem } from "./chat/ComposerUsageLimits";
 import { ThreadWorkPanelsDock } from "./chat/ThreadWorkPanels";
-import { modelUpstreamProvider, sessionPinSelectors } from "./chat/sessionPin";
+import {
+  modelUpstreamProvider,
+  pendingSessionPinSelectors,
+  threadCredentialPin,
+} from "./chat/sessionPin";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
 import {
@@ -3858,7 +3862,11 @@ export default function ChatView(props: ChatViewProps) {
                 sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                 contextWindow: activeContextWindow,
                 upstreamProvider: modelUpstreamProvider(activeModelSlug),
-                sessionPinSelectors: sessionPinSelectors(timelineMessages),
+                pendingSessionPinSelectors: pendingSessionPinSelectors(timelineMessages),
+                credentialPin: threadCredentialPin(
+                  activeProviderThread,
+                  modelUpstreamProvider(activeModelSlug),
+                ),
               }}
             />
 

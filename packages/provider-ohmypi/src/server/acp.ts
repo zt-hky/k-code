@@ -11,6 +11,7 @@ import type * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
+import { readOmpCredentialPins } from "./credentialPin.ts";
 import { ompSubagentStopMarkerName } from "./stopExtension.ts";
 
 export const OMP_MODE_OPTION_ID = "mode";
@@ -408,31 +409,92 @@ interface OmpSessionDirectoryInput {
   readonly agentDir: string;
 }
 
-/** Finds `<agentDir>/sessions/<cwd>/<stamp>_<sessionId>/`, where omp saves a session's children. */
-function makeOmpSessionDirectoryFinder(input: OmpSessionDirectoryInput) {
+/** Finds the `<agentDir>/sessions/<cwd>/` entry of a session whose name ends with `suffix(sessionId)`. */
+function makeOmpSessionPathFinder(
+  input: OmpSessionDirectoryInput,
+  suffix: (sessionId: string) => string,
+  type: "File" | "Directory",
+) {
   const { fileSystem, path } = input;
   const sessionsRoot = path.join(input.agentDir, "sessions");
-  const sessionDirs = new Map<string, string>();
+  const found = new Map<string, string>();
 
   return Effect.fnUntraced(function* (sessionId: string) {
-    const cached = sessionDirs.get(sessionId);
+    const cached = found.get(sessionId);
     if (cached !== undefined) return cached;
-    const suffix = `_${sessionId}`;
+    const wanted = suffix(sessionId);
     for (const project of yield* fileSystem.readDirectory(sessionsRoot)) {
       const projectDir = path.join(sessionsRoot, project);
       const match = (yield* fileSystem
         .readDirectory(projectDir)
         .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))).find((name) =>
-        name.endsWith(suffix),
+        name.endsWith(wanted),
       );
       if (match === undefined) continue;
-      const dir = path.join(projectDir, match);
-      if ((yield* fileSystem.stat(dir)).type !== "Directory") continue;
-      sessionDirs.set(sessionId, dir);
-      return dir;
+      const entry = path.join(projectDir, match);
+      if ((yield* fileSystem.stat(entry)).type !== type) continue;
+      found.set(sessionId, entry);
+      return entry;
     }
     return undefined;
   });
+}
+
+/** Finds `<agentDir>/sessions/<cwd>/<stamp>_<sessionId>/`, where omp saves a session's children. */
+const makeOmpSessionDirectoryFinder = (input: OmpSessionDirectoryInput) =>
+  makeOmpSessionPathFinder(input, (sessionId) => `_${sessionId}`, "Directory");
+
+/**
+ * Reads the account that last served each upstream from the `credential_pin` entries omp appends to
+ * `<agentDir>/sessions/<cwd>/<stamp>_<sessionId>.jsonl`. The file only grows, so each read starts
+ * where the previous one stopped; a shorter file means omp rewrote it and is read afresh.
+ */
+export function makeOmpSessionMetadataReader(
+  input: OmpSessionDirectoryInput,
+): NonNullable<AcpAdapterV2Flavor["readSessionMetadata"]> {
+  const { fileSystem } = input;
+  const findSessionFile = makeOmpSessionPathFinder(
+    input,
+    (sessionId) => `_${sessionId}.jsonl`,
+    "File",
+  );
+  const progress = new Map<
+    string,
+    { readonly offset: number; readonly pins: Readonly<Record<string, string>> }
+  >();
+
+  return (sessionId) =>
+    Effect.gen(function* () {
+      const file = yield* findSessionFile(sessionId);
+      if (file === undefined) return undefined;
+      const size = Number((yield* fileSystem.stat(file)).size);
+      const known = progress.get(sessionId);
+      const previous = known !== undefined && known.offset <= size ? known : undefined;
+      const offset = previous?.offset ?? 0;
+      let end = offset;
+      let pins = previous?.pins ?? {};
+      if (size > offset) {
+        const bytes = yield* Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* fileSystem.open(file, { flag: "r" });
+            return Option.getOrUndefined(
+              yield* handle.readAlloc(size - offset, { position: BigInt(offset) }),
+            );
+          }),
+        );
+        // A trailing line without its newline is still being written; read it next time.
+        const lastNewline = bytes === undefined ? -1 : bytes.lastIndexOf(NEWLINE);
+        if (bytes !== undefined && lastNewline >= 0) {
+          pins = readOmpCredentialPins(
+            textDecoder.decode(bytes.subarray(0, lastNewline)).split("\n"),
+            { ...pins },
+          );
+          end = offset + lastNewline + 1;
+        }
+      }
+      progress.set(sessionId, { offset: end, pins });
+      return Object.keys(pins).length === 0 ? undefined : { credentialPins: pins };
+    }).pipe(Effect.orElseSucceed(() => undefined));
 }
 
 /**

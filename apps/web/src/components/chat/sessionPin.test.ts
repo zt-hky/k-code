@@ -1,36 +1,78 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { pinnedAccount, sessionPinSelectors } from "./sessionPin";
+import { pendingSessionPinSelectors, pinnedAccount, threadCredentialPin } from "./sessionPin";
 
 const user = (text: string) => ({ role: "user", text });
 const accounts = [
-  { nativeProvider: "anthropic", email: "a@x.com", nativeAccountId: "acc-a" },
-  { nativeProvider: "anthropic", email: "b@x.com", nativeAccountId: "acc-b" },
-  { nativeProvider: "openai-codex", email: "b@x.com", nativeAccountId: "acc-c" },
+  { nativeProvider: "anthropic", email: "a@x.com", nativeAccountId: "acc-a", credentialPin: "h-a" },
+  { nativeProvider: "anthropic", email: "b@x.com", nativeAccountId: "acc-b", credentialPin: "h-b" },
+  {
+    nativeProvider: "openai-codex",
+    email: "b@x.com",
+    nativeAccountId: "acc-c",
+    credentialPin: "h-c",
+  },
 ];
 
-describe("thread session pin", () => {
-  it("collects only user pin commands, newest first, case-insensitively", () => {
+describe("pending session pins", () => {
+  it("collects user pin commands newest first until a prompt that reaches a model", () => {
     expect(
-      sessionPinSelectors([
+      pendingSessionPinSelectors([
+        user("/session pin old@x.com"),
+        user("fix the bug"),
         user("/session pin A@x.com"),
         { role: "assistant", text: "/session pin ignored@x.com" },
-        user("fix the bug"),
+        user("/usage"),
         user("  /SESSION  pin  acc-b "),
         user("/session pin"),
       ]),
     ).toEqual(["acc-b", "a@x.com"]);
   });
 
-  it("resolves the newest pin within the model's upstream, by email or account id", () => {
-    expect(pinnedAccount(["b@x.com", "a@x.com"], accounts, "anthropic")).toBe(accounts[1]);
-    expect(pinnedAccount(["acc-a"], accounts, "anthropic")).toBe(accounts[0]);
-    expect(pinnedAccount(["b@x.com"], accounts, "openai-codex")).toBe(accounts[2]);
+  it("is empty once a prompt follows the pin", () => {
+    expect(pendingSessionPinSelectors([user("/session pin a@x.com"), user("go")])).toEqual([]);
+  });
+});
+
+describe("pinnedAccount", () => {
+  const none = { pendingSelectors: [], credentialPin: undefined };
+
+  it("prefers a pending pin, matched within the upstream by email or account id", () => {
+    expect(
+      pinnedAccount(accounts, "anthropic", { pendingSelectors: ["b@x.com"], credentialPin: "h-a" }),
+    ).toBe(accounts[1]);
+    expect(pinnedAccount(accounts, "anthropic", { ...none, pendingSelectors: ["acc-a"] })).toBe(
+      accounts[0],
+    );
+    expect(
+      pinnedAccount(accounts, "openai-codex", { ...none, pendingSelectors: ["b@x.com"] }),
+    ).toBe(accounts[2]);
   });
 
-  it("skips pins that name no account of the upstream, such as positional ones", () => {
-    expect(pinnedAccount(["2", "acc-c", "a@x.com"], accounts, "anthropic")).toBe(accounts[0]);
-    expect(pinnedAccount(["2"], accounts, "anthropic")).toBeUndefined();
-    expect(pinnedAccount(["a@x.com"], accounts, null)).toBeUndefined();
+  it("falls back to the account omp recorded, only within the upstream", () => {
+    expect(pinnedAccount(accounts, "anthropic", { ...none, credentialPin: "h-b" })).toBe(
+      accounts[1],
+    );
+    expect(pinnedAccount(accounts, "anthropic", { ...none, credentialPin: "h-c" })).toBeUndefined();
+  });
+
+  it("skips pending pins that name no account, such as positional ones", () => {
+    expect(
+      pinnedAccount(accounts, "anthropic", {
+        pendingSelectors: ["2", "acc-c"],
+        credentialPin: "h-a",
+      }),
+    ).toBe(accounts[0]);
+    expect(pinnedAccount(accounts, null, { ...none, credentialPin: "h-a" })).toBeUndefined();
+  });
+});
+
+describe("threadCredentialPin", () => {
+  it("reads the hash recorded for the upstream", () => {
+    const thread = { nativeMetadata: { credentialPins: { anthropic: "h-a" } } };
+    expect(threadCredentialPin(thread, "anthropic")).toBe("h-a");
+    expect(threadCredentialPin(thread, "openai-codex")).toBeUndefined();
+    expect(threadCredentialPin(thread, null)).toBeUndefined();
+    expect(threadCredentialPin(undefined, "anthropic")).toBeUndefined();
   });
 });

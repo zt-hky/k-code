@@ -56,6 +56,8 @@ export const ServerProviderUsageAccount = Schema.Struct({
   nativeProvider: TrimmedNonEmptyString,
   nativeProviderLabel: Schema.optional(TrimmedNonEmptyString),
   nativeAccountId: Schema.optional(TrimmedNonEmptyString),
+  /** omp's `credential_pin` hash of this login; matches a thread's `nativeMetadata.credentialPins`. */
+  credentialPin: Schema.optional(TrimmedNonEmptyString),
   email: Schema.optional(TrimmedNonEmptyString),
   plan: Schema.optional(TrimmedNonEmptyString),
   usageLimits: ServerProviderUsageLimits,
@@ -139,6 +141,7 @@ export const UsageLimitsReport = Schema.Struct({
       email: Schema.optional(TrimmedNonEmptyString),
       nativeProvider: Schema.optional(TrimmedNonEmptyString),
       nativeAccountId: Schema.optional(TrimmedNonEmptyString),
+      credentialPin: Schema.optional(TrimmedNonEmptyString),
       sourceLabel: Schema.optional(TrimmedNonEmptyString),
       instanceId: Schema.optional(ProviderInstanceId),
       resetCreditInput: Schema.optional(ProviderConsumeResetCreditInput),

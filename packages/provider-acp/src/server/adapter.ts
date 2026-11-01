@@ -354,6 +354,13 @@ export interface AcpAdapterV2Flavor {
     readonly nextByte: number;
   }>;
   /**
+   * Reads thread metadata an agent keeps in its own session file, read after each turn settles.
+   * The keys it returns replace the same keys of the provider thread's `nativeMetadata`.
+   */
+  readonly readSessionMetadata?: (
+    sessionId: string,
+  ) => Effect.Effect<Partial<OrchestrationV2ProviderThreadNativeMetadata> | undefined>;
+  /**
    * Stops one running child agent without ending the parent turn. `sessionId` is the parent's
    * native session; `agentIds` are the child's `transcriptAgentIds`.
    */
@@ -7393,6 +7400,17 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             threadId: context.input.threadId,
             providerTurn: turn,
           });
+          const sessionMetadata =
+            flavor.readSessionMetadata === undefined
+              ? undefined
+              : yield* flavor.readSessionMetadata(context.nativeThreadId);
+          if (sessionMetadata !== undefined) {
+            const nativeMetadata = { ...context.nativeMetadata, ...sessionMetadata };
+            context.nativeMetadata = nativeMetadata;
+            yield* Ref.update(nativeMetadataBySessionId, (current) =>
+              new Map(current).set(context.nativeThreadId, nativeMetadata),
+            );
+          }
           const updatedProviderThread: OrchestrationV2ProviderThread = {
             ...context.input.providerThread,
             providerSessionId: input.providerSessionId,

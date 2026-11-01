@@ -45,6 +45,7 @@ import {
   extractOmpProposedPlanMarkdown,
   extractOmpSubagentUpdate,
   makeOmpSubagentStopper,
+  makeOmpSessionMetadataReader,
   makeOmpSubagentTranscriptReader,
   OMP_MODE_OPTION_ID,
 } from "./acp.ts";
@@ -168,6 +169,10 @@ export const makeOhMyPiAdapterV2 = Effect.fn("makeOhMyPiAdapterV2")(function* (
     fileSystem === undefined || path === undefined || agentDir === undefined
       ? undefined
       : makeOmpSubagentTranscriptReader({ fileSystem, path, agentDir });
+  const readSessionMetadata =
+    fileSystem === undefined || path === undefined || agentDir === undefined
+      ? undefined
+      : makeOmpSessionMetadataReader({ fileSystem, path, agentDir });
   const stopSubagent =
     fileSystem === undefined ||
     path === undefined ||
@@ -202,6 +207,7 @@ export const makeOhMyPiAdapterV2 = Effect.fn("makeOhMyPiAdapterV2")(function* (
     supportsCompaction: true,
     extractSubagentUpdate: extractOmpSubagentUpdate,
     ...(readSubagentTranscript === undefined ? {} : { readSubagentTranscript }),
+    ...(readSessionMetadata === undefined ? {} : { readSessionMetadata }),
     ...(stopSubagent === undefined ? {} : { stopSubagent }),
     rewriteUserText: (text: string) => Effect.succeed(rewriteOmpSkillMentions(text, skillNames)),
     normalizeSessionUpdate: (notification) => {

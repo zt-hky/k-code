@@ -7,6 +7,8 @@ import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { ompCredentialPinHash } from "./credentialPin.ts";
+
 export const OMP_USAGE_METHOD = "_omp/usage";
 
 const OmpUsageWindow = Schema.Struct({
@@ -144,6 +146,12 @@ export function ompUsageToAccounts(
     const email = metadataText(metadata, "email");
     const nativeAccountId = metadataText(metadata, "accountId");
     const identity = nativeAccountId ?? email;
+    const credentialPin = ompCredentialPinHash(provider, {
+      accountId: nativeAccountId,
+      email,
+      orgId: metadataText(metadata, "orgId"),
+      projectId: metadataText(metadata, "projectId"),
+    });
     const base = `${provider}:${identity ?? "default"}`;
     const occurrence = seen.get(base) ?? 0;
     seen.set(base, occurrence + 1);
@@ -157,6 +165,7 @@ export function ompUsageToAccounts(
         nativeProvider: provider,
         ...(UPSTREAM_LABELS[provider] ? { nativeProviderLabel: UPSTREAM_LABELS[provider] } : {}),
         ...(nativeAccountId ? { nativeAccountId } : {}),
+        ...(credentialPin ? { credentialPin } : {}),
         ...(email ? { email } : {}),
         ...(plan ? { plan } : {}),
         usageLimits: {

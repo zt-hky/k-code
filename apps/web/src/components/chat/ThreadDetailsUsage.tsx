@@ -36,8 +36,10 @@ export interface ThreadDetailsUsageInput {
   readonly contextWindow: ContextWindowSnapshot | null;
   /** Upstream login of the selected model (`<upstream>/<model>`); picks the account of a multi-login harness. */
   readonly upstreamProvider?: string | null;
-  /** `/session pin` selectors from this thread, newest first; the pinned account's limits win. */
-  readonly sessionPinSelectors?: readonly string[];
+  /** `/session pin` commands awaiting their first model turn, newest first. */
+  readonly pendingSessionPinSelectors?: readonly string[];
+  /** omp's hash of the account that last served this thread for `upstreamProvider`. */
+  readonly credentialPin?: string | undefined;
 }
 
 /**
@@ -50,7 +52,8 @@ export function ThreadDetailsUsage({
   sources,
   contextWindow,
   upstreamProvider = null,
-  sessionPinSelectors = [],
+  pendingSessionPinSelectors = [],
+  credentialPin,
 }: ThreadDetailsUsageInput) {
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
@@ -69,7 +72,10 @@ export function ThreadDetailsUsage({
   );
   const limits =
     (
-      pinnedAccount(sessionPinSelectors, upstreamAccounts, upstreamProvider) ??
+      pinnedAccount(upstreamAccounts, upstreamProvider, {
+        pendingSelectors: pendingSessionPinSelectors,
+        credentialPin,
+      }) ??
       upstreamAccounts[0] ??
       instanceAccounts[0]
     )?.limits ??

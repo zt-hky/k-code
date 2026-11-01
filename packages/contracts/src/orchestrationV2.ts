@@ -1029,6 +1029,8 @@ export const OrchestrationV2ProviderThreadNativeMetadata = Schema.Struct({
   claudeAttachmentBudget: Schema.optional(
     Schema.Struct({ bytesUsed: NonNegativeInt, pagesUsed: NonNegativeInt }),
   ),
+  /** Hash of the account that last served the thread, per upstream provider (Oh My Pi). */
+  credentialPins: Schema.optional(Schema.Record(Schema.String, TrimmedNonEmptyString)),
 });
 export type OrchestrationV2ProviderThreadNativeMetadata =
   typeof OrchestrationV2ProviderThreadNativeMetadata.Type;

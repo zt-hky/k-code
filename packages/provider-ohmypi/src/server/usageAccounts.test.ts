@@ -133,6 +133,18 @@ describe("ompUsageToAccounts", () => {
     expect(accounts[3]?.usageLimits.checkedAt).toBe("2026-10-27T12:00:00.000Z");
   });
 
+  it("derives the hash omp records in a session's credential_pin from the full identity tuple", () => {
+    expect(accounts.map((account) => account.credentialPin)).toEqual([
+      "013de68e32d9fce662f328355393c7480032600f483a4f04c5d2006e79c2ac89",
+      "c8696a23449ea16a42e74de22fe2ba16dd259e0d907d98c8c70ebac5808420a1",
+      "b1078a751c92215201a45607c54da3af1c887138f28e96d701ab9e0bd429fcf0",
+      "3967bf936d1ecce956b1a0513a17d0855157eeea28b43d19394203e31aa3192d",
+    ]);
+    expect(
+      ompUsageToAccounts({ reports: [{ provider: "other-llm", limits: [] }] }, fallback, now)[0],
+    ).not.toHaveProperty("credentialPin");
+  });
+
   it("uses the hub's own driver for unknown upstreams and ignores a malformed response", () => {
     const [unknown] = ompUsageToAccounts(
       { reports: [{ provider: "other-llm", limits: [] }] },

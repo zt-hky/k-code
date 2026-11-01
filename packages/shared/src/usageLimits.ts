@@ -934,6 +934,7 @@ export function collectProviderUsageLimits(
         sourceLabel: provider.displayName?.trim() || provider.instanceId,
         nativeProvider: account.nativeProvider,
         ...(account.nativeAccountId ? { nativeAccountId: account.nativeAccountId } : {}),
+        ...(account.credentialPin ? { credentialPin: account.credentialPin } : {}),
         ...(account.plan ? { plan: account.plan } : {}),
         ...(account.email ? { email: account.email } : {}),
         instanceId: provider.instanceId,

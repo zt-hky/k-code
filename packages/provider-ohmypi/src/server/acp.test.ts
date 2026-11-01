@@ -9,6 +9,7 @@ import {
   extractOmpProposedPlanMarkdown,
   extractOmpSubagentUpdate,
   makeOmpSubagentStopper,
+  makeOmpSessionMetadataReader,
   makeOmpSubagentTranscriptReader,
 } from "./acp.ts";
 import { ompSubagentStopMarkerName } from "./stopExtension.ts";
@@ -440,6 +441,39 @@ describe("omp subagent transcripts", () => {
       expect(
         (yield* read({ sessionId: "missing", agentId: "Scout", fromByte: 0 })).entries,
       ).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+});
+
+describe("omp session metadata", () => {
+  it.effect("tracks the newest account per upstream across incremental reads", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const agentDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-omp-metadata-" });
+      const projectDir = path.join(agentDir, "sessions", "-repo");
+      yield* fileSystem.makeDirectory(projectDir, { recursive: true });
+      const file = path.join(projectDir, "2026-01-01T00-00-00-000Z_s1.jsonl");
+      const pin = (provider: string, hash: string) =>
+        `${JSON.stringify({ type: "credential_pin", provider, hash })}\n`;
+      yield* fileSystem.writeFileString(
+        file,
+        `{"type":"session"}\n${pin("anthropic", "a1")}${pin("anthropic", "a2")}{"type":"credential_pin","provider":"openai-codex","ha`,
+      );
+
+      const read = makeOmpSessionMetadataReader({ fileSystem, path, agentDir });
+      expect(yield* read("s1")).toEqual({ credentialPins: { anthropic: "a2" } });
+
+      yield* fileSystem.writeFileString(
+        file,
+        `sh":"c1"}\n${pin("anthropic", "a3")}${pin("openai-codex", "c2")}`,
+        { flag: "a" },
+      );
+      expect(yield* read("s1")).toEqual({
+        credentialPins: { anthropic: "a3", "openai-codex": "c2" },
+      });
+
+      expect(yield* read("missing")).toBeUndefined();
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 });
