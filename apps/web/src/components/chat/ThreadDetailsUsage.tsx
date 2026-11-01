@@ -21,6 +21,7 @@ import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
+import { pinnedAccount } from "./sessionPin";
 
 const PACE_LABEL: Record<LimitPace, string> = {
   ahead: "Ahead of pace",
@@ -35,6 +36,8 @@ export interface ThreadDetailsUsageInput {
   readonly contextWindow: ContextWindowSnapshot | null;
   /** Upstream login of the selected model (`<upstream>/<model>`); picks the account of a multi-login harness. */
   readonly upstreamProvider?: string | null;
+  /** `/session pin` selectors from this thread, newest first; the pinned account's limits win. */
+  readonly sessionPinSelectors?: readonly string[];
 }
 
 /**
@@ -47,6 +50,7 @@ export function ThreadDetailsUsage({
   sources,
   contextWindow,
   upstreamProvider = null,
+  sessionPinSelectors = [],
 }: ThreadDetailsUsageInput) {
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
@@ -60,11 +64,14 @@ export function ThreadDetailsUsage({
   // upstream decides which one this thread draws from.
   const instanceAccounts =
     report?.accounts.filter((entry) => entry.instanceId === providerInstanceId) ?? [];
+  const upstreamAccounts = instanceAccounts.filter(
+    (entry) => upstreamProvider !== null && entry.nativeProvider === upstreamProvider,
+  );
   const limits =
     (
-      instanceAccounts.find(
-        (entry) => upstreamProvider !== null && entry.nativeProvider === upstreamProvider,
-      ) ?? instanceAccounts[0]
+      pinnedAccount(sessionPinSelectors, upstreamAccounts, upstreamProvider) ??
+      upstreamAccounts[0] ??
+      instanceAccounts[0]
     )?.limits ??
     providers.find((provider) => provider.instanceId === providerInstanceId)?.usageLimits;
   const notice = limits ? limitsNotice(limits) : null;
