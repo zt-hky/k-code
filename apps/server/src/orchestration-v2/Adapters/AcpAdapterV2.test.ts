@@ -2826,7 +2826,12 @@ describe("AcpAdapterV2", () => {
           flavor: {
             driver: ACP_TEST_DRIVER,
             capabilities: AcpProviderCapabilitiesV2,
-            readSessionMetadata: () => Effect.succeed({ credentialPins: { anthropic: "hash-1" } }),
+            readSessionMetadata: () =>
+              Effect.succeed({
+                accountPins: {
+                  anthropic: { hash: "hash-1", recordedAt: "2026-11-01T03:00:00.000Z" },
+                },
+              }),
             makeRuntime: makeMockRuntime({ childProcessSpawner, mockAgentPath }),
           },
           selfInvocation,
@@ -2867,9 +2872,9 @@ describe("AcpAdapterV2", () => {
           .find((event) => event.type === "provider_thread.updated");
         assert.deepStrictEqual(
           settled?.type === "provider_thread.updated"
-            ? settled.providerThread.nativeMetadata?.credentialPins
+            ? settled.providerThread.nativeMetadata?.accountPins
             : undefined,
-          { anthropic: "hash-1" },
+          { anthropic: { hash: "hash-1", recordedAt: "2026-11-01T03:00:00.000Z" } },
         );
       }).pipe(Effect.provide(layerTest), Effect.scoped),
   );

@@ -27,29 +27,45 @@ export function sessionPinCommandText(account: UsageLimitsAccount): string {
 const SESSION_PIN_ARGUMENT = /^\/session\s+pin\s+(\S.*)$/i;
 
 /**
- * Selectors of the `/session pin <email|account id>` commands sent since the last prompt that
- * reached a model, newest first. omp records the serving account only when a model answers, so
- * until then these are the only sign of the new pin.
+ * Selector of the `/session pin` that still decides `upstream`'s account: newer than omp's record
+ * and not yet followed by a completed prompt to that upstream, which makes omp record the serving
+ * account. Messages run oldest to newest; the scan stops where omp's record begins.
  */
-export function pendingSessionPinSelectors(
-  messages: ReadonlyArray<{ readonly role: string; readonly text: string }>,
-): string[] {
-  const selectors: string[] = [];
+export function activeSessionPinSelector(
+  messages: ReadonlyArray<{
+    readonly role: string;
+    readonly text: string;
+    readonly createdAt: string;
+    readonly runId: string | null;
+  }>,
+  runs: ReadonlyArray<{
+    readonly id: string;
+    readonly status: string;
+    readonly modelSelection: { readonly model: string };
+  }>,
+  upstream: string | null,
+  recordedAt: string | undefined,
+): string | undefined {
+  if (upstream === null) return undefined;
+  const recorded = recordedAt === undefined ? Number.NEGATIVE_INFINITY : Date.parse(recordedAt);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
-    if (message.role !== "user") continue;
+    if (Date.parse(message.createdAt) <= recorded) return undefined;
+    if (message.role !== "user" || message.runId === null) continue;
+    const run = runs.find((candidate) => candidate.id === message.runId);
+    if (run === undefined || modelUpstreamProvider(run.modelSelection.model) !== upstream) continue;
     const text = message.text.trim();
     const selector = SESSION_PIN_ARGUMENT.exec(text)?.[1]?.trim().toLowerCase();
-    if (selector) selectors.push(selector);
-    else if (!text.startsWith("/")) break;
+    if (selector !== undefined) return selector;
+    if (!text.startsWith("/") && run.status === "completed") return undefined;
   }
-  return selectors;
+  return undefined;
 }
 
 /**
- * The account serving this thread for `upstream`: a pin command not yet followed by a model turn,
- * else the account omp last recorded for it (`credentialPin`). A positional selector
- * (`/session pin 2`) names no account, so it is skipped.
+ * The account serving this thread for `upstream`: the one an active `/session pin` names, else
+ * the one omp last recorded (`credentialPin`). A positional selector (`/session pin 2`) names no
+ * account, so omp's record decides.
  */
 export function pinnedAccount<
   T extends Pick<
@@ -59,30 +75,31 @@ export function pinnedAccount<
 >(
   accounts: readonly T[],
   upstream: string | null,
-  pin: {
-    readonly pendingSelectors: readonly string[];
-    readonly credentialPin: string | undefined;
-  },
+  pin: { readonly selector: string | undefined; readonly credentialPin: string | undefined },
 ): T | undefined {
   if (upstream === null) return undefined;
   const ofUpstream = accounts.filter((account) => account.nativeProvider === upstream);
-  for (const selector of pin.pendingSelectors) {
-    const match = ofUpstream.find((account) =>
-      [account.email, account.nativeAccountId].some((value) => value?.toLowerCase() === selector),
-    );
-    if (match) return match;
-  }
-  return pin.credentialPin === undefined
-    ? undefined
-    : ofUpstream.find((account) => account.credentialPin === pin.credentialPin);
+  const { selector, credentialPin } = pin;
+  return (
+    (selector === undefined
+      ? undefined
+      : ofUpstream.find((account) =>
+          [account.email, account.nativeAccountId].some(
+            (value) => value?.toLowerCase() === selector,
+          ),
+        )) ??
+    (credentialPin === undefined
+      ? undefined
+      : ofUpstream.find((account) => account.credentialPin === credentialPin))
+  );
 }
 
-/** omp's hash of the account that last served the thread for `upstream`. */
-export function threadCredentialPin(
+/** The account omp last recorded as serving the thread for `upstream`. */
+export function threadAccountPin(
   providerThread:
     | { readonly nativeMetadata?: OrchestrationV2ProviderThread["nativeMetadata"] }
     | undefined,
   upstream: string | null,
-): string | undefined {
-  return upstream === null ? undefined : providerThread?.nativeMetadata?.credentialPins?.[upstream];
+) {
+  return upstream === null ? undefined : providerThread?.nativeMetadata?.accountPins?.[upstream];
 }

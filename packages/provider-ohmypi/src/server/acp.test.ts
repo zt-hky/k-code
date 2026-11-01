@@ -454,25 +454,44 @@ describe("omp session metadata", () => {
       const projectDir = path.join(agentDir, "sessions", "-repo");
       yield* fileSystem.makeDirectory(projectDir, { recursive: true });
       const file = path.join(projectDir, "2026-01-01T00-00-00-000Z_s1.jsonl");
-      const pin = (provider: string, hash: string) =>
-        `${JSON.stringify({ type: "credential_pin", provider, hash })}\n`;
+      const pin = (provider: string, hash: string, second: number) =>
+        `${JSON.stringify({
+          type: "credential_pin",
+          timestamp: `2026-11-01T03:00:0${second}.000Z`,
+          provider,
+          hash,
+        })}\n`;
+      const foreign = `${JSON.stringify({
+        type: "custom",
+        data: { kind: "credential_pin", provider: "anthropic", hash: "bogus" },
+      })}\n`;
       yield* fileSystem.writeFileString(
         file,
-        `{"type":"session"}\n${pin("anthropic", "a1")}${pin("anthropic", "a2")}{"type":"credential_pin","provider":"openai-codex","ha`,
+        `{"type":"session"}\n${pin("anthropic", "a1", 1)}${pin("anthropic", "a2", 2)}${foreign}{"type":"credential_pin","timestamp":"2026-11-01T03:00:03.000Z","provider":"openai-codex","ha`,
       );
 
       const read = makeOmpSessionMetadataReader({ fileSystem, path, agentDir });
-      expect(yield* read("s1")).toEqual({ credentialPins: { anthropic: "a2" } });
+      expect(yield* read("s1")).toEqual({
+        accountPins: { anthropic: { hash: "a2", recordedAt: "2026-11-01T03:00:02.000Z" } },
+      });
 
       yield* fileSystem.writeFileString(
         file,
-        `sh":"c1"}\n${pin("anthropic", "a3")}${pin("openai-codex", "c2")}`,
+        `sh":"c1"}\n${pin("anthropic", "a3", 4)}${pin("openai-codex", "c2", 5)}`,
         { flag: "a" },
       );
       expect(yield* read("s1")).toEqual({
-        credentialPins: { anthropic: "a3", "openai-codex": "c2" },
+        accountPins: {
+          anthropic: { hash: "a3", recordedAt: "2026-11-01T03:00:04.000Z" },
+          "openai-codex": { hash: "c2", recordedAt: "2026-11-01T03:00:05.000Z" },
+        },
       });
-
+      expect(yield* read("s1")).toEqual({
+        accountPins: {
+          anthropic: { hash: "a3", recordedAt: "2026-11-01T03:00:04.000Z" },
+          "openai-codex": { hash: "c2", recordedAt: "2026-11-01T03:00:05.000Z" },
+        },
+      });
       expect(yield* read("missing")).toBeUndefined();
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );

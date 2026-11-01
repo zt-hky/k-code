@@ -311,9 +311,9 @@ import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/Compos
 import { modelFallbackBannerItem } from "./chat/ComposerUsageLimits";
 import { ThreadWorkPanelsDock } from "./chat/ThreadWorkPanels";
 import {
+  activeSessionPinSelector,
   modelUpstreamProvider,
-  pendingSessionPinSelectors,
-  threadCredentialPin,
+  threadAccountPin,
 } from "./chat/sessionPin";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
@@ -383,6 +383,7 @@ import {
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_MODELS: ServerProvider["models"] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
+const EMPTY_RUNS: ReadonlyArray<never> = [];
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
 
 const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
@@ -1560,6 +1561,14 @@ export default function ChatView(props: ChatViewProps) {
   const timelineEntries = isServerThread ? serverTimelineEntries : draftTimelineEntries;
   const timelineMessages = timelineEntries.flatMap((entry) =>
     entry.kind === "message" ? [entry.message] : [],
+  );
+  const usageUpstreamProvider = modelUpstreamProvider(activeModelSlug);
+  const usageAccountPin = threadAccountPin(activeProviderThread, usageUpstreamProvider);
+  const usageSessionPinSelector = activeSessionPinSelector(
+    timelineMessages,
+    serverProjection?.runs ?? EMPTY_RUNS,
+    usageUpstreamProvider,
+    usageAccountPin?.recordedAt,
   );
   const timelineEmpty = timelineEntries.length === 0 && !hasStreamedTimelineRows;
   const displayedTimelineKey = activeThreadKey ?? routeThreadKey;
@@ -3861,12 +3870,9 @@ export default function ChatView(props: ChatViewProps) {
                 providers: providerStatuses,
                 sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                 contextWindow: activeContextWindow,
-                upstreamProvider: modelUpstreamProvider(activeModelSlug),
-                pendingSessionPinSelectors: pendingSessionPinSelectors(timelineMessages),
-                credentialPin: threadCredentialPin(
-                  activeProviderThread,
-                  modelUpstreamProvider(activeModelSlug),
-                ),
+                upstreamProvider: usageUpstreamProvider,
+                sessionPinSelector: usageSessionPinSelector,
+                credentialPin: usageAccountPin?.hash,
               }}
             />
 

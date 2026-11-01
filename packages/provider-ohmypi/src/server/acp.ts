@@ -11,7 +11,7 @@ import type * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
-import { readOmpCredentialPins } from "./credentialPin.ts";
+import { type OmpAccountPin, readOmpAccountPins } from "./credentialPin.ts";
 import { ompSubagentStopMarkerName } from "./stopExtension.ts";
 
 export const OMP_MODE_OPTION_ID = "mode";
@@ -460,7 +460,7 @@ export function makeOmpSessionMetadataReader(
   );
   const progress = new Map<
     string,
-    { readonly offset: number; readonly pins: Readonly<Record<string, string>> }
+    { readonly offset: number; readonly pins: Readonly<Record<string, OmpAccountPin>> }
   >();
 
   return (sessionId) =>
@@ -485,15 +485,12 @@ export function makeOmpSessionMetadataReader(
         // A trailing line without its newline is still being written; read it next time.
         const lastNewline = bytes === undefined ? -1 : bytes.lastIndexOf(NEWLINE);
         if (bytes !== undefined && lastNewline >= 0) {
-          pins = readOmpCredentialPins(
-            textDecoder.decode(bytes.subarray(0, lastNewline)).split("\n"),
-            { ...pins },
-          );
+          pins = readOmpAccountPins(bytes.subarray(0, lastNewline + 1), { ...pins });
           end = offset + lastNewline + 1;
         }
       }
       progress.set(sessionId, { offset: end, pins });
-      return Object.keys(pins).length === 0 ? undefined : { credentialPins: pins };
+      return Object.keys(pins).length === 0 ? undefined : { accountPins: pins };
     }).pipe(Effect.orElseSucceed(() => undefined));
 }
 

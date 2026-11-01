@@ -56,7 +56,7 @@ export const ServerProviderUsageAccount = Schema.Struct({
   nativeProvider: TrimmedNonEmptyString,
   nativeProviderLabel: Schema.optional(TrimmedNonEmptyString),
   nativeAccountId: Schema.optional(TrimmedNonEmptyString),
-  /** omp's `credential_pin` hash of this login; matches a thread's `nativeMetadata.credentialPins`. */
+  /** omp's `credential_pin` hash of this login; matches a thread's `nativeMetadata.accountPins`. */
   credentialPin: Schema.optional(TrimmedNonEmptyString),
   email: Schema.optional(TrimmedNonEmptyString),
   plan: Schema.optional(TrimmedNonEmptyString),
