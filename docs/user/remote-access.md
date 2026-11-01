@@ -296,6 +296,10 @@ reports what it would change.
 The browser always runs in Chrome's sandbox. Where you cannot change the host,
 set `T3CODE_SERVER_BROWSER_SANDBOX=0` for the environment to run without it.
 
+On Linux hosts with a compatible Vulkan GPU and permission to access its render device,
+set `T3CODE_SERVER_BROWSER_GPU=vulkan` to enable hardware rendering in the server browser.
+The default remains software rendering. GPU drivers may be unstable under heavy workloads.
+
 ## Connect an outside agent
 
 Claude Code, Codex, ChatGPT and other agents K-code did not start can drive

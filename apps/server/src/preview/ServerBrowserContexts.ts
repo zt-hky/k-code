@@ -92,7 +92,9 @@ export class ServerBrowserContexts {
       executable,
       env,
       args: [
-        "--disable-gpu",
+        ...(env.T3CODE_SERVER_BROWSER_GPU === "vulkan"
+          ? ["--enable-features=Vulkan", "--use-angle=vulkan", "--disable-vulkan-surface"]
+          : ["--disable-gpu"]),
         "--force-device-scale-factor=2",
         "--disable-blink-features=AutomationControlled",
       ],
