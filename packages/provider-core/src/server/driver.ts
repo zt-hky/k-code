@@ -13,7 +13,7 @@ import type {
   OmpLoginSignOutResult,
   OmpLoginState,
   ProviderDriverKind,
-  ProviderInstanceEnvironment,
+  ResolvedProviderInstanceEnvironment,
   ProviderInstanceId,
   ServerProvider,
   ServerProviderWorkspaceSnapshot,
@@ -150,7 +150,7 @@ export interface ProviderDriverCreateInput<Config> {
   readonly instanceId: ProviderInstanceId;
   readonly displayName: string | undefined;
   readonly accentColor?: string | undefined;
-  readonly environment: ProviderInstanceEnvironment;
+  readonly environment: ResolvedProviderInstanceEnvironment;
   readonly enabled: boolean;
   readonly config: Config;
 }

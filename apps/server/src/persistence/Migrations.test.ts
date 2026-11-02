@@ -8,7 +8,7 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
-import WebPushSubscriptions from "./Migrations/074_WebPushSubscriptions.ts";
+import WebPushSubscriptions from "./Migrations/078_WebPushSubscriptions.ts";
 
 const v2Migrations = migrationManifest.filter(([id]) => id >= 55);
 const newerMigrationId = Math.max(...migrationManifest.map(([id]) => id)) + 1;
@@ -46,26 +46,25 @@ const schemaNames = Effect.gen(function* () {
 
 const expectedSchemaNames = [...activeTurnItemIndexNames, "web_push_subscriptions"];
 
-describe("Web Push migration id 73 collision", () => {
-  it.effect("heals a database that recorded 73 as WebPushSubscriptions", () =>
+const migrationsAfter = (id: number) => migrationManifest.filter(([entryId]) => entryId > id);
+
+describe("Web Push migration id collisions", () => {
+  // Fork builds recorded Web Push at 73, then at 74, before upstream took each id.
+  it.effect.each([73, 74])("heals a database that recorded %i as WebPushSubscriptions", (staleId) =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 72 });
-      // What fork builds wrote: the table, a subscription, and 73 recorded as web push.
+      yield* runMigrations({ toMigrationInclusive: staleId - 1 });
       yield* WebPushSubscriptions;
       yield* sql`
         INSERT INTO web_push_subscriptions (endpoint, session_id, p256dh, auth, created_at)
         VALUES ('https://push.example/a', 'session-1', 'p', 'a', '2026-10-01T00:00:00.000Z')
       `;
       yield* sql`
-        INSERT INTO effect_sql_migrations (migration_id, name) VALUES (73, 'WebPushSubscriptions')
+        INSERT INTO effect_sql_migrations (migration_id, name)
+        VALUES (${staleId}, 'WebPushSubscriptions')
       `;
-      assert.deepStrictEqual(yield* schemaNames, ["web_push_subscriptions"]);
 
-      assert.deepStrictEqual(yield* runMigrations(), [
-        [73, "ActiveTurnItemIndexes"],
-        [74, "WebPushSubscriptions"],
-      ]);
+      assert.deepStrictEqual(yield* runMigrations(), migrationsAfter(staleId - 1));
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.deepStrictEqual(yield* schemaNames, expectedSchemaNames);
       assert.strictEqual((yield* sql`SELECT endpoint FROM web_push_subscriptions`).length, 1);
@@ -81,17 +80,17 @@ describe("Web Push migration id 73 collision", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
-  it.effect("upgrades an upstream-only database at 73", () =>
+  it.effect("upgrades an upstream-only database", () =>
     Effect.gen(function* () {
       yield* runMigrations({ toMigrationInclusive: 73 });
       assert.deepStrictEqual(yield* schemaNames, activeTurnItemIndexNames);
-      assert.deepStrictEqual(yield* runMigrations(), [[74, "WebPushSubscriptions"]]);
+      assert.deepStrictEqual(yield* runMigrations(), migrationsAfter(73));
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.deepStrictEqual(yield* schemaNames, expectedSchemaNames);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
-  it.effect("refuses to reconcile 73 when later migrations are recorded", () =>
+  it.effect("refuses to reconcile a stale id when later migrations are recorded", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 72 });

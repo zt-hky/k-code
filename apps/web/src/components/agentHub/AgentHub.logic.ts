@@ -155,7 +155,6 @@ export interface LiveAgentParent {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
   readonly threadId: ThreadId;
-  readonly rootThreadId: ThreadId;
   readonly title: string;
 }
 
@@ -186,7 +185,7 @@ export function collectLiveAgentParents(
   const byKey = new Map<string, ShellForLiveAgents>();
   for (const shell of shells) byKey.set(`${shell.environmentId}:${shell.id}`, shell);
   const parents = new Map<string, LiveAgentParent>();
-  const add = (shell: ShellForLiveAgents, threadId: ThreadId, rootThreadId: ThreadId) => {
+  const add = (shell: ShellForLiveAgents, threadId: ThreadId) => {
     if (scope.environmentId !== undefined && shell.environmentId !== scope.environmentId) return;
     if (scope.projectId !== undefined && shell.projectId !== scope.projectId) return;
     const key = `${shell.environmentId}:${threadId}`;
@@ -195,15 +194,14 @@ export function collectLiveAgentParents(
       environmentId: shell.environmentId,
       projectId: shell.projectId,
       threadId,
-      rootThreadId,
       title: byKey.get(key)?.title ?? "Thread",
     });
   };
   for (const shell of shells) {
-    if (hostsLiveAgents(shell)) add(shell, shell.id, shell.lineage.rootThreadId);
-    const { parentThreadId, rootThreadId, relationshipToParent } = shell.lineage;
+    if (hostsLiveAgents(shell)) add(shell, shell.id);
+    const { parentThreadId, relationshipToParent } = shell.lineage;
     if (relationshipToParent === "subagent" && parentThreadId !== null) {
-      if (isLiveSubagentShell(shell.source)) add(shell, parentThreadId, rootThreadId);
+      if (isLiveSubagentShell(shell.source)) add(shell, parentThreadId);
     }
   }
   return [...parents.values()].toSorted(

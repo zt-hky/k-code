@@ -18,7 +18,6 @@ import type { ReactNode } from "react";
 import { type RightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
 import { useThreadProjection } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
-import { useThreadFamily } from "../../state/threads";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { AgentElapsed } from "../chat/AgentElapsed";
 import { Button } from "../ui/button";
@@ -170,10 +169,6 @@ export function AgentHubPanel(props: {
   const { threadRef, surface } = props;
   const projection = useThreadProjection(threadRef)?.projection;
   const providers = useEnvironmentProviders().get(threadRef.environmentId);
-  useThreadFamily(
-    threadRef.environmentId,
-    projection?.thread.lineage.rootThreadId ?? threadRef.threadId,
-  );
   const hub = projection ? deriveThreadAgentHub(projection) : null;
   const technical = surface.mode === "technical";
   const view = surface.view === "activity" ? "activity" : "grid";

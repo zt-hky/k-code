@@ -23,7 +23,7 @@ export type ComposerTriggerKind =
   | "slash-command"
   | "slash-argument"
   | "skill";
-export type ComposerSlashCommand = "model" | "plan" | "default" | "loop";
+export type ComposerSlashCommand = "model" | "plan" | "default" | "loop" | "side" | "btw";
 export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
 
 export interface ComposerTrigger {
@@ -333,9 +333,15 @@ export function composerStateAtPromptEnd(
   };
 }
 
+/** `/side [prompt]`, or its alias `/btw [prompt]`, as the whole message. */
+export function parseSideChatCommand(text: string): { prompt: string } | null {
+  const match = /^\/(?:side|btw)(?:\s+([\s\S]*))?$/i.exec(text.trim());
+  return match ? { prompt: match[1]?.trim() ?? "" } : null;
+}
+
 export function parseStandaloneComposerSlashCommand(
   text: string,
-): Exclude<ComposerSlashCommand, "model" | "loop"> | null {
+): Exclude<ComposerSlashCommand, "model" | "loop" | "side" | "btw"> | null {
   const match = /^\/(plan|default)\s*$/i.exec(text.trim());
   if (!match) {
     return null;
