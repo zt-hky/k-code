@@ -12,7 +12,7 @@ import { McpAppFrame } from "./McpAppFrame";
 import { checkpointFileTotals } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { ChangedFilesCard } from "./ChangedFilesTree";
 import { useFileContextMenuHandler } from "../../fileContextMenu";
-import { useProject, useThreadShell } from "../../state/entities";
+import { useAssistantMessageText, useProject, useThreadShell } from "../../state/entities";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { AssistantCitationSource } from "./AssistantCitationSource";
 import { resolveAssistantMessageCopyState } from "./MessagesTimeline.logic";
@@ -28,8 +28,13 @@ import { MessageImageGrid } from "./MessageImageGrid";
 export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const hasImages = (row.message.attachments ?? []).some(isImageAttachment);
-  const messageText =
-    row.message.text || (row.message.streaming || hasImages ? "" : "(empty response)");
+  // The timeline holds a streaming message's row while only its text grows.
+  const liveText = useAssistantMessageText(
+    row.message.streaming ? ctx.threadRef : null,
+    row.projectedItem?.item.id,
+  );
+  const text = liveText ?? row.message.text;
+  const messageText = text || (row.message.streaming || hasImages ? "" : "(empty response)");
 
   return (
     <>
@@ -80,6 +85,13 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             projectedItem={row.projectedItem}
             message={row.message}
             showCopyButton={row.showAssistantCopyButton}
+            copyStreaming={row.assistantCopyStreaming}
+          />
+        ) : row.showAssistantTimestamp ? (
+          <AssistantMessageMeta
+            className="mt-1.5"
+            message={row.message}
+            showCopyButton={false}
             copyStreaming={row.assistantCopyStreaming}
           />
         ) : null}

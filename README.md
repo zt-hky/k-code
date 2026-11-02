@@ -5,7 +5,7 @@
 <p align="center"><strong>The open GUI for your coding agents.</strong></p>
 
 <p align="center">
-  Run Claude Code, Codex, Cursor, Oh My Pi, OpenCode and more from one fast app — on desktop, in the browser, or from your phone.
+  Run Claude Code, Codex, Cursor, Grok Build, Oh My Pi, OpenCode, Google Antigravity, fx and more from one fast app — on desktop, in the browser, or from your phone.
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@ K-code is an agent harness control surface. It drives the coding agents already 
 
 ## Features
 
-- **Many agents, one app.** Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, and any ACP agent.
+- **Many agents, one app.** Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, fx, and any ACP agent.
 - **Oh My Pi, first class.** Oh My Pi (`omp`) sessions, models, thinking levels and subagents are supported directly, not through a lowest-common-denominator shim.
 - **Agent Hub.** See every running agent and subagent in a live grid: current tool, progress, latest thinking, and replies, with room for as many panes as you have agents.
 - **Stop a single subagent.** Cancel one subagent without ending the whole turn, on agents that support it.
@@ -43,6 +43,7 @@ Install and authenticate at least one agent before use:
 - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 - Oh My Pi: install [Oh My Pi](https://github.com/can1357/oh-my-pi) and sign in with `omp`
 - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
+- fx: install [fx](https://fx.sh) and run `fx login` on the machine running the K-code server ([setup guide](./docs/user/providers-fx.md))
 
 ### Command line
 

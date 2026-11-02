@@ -1,5 +1,5 @@
 import { type EnvironmentId } from "@t3tools/contracts";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useAssetUrls } from "../../assets/assetUrls";
 import {
   createMessageAttachmentPreviewProjector,
@@ -31,62 +31,23 @@ export function useMessageImagePreviews(
   return (withPreviews.attachments ?? []).filter(isImageAttachment);
 }
 
-// Drawn inside the media so dark screenshots keep an edge on the dark background.
-const MEDIA_EDGE_CLASS_NAME =
-  "relative after:pointer-events-none after:absolute after:inset-0 after:z-10 after:rounded-[inherit] after:ring-1 after:ring-inset after:ring-black/9 dark:after:ring-white/12";
-
-export function MessageImageGridView(props: {
-  readonly images: ReadonlyArray<ChatImageAttachment>;
+export function MessageImageGrid(props: {
+  readonly environmentId: EnvironmentId;
+  readonly message: ChatMessage;
   readonly onImageExpand: (preview: ExpandedImagePreview) => void;
-  readonly children?: ReactNode;
-  /** Images or videos sent without words show as media, not as a bubble around them. */
-  readonly mediaOnly?: boolean;
-  /** A lone image keeps its own shape; a 4:3 crop hides most of a wide screenshot. */
-  readonly loneImage?: boolean;
-  /** Several images sent without words share one rounded shape, split by hairlines. */
-  readonly collage?: boolean;
 }) {
-  const { images, onImageExpand, mediaOnly = false, loneImage = false, collage = false } = props;
+  const images = useMessageImagePreviews(props.environmentId, props.message);
+  if (images.length === 0) return null;
   return (
-    <div
-      className={cn(
-        "grid",
-        !mediaOnly
-          ? "mb-2 max-w-[210px] grid-cols-2 gap-2"
-          : loneImage
-            ? "max-w-full"
-            : collage
-              ? cn(
-                  MEDIA_EDGE_CLASS_NAME,
-                  "w-80 max-w-full gap-px overflow-hidden rounded-2xl bg-black/9 dark:bg-white/12",
-                  images.length === 2
-                    ? "auto-rows-[12rem] grid-cols-2"
-                    : images.length === 3
-                      ? "auto-rows-[calc(6rem-0.5px)] grid-cols-[3fr_2fr]"
-                      : "auto-rows-[6rem] grid-cols-2",
-                )
-              : "w-80 max-w-full grid-cols-2 gap-2",
-      )}
-    >
-      {images.map((image, index) => (
+    <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
+      {images.map((image) => (
         <div
           key={image.id}
           className={cn(
             "bg-background/70",
             image.source?.kind === "snap-shot" && image.previewUrl
               ? cn(SNAP_SHOT_ATTACHMENT_FRAME_CLASS, "col-span-2")
-              : loneImage
-                ? cn(MEDIA_EDGE_CLASS_NAME, "overflow-hidden rounded-2xl")
-                : collage
-                  ? cn(
-                      "overflow-hidden bg-background",
-                      images.length === 3 && index === 0 && "row-span-2",
-                      images.length > 3 &&
-                        images.length % 2 === 1 &&
-                        index === images.length - 1 &&
-                        "col-span-2",
-                    )
-                  : "aspect-[4/3] overflow-hidden rounded-lg border border-border/80",
+              : "aspect-[4/3] overflow-hidden rounded-lg border border-border/80",
           )}
         >
           {image.previewUrl ? (
@@ -97,7 +58,7 @@ export function MessageImageGridView(props: {
               onClick={() => {
                 const preview = buildExpandedImagePreview(images, image.id);
                 if (!preview) return;
-                onImageExpand(preview);
+                props.onImageExpand(preview);
               }}
             >
               {/* Isolate the thumbnail raster from nearby activity repaints in Chromium. */}
@@ -108,23 +69,11 @@ export function MessageImageGridView(props: {
                 alt={image.name}
                 decoding="async"
                 loading="lazy"
-                className={cn(
-                  "block transform-gpu",
-                  // A fixed height keeps the row from growing when the image loads.
-                  loneImage
-                    ? "h-48 w-auto min-w-24 max-w-full object-cover"
-                    : "size-full object-cover",
-                )}
+                className="block size-full transform-gpu object-cover"
               />
             </button>
           ) : (
-            <div
-              className={cn(
-                "flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-2xs text-muted-foreground/70",
-                loneImage && "h-48 w-64 max-w-full",
-                collage && "h-full",
-              )}
-            >
+            <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-2xs text-muted-foreground/70">
               {image.name}
             </div>
           )}
@@ -133,17 +82,6 @@ export function MessageImageGridView(props: {
           ) : null}
         </div>
       ))}
-      {props.children}
     </div>
   );
-}
-
-export function MessageImageGrid(props: {
-  readonly environmentId: EnvironmentId;
-  readonly message: ChatMessage;
-  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
-}) {
-  const images = useMessageImagePreviews(props.environmentId, props.message);
-  if (images.length === 0) return null;
-  return <MessageImageGridView images={images} onImageExpand={props.onImageExpand} />;
 }

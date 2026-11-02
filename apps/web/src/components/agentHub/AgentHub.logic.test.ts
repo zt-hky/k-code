@@ -120,7 +120,6 @@ describe("collectLiveAgentParents", () => {
   it("finds parents of native subagents from their own shell signals, ordered by title", () => {
     const parents = collectLiveAgentParents(shells, {});
     expect(parents.map((p) => p.threadId)).toEqual(["parent-a", "parent-b", "owned-parent"]);
-    expect(parents.find((p) => p.threadId === "owned-parent")?.rootThreadId).toBe("root");
   });
 
   it("scopes by project and environment", () => {

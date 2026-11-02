@@ -18,6 +18,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import * as AuthHttp from "./http.ts";
@@ -151,6 +152,7 @@ describe("Cloudflare Access sign-in", () => {
         Layer.provide(SqlitePersistence.layerMemory),
         Layer.provide(ServerSecretStore.layer),
         Layer.provide(ServerEnvironment.layerIdentity),
+        Layer.provide(ManagedPolicy.layerTest()),
         Layer.provide(layerConfig),
       ),
     ),

@@ -9,7 +9,6 @@ import { isElectron } from "~/env";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
 import { useProjects, useThreadProjection, useThreadShells } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
-import { useThreadFamily } from "../../state/threads";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
@@ -32,7 +31,6 @@ function ParentAgentGroup(props: {
 }) {
   const { parent } = props;
   const navigate = useNavigate();
-  useThreadFamily(parent.environmentId, parent.rootThreadId);
   const projection = useThreadProjection(scopeThreadRef(parent.environmentId, parent.threadId));
   const hub = projection ? deriveThreadAgentHub(projection.projection) : null;
   const agents = hub ? filterGridAgents(orderedHubAgents(hub), props.filter) : [];
