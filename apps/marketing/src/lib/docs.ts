@@ -1,6 +1,7 @@
 /**
  * Docs manifest. `user:<file>` pages are adapted from docs/user/<file> at the repo root;
- * `site:<file>` pages are authored in apps/marketing/docs/<file>. scripts/stage-site.mjs turns
+ * `site:<file>` pages are authored in apps/marketing/docs/<file>; `github:releases` is generated from
+ * the GitHub Releases of zt-hky/k-code. scripts/stage-site.mjs turns
  * every entry into src/pages/docs/<slug>.md (generated, gitignored).
  */
 export interface DocEntry {
@@ -163,5 +164,5 @@ export const DOCS: readonly DocEntry[] = [
     group: "Reference",
     source: "site:troubleshooting.md",
   },
-  { slug: "changelog", title: "Changelog", group: "Reference", source: "site:changelog.md" },
+  { slug: "changelog", title: "Changelog", group: "Reference", source: "github:releases" },
 ];

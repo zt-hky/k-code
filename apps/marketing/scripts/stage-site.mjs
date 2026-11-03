@@ -7,6 +7,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import { DOCS } from "../src/lib/docs.ts";
+import { buildChangelogMarkdown } from "./github-changelog.mjs";
 
 const marketingDir = NodePath.dirname(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)));
 const repoRoot = NodePath.dirname(NodePath.dirname(marketingDir));
@@ -122,15 +123,22 @@ function adapt(text) {
 NodeFS.rmSync(pagesDocsDir, { recursive: true, force: true });
 for (const entry of DOCS) {
   const [kind, file] = entry.source.split(":");
-  const dir = kind === "user" ? userDocsDir : siteDocsDir;
-  const raw = NodeFS.readFileSync(NodePath.join(dir, file), "utf8");
+  const generated = kind === "github";
+  const raw = generated
+    ? await buildChangelogMarkdown({ releasesDir: NodePath.join(repoRoot, "docs", "releases") })
+    : NodeFS.readFileSync(NodePath.join(kind === "user" ? userDocsDir : siteDocsDir, file), "utf8");
   const body = kind === "user" ? adapt(raw) : raw;
+  const sourcePath = generated
+    ? "docs/releases"
+    : kind === "user"
+      ? `docs/user/${file}`
+      : `apps/marketing/docs/${file}`;
   const frontmatter = [
     "---",
     `layout: ${"../".repeat(entry.slug.split("/").length + 1)}layouts/DocsLayout.astro`,
     `title: ${JSON.stringify(entry.title)}`,
     `slug: ${JSON.stringify(entry.slug)}`,
-    `source: ${JSON.stringify(kind === "user" ? `docs/user/${file}` : `apps/marketing/docs/${file}`)}`,
+    `source: ${JSON.stringify(sourcePath)}`,
     "---",
     "",
   ].join("\n");

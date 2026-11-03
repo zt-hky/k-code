@@ -83,11 +83,55 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Building K-code $version (dry_run=$dry_run)"
 
+  # Fails in seconds, not after a 20-minute build, when a release has no notes.
+  notes:
+    name: Compose release notes
+    needs: [meta]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/scripts/compose-release-notes.mjs' '/docs/releases/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
+
+      - name: Compose
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The newest published release other than this one is what "Full changelog" compares against.
+          previous="$(gh release list --exclude-drafts -L 30 --json tagName -q '.[].tagName' | grep -vx "$TAG" | head -n 1 || true)"
+          args=("$VERSION")
+          [[ -n "$previous" ]] && args+=(--previous "$previous")
+          mkdir -p release-notes
+          node scripts/compose-release-notes.mjs "${args[@]}" > release-notes/notes.md
+          cat release-notes/notes.md
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes/notes.md
+          if-no-files-found: error
+          retention-days: 14
+
   # The web client, server bundle and Electron main process are platform
   # independent, so they are built once and every target packages them.
   bundle:
     name: Build JS bundle
-    needs: [meta]
+    needs: [meta, notes]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -410,7 +454,7 @@ jobs:
   # match, writes SHA256SUMS.txt, and (unless dry_run) publishes the release.
   assemble:
     name: Assemble release assets
-    needs: [meta, build, desktop_windows]
+    needs: [meta, notes, build, desktop_windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -575,6 +619,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Download release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+          path: release-notes
+
+      # Notes come from docs/releases/<version>.md (see the notes job), never from commit titles.
       - name: Publish GitHub Release
         if: needs.meta.outputs.dry_run != 'true'
         shell: bash
@@ -586,8 +637,9 @@ jobs:
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/* --clobber
+            gh release edit "$TAG" --title "K-code $TAG" --notes-file release-notes/notes.md
           else
-            flags=(--title "K-code $TAG" --generate-notes --target "$GITHUB_SHA")
+            flags=(--title "K-code $TAG" --notes-file release-notes/notes.md --target "$GITHUB_SHA")
             [[ "$PRERELEASE" == "true" ]] && flags+=(--prerelease) || flags+=(--latest)
             gh release create "$TAG" release-assets/* "${flags[@]}"
           fi
