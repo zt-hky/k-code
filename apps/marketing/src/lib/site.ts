@@ -2,7 +2,32 @@ export const SITE_URL = "https://kcode.agentbox.io.vn";
 export const GITHUB_URL = "https://github.com/zt-hky/k-code";
 export const RELEASES_URL = `${GITHUB_URL}/releases`;
 export const AGENTBOX_URL = "https://agentbox.io.vn";
-export const VERSION = "0.1.0";
+
+export interface LatestRelease {
+  readonly version: string;
+  readonly assets: ReadonlyMap<string, string>;
+}
+
+/** The newest published release, or null when GitHub is unreachable (the page then falls back to /latest/download links). */
+export async function fetchLatestRelease(): Promise<LatestRelease | null> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/zt-hky/k-code/releases/latest`, {
+      headers: { accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return null;
+    const release = (await response.json()) as {
+      tag_name: string;
+      assets: { name: string; browser_download_url: string }[];
+    };
+    return {
+      version: release.tag_name.replace(/^v/, ""),
+      assets: new Map(release.assets.map((a) => [a.name, a.browser_download_url])),
+    };
+  } catch {
+    return null;
+  }
+}
 
 export const INSTALL_SH = `curl -fsSL ${SITE_URL}/install.sh | sh`;
 export const INSTALL_PS1 = `irm ${SITE_URL}/install.ps1 | iex`;

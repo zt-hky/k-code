@@ -9,15 +9,20 @@ import {
   INSTALL_SH,
   RELEASES_URL,
   SERVER_ASSETS,
-  VERSION,
   assetUrl,
+  fetchLatestRelease,
 } from "../lib/site";
 
+// Build-time snapshot; the script below refreshes it from GitHub on every page view.
+const latest = await fetchLatestRelease();
+const VERSION = latest?.version ?? null;
+const downloadUrl = (file: string) => latest?.assets.get(file) ?? assetUrl(file);
+
 const platformDefaults = {
-  linux: assetUrl("K-code-linux-x86_64.AppImage"),
-  windows: assetUrl("K-code-windows-x64-setup.exe"),
-  "macos-arm64": assetUrl("K-code-macos-arm64.dmg"),
-  "macos-x64": assetUrl("K-code-macos-x64.dmg"),
+  linux: "K-code-linux-x86_64.AppImage",
+  windows: "K-code-windows-x64-setup.exe",
+  "macos-arm64": "K-code-macos-arm64.dmg",
+  "macos-x64": "K-code-macos-x64.dmg",
 };
 
 const features = [
@@ -74,11 +79,12 @@ const features = [
             class="btn btn-primary"
             id="download-primary"
             href="#downloads"
-            data-assets={JSON.stringify(platformDefaults)}>Download</a
+            data-assets={JSON.stringify(platformDefaults)}
+            data-fallback={assetUrl("")}>Download</a
           >
           <a class="btn" href="/docs/introduction/">Read the docs</a>
         </div>
-        <p class="hero-meta" id="download-meta">v{VERSION} · Linux, Windows, macOS · MIT</p>
+        <p class="hero-meta" id="download-meta"><span data-release-version>{VERSION ? `v${VERSION} · ` : ""}</span>Linux, Windows, macOS · MIT</p>
         <div class="cmd-block">
           <h2>Install with one command</h2>
           <div class="cmd">
@@ -146,7 +152,7 @@ const features = [
 
     <section class="block" id="downloads">
       <div class="wrap">
-        <h2 class="title">Download K-code v{VERSION}</h2>
+        <h2 class="title">Download K-code <span data-release-version-plain>{VERSION ? `v${VERSION}` : ""}</span></h2>
         <p class="lead">
           Links point at the latest GitHub release. macOS builds are unsigned: right-click, Open the first
           time.
@@ -158,7 +164,7 @@ const features = [
               {
                 DESKTOP_ASSETS.map((a) => (
                   <li>
-                    <a href={assetUrl(a.file)} data-platform={a.platform}>
+                    <a href={downloadUrl(a.file)} data-platform={a.platform} data-file={a.file}>
                       <span>
                         <strong>{a.label}</strong>
                         {a.note && <span class="muted"> · {a.note}</span>}
@@ -177,7 +183,7 @@ const features = [
               {
                 SERVER_ASSETS.map((a) => (
                   <li>
-                    <a href={assetUrl(a.file)}>
+                    <a href={downloadUrl(a.file)} data-file={a.file}>
                       <span>
                         <strong>{a.label}</strong><br /><small>{a.file}</small>
                       </span>
@@ -190,7 +196,7 @@ const features = [
           </div>
         </div>
         <p class="muted" style="margin-top: 1.5rem">
-          Verify downloads with <a href={assetUrl(CHECKSUMS_FILE)}>{CHECKSUMS_FILE}</a>. Older versions and
+          Verify downloads with <a href={downloadUrl(CHECKSUMS_FILE)} data-file={CHECKSUMS_FILE}>{CHECKSUMS_FILE}</a>. Older versions and
           release notes: <a href={RELEASES_URL} rel="noopener">all releases</a>. Prefer a package script? Use
           the one-line installers above, or see
           <a href="/docs/install/">the install guide</a>.
@@ -215,8 +221,14 @@ const features = [
   <script>
     const primary = document.getElementById("download-primary") as HTMLAnchorElement | null;
     const meta = document.getElementById("download-meta");
-    if (primary) {
-      const urls = JSON.parse(primary.dataset.assets ?? "{}") as Record<string, string>;
+    const fileByPlatform = JSON.parse(primary?.dataset.assets ?? "{}") as Record<string, string>;
+    const fallback = primary?.dataset.fallback ?? "";
+    // file name -> URL; starts as the /latest/download redirect, replaced by the real release assets.
+    const urlFor = new Map<string, string>();
+    const hrefOf = (file: string) => urlFor.get(file) ?? `${fallback}${file}`;
+
+    function applyPrimary() {
+      if (!primary) return;
       const ua = navigator.userAgent;
       let key: string | undefined;
       let label = "";
@@ -231,13 +243,39 @@ const features = [
         key = "linux";
         label = "Linux";
       }
-      const url = key ? urls[key] : undefined;
-      if (url) {
-        primary.href = url;
+      const file = key ? fileByPlatform[key] : undefined;
+      if (file) {
+        primary.href = hrefOf(file);
         primary.textContent = `Download for ${label}`;
-        if (meta) meta.textContent += " · other platforms below";
+        if (meta && !meta.dataset.others) {
+          meta.dataset.others = "1";
+          meta.append(" · other platforms below");
+        }
       }
     }
+    applyPrimary();
+
+    // Refresh from the newest GitHub release so a stale build never shows an old version or dead link.
+    fetch("https://api.github.com/repos/zt-hky/k-code/releases/latest", {
+      headers: { accept: "application/vnd.github+json" },
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((release: { tag_name: string; assets: { name: string; browser_download_url: string }[] }) => {
+        for (const asset of release.assets) urlFor.set(asset.name, asset.browser_download_url);
+        const version = release.tag_name.replace(/^v/, "");
+        document.querySelectorAll("[data-release-version]").forEach((el) => (el.textContent = `v${version} · `));
+        document.querySelectorAll("[data-release-version-plain]").forEach((el) => (el.textContent = `v${version}`));
+        document.querySelectorAll<HTMLAnchorElement>("a[data-file]").forEach((a) => {
+          const file = a.dataset.file ?? "";
+          const url = urlFor.get(file);
+          if (url) a.href = url;
+          else a.closest("li")?.setAttribute("hidden", "");
+        });
+        applyPrimary();
+      })
+      .catch(() => {
+        // Rate limited or offline: keep the build-time links, which already follow /latest/download.
+      });
     document.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach((button) => {
       button.addEventListener("click", async () => {
         try {
