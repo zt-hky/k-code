@@ -25,7 +25,8 @@ import {
 import { SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
 
 const version = "1.2.3";
-const archiveName = `t3-${version}-linux-x64.tar.gz`;
+// Published by release.yml; installed clients download these exact names.
+const archiveName = "kcode-server-linux-x64.tar.gz";
 const archiveBytes = new TextEncoder().encode("not really a tarball");
 const archiveHex = (bytes: Uint8Array) =>
   Effect.promise(() => crypto.subtle.digest("SHA-256", bytes)).pipe(
@@ -39,7 +40,7 @@ const validChecksums = archiveHex(archiveBytes).pipe(
 const releaseHttpClient = (checksums: string, requests: string[] = []) =>
   HttpClient.make((request) => {
     requests.push(request.url);
-    const body = request.url.endsWith("/SHA256SUMS") ? checksums : archiveBytes;
+    const body = request.url.endsWith("/SHA256SUMS.txt") ? checksums : archiveBytes;
     return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(body)));
   });
 const extractingRunner = (fs: FileSystem.FileSystem, path: Path.Path, commands: string[] = []) =>
@@ -93,7 +94,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       assert.equal(paths.entryPath, path.join(paths.versionDir, "t3"));
       assert.deepEqual(pinnedRuntimeCommand(paths), { command: paths.entryPath, args: [] });
       assert.deepEqual(requests, [
-        `https://releases.example/download/v${version}/SHA256SUMS`,
+        `https://releases.example/download/v${version}/SHA256SUMS.txt`,
         `https://releases.example/download/v${version}/${archiveName}`,
       ]);
       assert.deepEqual(commands, ["tar"]);
@@ -114,7 +115,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         Effect.succeed(
           HttpClientResponse.fromWeb(
             request,
-            request.url.endsWith("/SHA256SUMS")
+            request.url.endsWith("/SHA256SUMS.txt")
               ? new Response(checksums)
               : new Response(
                   new ReadableStream({

@@ -3,7 +3,12 @@ import type {
   DesktopSshEnvironmentTarget,
 } from "@t3tools/contracts";
 import { waitForHttpReady as waitForHttpReadyShared } from "@t3tools/shared/httpReadiness";
-import { cliReleaseDownloadBaseUrl } from "@t3tools/shared/cliRelease";
+import {
+  CLI_ARCHIVE_PLATFORM_KEYS,
+  CLI_RELEASE_CHECKSUMS_FILE,
+  cliArchiveFileName,
+  cliReleaseDownloadBaseUrl,
+} from "@t3tools/shared/cliRelease";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as NetService from "@t3tools/shared/Net";
 import { extractJsonObject, fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -485,7 +490,10 @@ if ! t3_runtime_ready; then
     x86_64 | amd64) T3_ARCH="x64" ;;
     *) printf 'Remote host %s has no t3 release archive.\\n' "$(uname -m)" >&2; exit 1 ;;
   esac
-  T3_ARCHIVE="t3-$T3_ARCHIVE_VERSION-$T3_PLATFORM-$T3_ARCH.tar.gz"
+  case "$T3_PLATFORM-$T3_ARCH" in
+@@T3_ARCHIVE_CASES@@
+    *) printf 'Remote host %s-%s has no t3 release archive.\\n' "$T3_PLATFORM" "$T3_ARCH" >&2; exit 1 ;;
+  esac
   T3_STAGING="$(mktemp -d "$HOME/.t3/runtime/versions/.staging-XXXXXX")"
   trap 'rm -rf "$T3_STAGING" "$T3_LOCK"' EXIT
   t3_fetch() {
@@ -494,7 +502,7 @@ if ! t3_runtime_ready; then
     else printf 'Remote host needs curl or wget to download %s.\\n' "$T3_ARCHIVE" >&2; exit 1
     fi
   }
-  t3_fetch "$T3_RELEASE_BASE_URL/v$T3_ARCHIVE_VERSION/SHA256SUMS" "$T3_STAGING/SHA256SUMS" @@T3_ARCHIVE_CHECKSUMS_SECONDS@@
+  t3_fetch "$T3_RELEASE_BASE_URL/v$T3_ARCHIVE_VERSION/"@@T3_CHECKSUMS_FILE@@ "$T3_STAGING/SHA256SUMS" @@T3_ARCHIVE_CHECKSUMS_SECONDS@@
   t3_fetch "$T3_RELEASE_BASE_URL/v$T3_ARCHIVE_VERSION/$T3_ARCHIVE" "$T3_STAGING/$T3_ARCHIVE" @@T3_ARCHIVE_DOWNLOAD_SECONDS@@
   T3_EXPECTED="$(grep " \\*\\{0,1\\}$T3_ARCHIVE$" "$T3_STAGING/SHA256SUMS" | cut -d' ' -f1)"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -811,10 +819,17 @@ export function buildRemoteT3RunnerScript(input?: RemoteT3RunnerOptions): string
       T3_ARCHIVE_LOCK_WAIT_SECONDS: String(REMOTE_ARCHIVE_LOCK_WAIT_SECONDS),
       T3_ARCHIVE_DOWNLOAD_SECONDS: String(REMOTE_ARCHIVE_DOWNLOAD_SECONDS),
       T3_ARCHIVE_CHECKSUMS_SECONDS: String(REMOTE_ARCHIVE_CHECKSUMS_SECONDS),
+      T3_CHECKSUMS_FILE: shellSingleQuote(CLI_RELEASE_CHECKSUMS_FILE),
+      T3_ARCHIVE_CASES: REMOTE_ARCHIVE_CASES,
       T3_NODE_ENV_SCRIPT: buildRemoteNodeEnvScript(input),
     }),
   );
 }
+
+// The remote script only detects Darwin and Linux hosts.
+const REMOTE_ARCHIVE_CASES = CLI_ARCHIVE_PLATFORM_KEYS.filter((key) => !key.startsWith("win32"))
+  .map((key) => `    ${key}) T3_ARCHIVE=${shellSingleQuote(cliArchiveFileName(key))} ;;`)
+  .join("\n");
 
 export function buildRemoteNodeEnvScript(input?: RemoteT3RunnerOptions): string {
   return stripTrailingNewlines(

@@ -152,6 +152,18 @@ of requests to the hosted origin. The browser exchanges the secret with the
 environment and strips it from its history. Moving the token into a query
 parameter would disclose it to the wrong origin.
 
+## Edge sign-in walls
+
+An environment behind Cloudflare Access is unreachable until the client passes
+Access itself, on every request including CORS preflights and the WebSocket
+upgrade. A renderer sees that wall only as a failed fetch and cannot set a
+header on a preflight or a socket, so the client runtime takes a
+[`RemoteAccessGate`](../../packages/client-runtime/src/rpc/http.ts) that it asks
+after a fetch rejects. The desktop's gate probes the origin from main, runs the
+Access login in its own window, and adds `cf-access-token` to renderer traffic
+for that origin with `webRequest`, so the token never enters the renderer.
+Hosted web and mobile have no gate.
+
 ## Access and process ownership are different
 
 Tailscale supplies an endpoint for ordinary pairing, so it needs no separate

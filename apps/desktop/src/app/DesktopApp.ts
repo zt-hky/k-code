@@ -36,6 +36,7 @@ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
+import * as DesktopCloudflareAccess from "../cloudflareAccess/DesktopCloudflareAccess.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
@@ -180,6 +181,8 @@ const bootstrap = Effect.gen(function* () {
   });
   yield* installDesktopIpcHandlers();
   yield* logBootstrapInfo("bootstrap ipc handlers registered");
+  // Before any window, so the first renderer requests to a signed-in origin carry its token.
+  yield* (yield* DesktopCloudflareAccess.DesktopCloudflareAccess).install;
   // Before any window: the preload merges these items before the app reads storage.
   yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
     yield* (yield* DesktopAppIdentity.DesktopAppIdentity).resolveUserDataPath,

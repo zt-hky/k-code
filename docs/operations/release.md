@@ -30,6 +30,9 @@ for the selected commit.
 - `assemble` renames everything to the stable names below, rewrites the electron-updater manifests
   (`latest*.yml`) to those names, merges the two macOS manifests, writes `SHA256SUMS.txt`, checks that every
   contracted asset exists, uploads the `release-assets` artifact, and (unless `dry_run`) publishes the release.
+  It reads the server archive and checksum names from `CLI_RELEASE_ARCHIVES` in
+  `packages/shared/src/cliRelease.ts`, the same table SSH environments, `t3 update`, and service installs
+  download from. Rename an asset there, never only in the workflow.
 
 ## Release assets
 

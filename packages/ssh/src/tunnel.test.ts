@@ -1,4 +1,11 @@
+// @effect-diagnostics nodeBuiltinImport:off - one case runs the generated runner script through a real POSIX shell.
 import { assert, describe, it } from "@effect/vitest";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
+import { cliArchiveFileName, cliArchivePlatformKey } from "@t3tools/shared/cliRelease";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@t3tools/shared/Net";
 import * as Deferred from "effect/Deferred";
@@ -103,6 +110,63 @@ describe("ssh tunnel scripts", () => {
       "T3_ARCHIVE_VERSION='1.2.3-preview.20260911.4'",
     );
   });
+
+  it.effect("installs the runtime from the K-code release assets", () =>
+    Effect.gen(function* () {
+      const platformKey = cliArchivePlatformKey(
+        yield* HostProcess.Platform,
+        yield* HostProcess.Architecture,
+      );
+      if (platformKey === undefined || platformKey.startsWith("win32")) return;
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ssh-archive-" });
+      const version = "1.2.3";
+      const assetName = cliArchiveFileName(platformKey);
+      const stem = assetName.replace(/\.tar\.gz$/u, "");
+      const releaseDir = path.join(root, "mirror", `v${version}`);
+      const stage = path.join(root, "stage", stem);
+      const home = path.join(root, "home");
+      yield* fs.makeDirectory(stage, { recursive: true });
+      yield* fs.makeDirectory(releaseDir, { recursive: true });
+      yield* fs.makeDirectory(home);
+      yield* fs.writeFileString(path.join(stage, "t3"), `#!/bin/sh\necho "t3 ${version} $*"\n`);
+      yield* fs.chmod(path.join(stage, "t3"), 0o755);
+      yield* fs.symlink("t3", path.join(stage, "kcode"));
+      const archivePath = path.join(releaseDir, assetName);
+      NodeChildProcess.execFileSync("tar", [
+        "-czf",
+        archivePath,
+        "-C",
+        path.join(root, "stage"),
+        stem,
+      ]);
+      const digest = NodeCrypto.createHash("sha256")
+        .update(yield* fs.readFile(archivePath))
+        .digest("hex");
+      yield* fs.writeFileString(
+        path.join(releaseDir, "SHA256SUMS.txt"),
+        `${digest}  ${assetName}\n`,
+      );
+      const runner = path.join(root, "run-t3.sh");
+      yield* fs.writeFileString(
+        runner,
+        SshTunnel.buildRemoteT3RunnerScript({
+          archiveVersion: version,
+          releaseBaseUrl: `file://${path.join(root, "mirror")}`,
+        }),
+      );
+
+      const result = NodeChildProcess.spawnSync("sh", [runner, "--version"], {
+        env: { ...(yield* HostProcess.Environment), HOME: home },
+        encoding: "utf8",
+      });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.trim(), `t3 ${version} --version`);
+      assert.isTrue(yield* fs.exists(path.join(home, ".t3/runtime/versions", version, "kcode")));
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
 
   it.effect("accepts launch JSON after remote shell startup noise", () => {
     const target = {

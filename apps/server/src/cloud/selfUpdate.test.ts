@@ -39,14 +39,14 @@ const archiveBytes = new TextEncoder().encode("not really a tarball");
 const releaseHttpClient = (order: string[], beforeDownload?: Effect.Effect<void>) =>
   HttpClient.make((request) =>
     Effect.gen(function* () {
-      if (request.url.endsWith("/SHA256SUMS")) {
+      if (request.url.endsWith("/SHA256SUMS.txt")) {
         const digest = yield* Effect.promise(() => crypto.subtle.digest("SHA-256", archiveBytes));
         const hex = Array.from(new Uint8Array(digest), (byte) =>
           byte.toString(16).padStart(2, "0"),
         ).join("");
         return HttpClientResponse.fromWeb(
           request,
-          new Response(`${hex}  t3-1.1.0-linux-x64.tar.gz\n`),
+          new Response(`${hex}  kcode-server-linux-x64.tar.gz\n`),
         );
       }
       if (beforeDownload) yield* beforeDownload;

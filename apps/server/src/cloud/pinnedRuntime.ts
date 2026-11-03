@@ -179,7 +179,7 @@ const installFromArchive = Effect.fn("cloud.pinned_runtime.install_archive")(fun
   }
   const httpClient = input.httpClient;
   const baseUrl = cliReleaseDownloadBaseUrl(input.version, input.releaseBaseUrl);
-  const fileName = cliArchiveFileName(input.version, platformKey);
+  const fileName = cliArchiveFileName(platformKey);
 
   input.onProgress?.({ stage: "download", received: 0, total: undefined });
   const checksums = parseChecksums(

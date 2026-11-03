@@ -17,7 +17,14 @@ function configuredRelayUrl(): string {
   return resolveCloudPublicConfig().relayUrl ?? "http://relay.invalid";
 }
 
-const layerHttpClient = layerRemoteHttpClient((input, init) => globalThis.fetch(input, init));
+// Desktop main signs in to Cloudflare Access and adds its token to traffic; browsers cannot.
+const desktopBridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+const layerHttpClient = layerRemoteHttpClient(
+  (input, init) => globalThis.fetch(input, init),
+  desktopBridge
+    ? { recover: (origin) => desktopBridge.recoverCloudflareAccess(origin) }
+    : undefined,
+);
 const layerRelayTracing = RelayTracing.layer(resolveRelayTracingConfig(), {
   serviceName: "t3code-web",
   serviceVersion: import.meta.env.APP_VERSION,

@@ -235,6 +235,14 @@ export function mapRemoteEnvironmentError(
         hop: unreachableHop,
         via,
       });
+    case "RemoteEnvironmentAccessSignInRequiredError":
+      // Blocked, not transient: retrying would reopen the sign-in the user just closed.
+      return new ConnectionBlockedError({
+        reason: "authentication",
+        detail: error.message,
+        hop: unreachableHop,
+        via,
+      });
     case "EnvironmentInternalError":
       return new ConnectionTransientError({
         reason: "remote-unavailable",

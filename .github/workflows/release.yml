@@ -493,8 +493,23 @@ jobs:
           mkdir -p ../../release-assets
           mv ./* ../../release-assets/
 
-      # `t3-<version>-<os>-<arch>.{tar.gz,zip}` -> `kcode-server-<os>-<arch>`, with the
-      # top-level directory renamed and a `kcode` entry point beside the `t3` executable.
+      # The server asset names live in packages/shared/src/cliRelease.ts, which SSH
+      # bootstrap and self-update download from; read them so the two cannot drift.
+      - name: Resolve server asset names
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_names() {
+            node --input-type=module -e "import * as r from './packages/shared/src/cliRelease.ts'; $1"
+          }
+          release_names 'for (const [key, name] of Object.entries(r.CLI_RELEASE_ARCHIVES)) console.log(`${key} ${name}`)' \
+            > "$RUNNER_TEMP/server-archives.txt"
+          checksums_file="$(release_names 'console.log(r.CLI_RELEASE_CHECKSUMS_FILE)')"
+          echo "CHECKSUMS_FILE=$checksums_file" >> "$GITHUB_ENV"
+          cat "$RUNNER_TEMP/server-archives.txt" && echo "$checksums_file"
+
+      # `t3-<version>-<key>.{tar.gz,zip}` -> the resolved asset name, with the top-level
+      # directory renamed to the asset stem and a `kcode` entry point beside the `t3` executable.
       - name: Repack server archives
         shell: bash
         run: |
@@ -505,28 +520,25 @@ jobs:
           work="$(mktemp -d)"
 
           repack() {
-            local key="$1" name="$2" ext="$3"
+            local key="$1" name="$2" ext="tar.gz"
+            [[ "$name" == *.zip ]] && ext=zip
             local src="staging/cli/t3-${version}-${key}.${ext}"
             [[ -f "$src" ]] || { echo "Missing $src" >&2; exit 1; }
-            local dir="kcode-server-${name}"
+            local dir="${name%."$ext"}"
             rm -rf "$work/x" && mkdir "$work/x"
             if [[ "$ext" == zip ]]; then unzip -q "$src" -d "$work/x"; else tar -xzf "$src" -C "$work/x"; fi
             mv "$work/x"/* "$work/$dir"
             if [[ "$ext" == zip ]]; then
               printf '@echo off\r\n"%%~dp0t3.exe" %%*\r\n' > "$work/$dir/kcode.cmd"
-              (cd "$work" && zip -q -r -X "$out/${dir}.zip" "$dir")
+              (cd "$work" && zip -q -r -X "$out/$name" "$dir")
             else
               ln -s t3 "$work/$dir/kcode"
-              tar --hard-dereference -C "$work" -czf "$out/${dir}.tar.gz" "$dir"
+              tar --hard-dereference -C "$work" -czf "$out/$name" "$dir"
             fi
             rm -rf "$work/$dir"
           }
 
-          repack linux-x64 linux-x64 tar.gz
-          repack linux-arm64 linux-arm64 tar.gz
-          repack darwin-arm64 macos-arm64 tar.gz
-          repack darwin-x64 macos-x64 tar.gz
-          repack win32-x64 windows-x64 zip
+          while read -r key name; do repack "$key" "$name"; done < "$RUNNER_TEMP/server-archives.txt"
 
       - name: Write checksums
         shell: bash
@@ -535,8 +547,8 @@ jobs:
           cd release-assets
           shopt -s nullglob
           # Installers verify downloads against this file. Updater metadata is not listed.
-          sha256sum K-code-* kcode-server-* | grep -v '\.blockmap$' > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          sha256sum K-code-* $(cut -d' ' -f2 "$RUNNER_TEMP/server-archives.txt") | grep -v '\.blockmap$' > "$CHECKSUMS_FILE"
+          cat "$CHECKSUMS_FILE"
           echo
           ls -la
 
@@ -545,12 +557,12 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
+          while read -r _ name; do
+            [[ -s "$name" ]] || { echo "Missing release asset: $name" >&2; exit 1; }
+          done < "$RUNNER_TEMP/server-archives.txt"
           for name in \
             K-code-linux-x86_64.AppImage K-code-linux-amd64.deb K-code-windows-x64-setup.exe \
-            K-code-macos-arm64.dmg K-code-macos-x64.dmg \
-            kcode-server-linux-x64.tar.gz kcode-server-linux-arm64.tar.gz \
-            kcode-server-macos-arm64.tar.gz kcode-server-macos-x64.tar.gz kcode-server-windows-x64.zip \
-            SHA256SUMS.txt; do
+            K-code-macos-arm64.dmg K-code-macos-x64.dmg "$CHECKSUMS_FILE"; do
             [[ -s "$name" ]] || { echo "Missing release asset: $name" >&2; exit 1; }
           done
           echo "All contracted assets present."

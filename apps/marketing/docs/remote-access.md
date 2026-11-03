@@ -37,11 +37,11 @@ T3CODE_CLOUDFLARE_ACCESS_EMAILS=you@example.com \
 kcode serve
 ```
 
-After you sign in to Access, the browser receives a K-code session automatically. Only the listed emails (comma-separated) get one, even if the Access policy allows more. The mobile app cannot pass Access; pair it over LAN or Tailscale instead. Never expose the server on a public address without Access or another authentication layer in front.
+After you sign in to Access, the browser receives a K-code session automatically. Only the listed emails (comma-separated) get one, even if the Access policy allows more. The desktop app can add the server as a remote environment: when Access asks for sign-in it opens the Cloudflare login in its own window, and **Settings → Environments** lists the sign-in with a **Sign out** button. The mobile app cannot pass Access yet; pair it over LAN or Tailscale instead. Never expose the server on a public address without Access or another authentication layer in front.
 
 ## SSH
 
-The desktop app can manage an SSH connection to another machine: it starts a server there and forwards the port. Add the host in **Settings → Environments**. The remote machine needs your provider CLIs installed.
+The desktop app can manage an SSH connection to another machine: it starts a server there, or reuses one already running with the default `~/.t3` home, and forwards the port. Add the host in **Settings → Environments**. The remote machine needs your provider CLIs installed.
 
 ## Phone access
 

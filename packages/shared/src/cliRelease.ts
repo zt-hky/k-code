@@ -5,16 +5,27 @@ import { compareSemverVersions } from "./semver.ts";
 
 const CLI_RELEASE_REPOSITORY = "zt-hky/k-code";
 export const CLI_RELEASES_PAGE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases`;
-export const CLI_RELEASE_CHECKSUMS_FILE = "SHA256SUMS";
+export const CLI_RELEASE_CHECKSUMS_FILE = "SHA256SUMS.txt";
 export const CLI_RELEASE_BASE_URL_ENV = "T3CODE_RELEASE_BASE_URL";
 
-// Keep archive keys aligned with the Linux matrix, Windows ARM64 build, and cli_archive rows in release.yml.
-// Node single-executables do not support darwin-x64 and segfault at startup.
-const CLI_ARCHIVE_PLATFORM_KEYS = [
+/**
+ * Server archives release.yml publishes, by Node `<platform>-<arch>`. The workflow reads this table;
+ * the marketing install.sh/install.ps1 hardcode the same names and must stay in step.
+ * @public
+ */
+export const CLI_RELEASE_ARCHIVES = {
+  "darwin-arm64": "kcode-server-macos-arm64.tar.gz",
+  "darwin-x64": "kcode-server-macos-x64.tar.gz",
+  "linux-arm64": "kcode-server-linux-arm64.tar.gz",
+  "linux-x64": "kcode-server-linux-x64.tar.gz",
+  "win32-x64": "kcode-server-windows-x64.zip",
+} as const;
+
+// Node single-executables segfault at startup on darwin-x64, so t3 never installs that archive itself.
+export const CLI_ARCHIVE_PLATFORM_KEYS = [
   "darwin-arm64",
   "linux-arm64",
   "linux-x64",
-  "win32-arm64",
   "win32-x64",
 ] as const;
 export type CliArchivePlatformKey = (typeof CLI_ARCHIVE_PLATFORM_KEYS)[number];
@@ -37,8 +48,8 @@ export function cliArchiveTarCommand(
   return `${systemRoot}\\System32\\tar.exe`;
 }
 
-export function cliArchiveFileName(version: string, platformKey: CliArchivePlatformKey): string {
-  return `t3-${version}-${platformKey}.${platformKey.startsWith("win32") ? "zip" : "tar.gz"}`;
+export function cliArchiveFileName(platformKey: CliArchivePlatformKey): string {
+  return CLI_RELEASE_ARCHIVES[platformKey];
 }
 
 const CLI_RELEASE_DEFAULT_BASE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases/download`;

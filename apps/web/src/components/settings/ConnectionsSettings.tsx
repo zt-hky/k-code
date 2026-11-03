@@ -136,6 +136,7 @@ import {
   SavedBackendListRow,
 } from "./SavedEnvironmentRows";
 import { AddEnvironmentDialog } from "./AddEnvironmentDialog";
+import { CloudflareAccessSessions } from "./CloudflareAccessSessions";
 
 const DEFAULT_TAILSCALE_SERVE_PORT = 443;
 const EMPTY_ADVERTISED_ENDPOINTS: ReadonlyArray<AdvertisedEndpoint> = [];
@@ -1518,6 +1519,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
           primaryEnvironmentId={primaryEnvironmentId}
           savedEnvironments={savedEnvironments}
         />
+        {desktopBridge ? <CloudflareAccessSessions desktopBridge={desktopBridge} /> : null}
       </SettingsSection>
       {hasCloudPublicConfig() ? (
         <RemoveT3ConnectEnvironmentDialog

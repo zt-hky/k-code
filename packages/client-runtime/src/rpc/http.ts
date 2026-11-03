@@ -66,6 +66,46 @@ export class RemoteEnvironmentAuthTimeoutError extends Data.TaggedError(
   }
 }
 
+/** The remote's edge (Cloudflare Access) wants a sign-in the user declined to finish. */
+class RemoteEnvironmentAccessSignInRequiredError extends Data.TaggedError(
+  "RemoteEnvironmentAccessSignInRequiredError",
+)<{
+  readonly message: string;
+  readonly origin: string;
+}> {
+  constructor(origin: string) {
+    super({ message: `Sign in to Cloudflare Access to reach ${origin}.`, origin });
+  }
+}
+
+export type RemoteAccessRecovery = "authorized" | "not-gated" | "cancelled";
+
+/**
+ * A platform hook for an identity wall in front of a remote origin. Browser fetches see only
+ * a network failure there, so the platform probes the origin and signs in out of band.
+ */
+export interface RemoteAccessGate {
+  readonly recover: (origin: string) => Promise<RemoteAccessRecovery>;
+}
+
+const gateFetch =
+  (fetchFn: typeof globalThis.fetch, gate: RemoteAccessGate): typeof globalThis.fetch =>
+  async (input, init) => {
+    try {
+      return await fetchFn(input, init);
+    } catch (error) {
+      if (init?.signal?.aborted) throw error;
+      const url = input instanceof Request ? input.url : String(input);
+      const origin = URL.canParse(url) ? new URL(url).origin : null;
+      if (origin === null) throw error;
+      const outcome = await gate.recover(origin).catch(() => "not-gated" as const);
+      if (outcome === "cancelled") throw new RemoteEnvironmentAccessSignInRequiredError(origin);
+      // A streamed body is spent; the caller's own retry resends it with the new credential.
+      if (outcome === "not-gated" || init?.body instanceof ReadableStream) throw error;
+      return fetchFn(input, init);
+    }
+  };
+
 export type RemoteEnvironmentRequestError =
   | EnvironmentRequestInvalidError
   | EnvironmentAuthInvalidError
@@ -76,13 +116,22 @@ export type RemoteEnvironmentRequestError =
   | RemoteEnvironmentAuthFetchError
   | RemoteEnvironmentAuthInvalidJsonError
   | RemoteEnvironmentAuthUndeclaredStatusError
-  | RemoteEnvironmentAuthTimeoutError;
+  | RemoteEnvironmentAuthTimeoutError
+  | RemoteEnvironmentAccessSignInRequiredError;
 
 export const layerRemoteHttpClient = (
   fetchFn: typeof globalThis.fetch,
+  gate?: RemoteAccessGate,
 ): Layer.Layer<HttpClient.HttpClient> =>
   Layer.merge(
-    FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchFn))),
+    FetchHttpClient.layer.pipe(
+      Layer.provide(
+        Layer.succeed(
+          FetchHttpClient.Fetch,
+          gate === undefined ? fetchFn : gateFetch(fetchFn, gate),
+        ),
+      ),
+    ),
     HttpObservability.layer,
   );
 
@@ -118,12 +167,27 @@ export const makeEnvironmentHttpApiUrlBuilder = (httpBaseUrl: string) =>
     baseUrl: remoteApiBaseUrl(httpBaseUrl),
   });
 
+const findAccessSignInRequired = (
+  cause: unknown,
+): RemoteEnvironmentAccessSignInRequiredError | undefined => {
+  for (let current = cause, depth = 0; depth < 4; depth += 1) {
+    if (current instanceof RemoteEnvironmentAccessSignInRequiredError) return current;
+    if (typeof current !== "object" || current === null || !("cause" in current)) return undefined;
+    current = current.cause;
+  }
+  return undefined;
+};
+
 const failRemoteRequest = (
   requestUrl: string,
   cause: unknown,
 ): Effect.Effect<never, RemoteEnvironmentRequestError> => {
   if (cause instanceof RemoteEnvironmentAuthTimeoutError) {
     return Effect.fail(cause);
+  }
+  const signInRequired = findAccessSignInRequired(cause);
+  if (signInRequired !== undefined) {
+    return Effect.fail(signInRequired);
   }
   if (isEnvironmentHttpCommonError(cause)) {
     return Effect.fail(cause);

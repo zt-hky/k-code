@@ -221,14 +221,28 @@ t3 serve
 
 After you sign in to Access, the browser gets a K-code session automatically.
 Only the listed emails (comma-separated) receive one, even if the Access policy
-allows more. The mobile app and app.t3.codes cannot pass Access; pair them over
-the LAN or Tailscale instead.
+allows more.
+
+The desktop app can also add that server as a remote environment. Use a pairing
+link or **Add environment** with the Access URL as usual; when Access asks for
+sign-in, K-code opens the Cloudflare login in its own window and continues once
+you finish. It asks again when the Access session expires. Signed-in Access
+sites are listed under **Settings → Environments**, where **Sign out** forgets
+one. Closing the login window leaves the environment disconnected until you
+retry.
+
+The mobile app and app.t3.codes cannot pass Access: browsers do not send the
+Access cookie on cross-site requests, and the mobile app has no Access sign-in
+yet. Pair them over the LAN or Tailscale instead, or open the web app at the
+Access URL itself.
 
 ## Desktop-managed SSH
 
 In the desktop app, open **Settings → Environments → Add environment**, choose
 **SSH**, and enter a host or SSH alias such as `user@example.com`. K-code starts
-or reuses a server there and opens the port forward for you. Projects, provider
+or reuses a server there and opens the port forward for you. A server already
+running on the host with the default `~/.t3` home, including one run as a
+system service, is reused instead of starting a second one. Projects, provider
 credentials, and agent work stay on the remote machine.
 
 The remote host must be Linux or an Apple Silicon Mac with `curl` or `wget`,

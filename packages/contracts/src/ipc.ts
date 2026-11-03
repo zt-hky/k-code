@@ -1019,6 +1019,20 @@ export const DesktopMediaReadSchema = Schema.Struct({
 });
 export type DesktopMediaRead = typeof DesktopMediaReadSchema.Type;
 
+/** What a sign-in attempt for an origin behind Cloudflare Access ended with. */
+export const DesktopCloudflareAccessRecoverySchema = Schema.Literals([
+  "authorized",
+  "not-gated",
+  "cancelled",
+]);
+export type DesktopCloudflareAccessRecovery = typeof DesktopCloudflareAccessRecoverySchema.Type;
+
+export const DesktopCloudflareAccessSessionSchema = Schema.Struct({
+  origin: Schema.String,
+  expiresAt: Schema.NullOr(Schema.String),
+});
+export type DesktopCloudflareAccessSession = typeof DesktopCloudflareAccessSessionSchema.Type;
+
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
@@ -1109,6 +1123,10 @@ export interface DesktopBridge {
   fetchSshSessionState: (httpBaseUrl: string, bearerToken: string) => Promise<AuthSessionState>;
   onSshPasswordPrompt: (listener: (request: DesktopSshPasswordPromptRequest) => void) => () => void;
   resolveSshPasswordPrompt: (requestId: string, password: string | null) => Promise<void>;
+  /** Signs in to Cloudflare Access for `origin` when its edge demands it; the token never leaves main. */
+  recoverCloudflareAccess: (origin: string) => Promise<DesktopCloudflareAccessRecovery>;
+  getCloudflareAccessSessions: () => Promise<readonly DesktopCloudflareAccessSession[]>;
+  clearCloudflareAccess: (origin: string) => Promise<void>;
   getServerExposureState: () => Promise<DesktopServerExposureState>;
   setServerExposureMode: (mode: DesktopServerExposureMode) => Promise<DesktopServerExposureState>;
   setTailscaleServeEnabled: (input: {

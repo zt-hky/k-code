@@ -11,6 +11,11 @@ import { installNotificationBadge } from "./methods/notificationBadge.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
 import { getConnectionCatalog, setConnectionCatalog } from "./methods/connectionCatalog.ts";
 import {
+  clearCloudflareAccess,
+  getCloudflareAccessSessions,
+  recoverCloudflareAccess,
+} from "./methods/cloudflareAccess.ts";
+import {
   getLocalEnvironmentEnabled,
   setLocalEnvironmentEnabled,
 } from "./methods/localEnvironment.ts";
@@ -121,6 +126,9 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(dismissSnapShotAnimation);
   yield* ipc.handle(acknowledgeSnapShot);
   yield* ipc.handle(setConnectionCatalog);
+  yield* ipc.handle(recoverCloudflareAccess);
+  yield* ipc.handle(getCloudflareAccessSessions);
+  yield* ipc.handle(clearCloudflareAccess);
 
   yield* ipc.handle(discoverSshHosts);
   yield* ipc.handle(resolveSshHost);
