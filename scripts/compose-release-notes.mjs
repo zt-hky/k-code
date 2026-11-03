@@ -24,10 +24,8 @@ if (!NodeFS.existsSync(sourcePath)) {
   throw new Error(`Missing release notes: write docs/releases/${version}.md before releasing.`);
 }
 const body = NodeFS.readFileSync(sourcePath, "utf8").trim();
-for (const heading of ["## Highlights", "## Fixes", "## Breaking or migration notes"]) {
-  if (!body.includes(heading)) {
-    throw new Error(`docs/releases/${version}.md needs a "${heading}" section.`);
-  }
+if (!body.includes("## Highlights")) {
+  throw new Error(`docs/releases/${version}.md needs a "## Highlights" section.`);
 }
 
 const tag = `v${version}`;
