@@ -1,6 +1,8 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import { TestClock } from "effect/testing";
 
 import { mapRemoteEnvironmentError } from "../connection/errors.ts";
 import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
@@ -78,5 +80,32 @@ describe("layerRemoteHttpClient access gate", () => {
       });
       expect(harness.fetches()).toBe(1);
     }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("does not time the request out while the user is signing in", () => {
+    const started = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<RemoteAccessRecovery>();
+    let signedIn = false;
+    const fetchFn: typeof globalThis.fetch = async () => {
+      if (!signedIn) throw new TypeError("Failed to fetch");
+      return Response.json(DESCRIPTOR);
+    };
+    const gate: RemoteAccessGate = {
+      recover: () => {
+        started.resolve();
+        return finish.promise.then((outcome) => {
+          signedIn = true;
+          return outcome;
+        });
+      },
+    };
+    return Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(fetchDescriptor);
+      yield* Effect.promise(() => started.promise);
+      yield* TestClock.adjust("5 minutes");
+      finish.resolve("authorized");
+      const descriptor = yield* Fiber.join(fiber);
+      expect(descriptor.environmentId).toBe(DESCRIPTOR.environmentId);
+    }).pipe(Effect.provide(layerRemoteHttpClient(fetchFn, gate)));
   });
 });

@@ -88,6 +88,22 @@ export interface RemoteAccessGate {
   readonly recover: (origin: string) => Promise<RemoteAccessRecovery>;
 }
 
+// A person signing in to Access takes longer than any request timeout, so deadlines wait the
+// sign-in out and then grant the retried request a fresh full allowance.
+let accessSignIns = 0;
+
+const withDeadline = <A, E, R>(request: Effect.Effect<A, E, R>, timeoutMs: number) => {
+  const deadline = Effect.gen(function* () {
+    yield* Effect.sleep(Duration.millis(timeoutMs));
+    while (accessSignIns > 0) {
+      while (accessSignIns > 0) yield* Effect.sleep(Duration.millis(250));
+      yield* Effect.sleep(Duration.millis(timeoutMs));
+    }
+    return Option.none<A>();
+  });
+  return Effect.raceFirst(request.pipe(Effect.asSome), deadline);
+};
+
 const gateFetch =
   (fetchFn: typeof globalThis.fetch, gate: RemoteAccessGate): typeof globalThis.fetch =>
   async (input, init) => {
@@ -98,7 +114,13 @@ const gateFetch =
       const url = input instanceof Request ? input.url : String(input);
       const origin = URL.canParse(url) ? new URL(url).origin : null;
       if (origin === null) throw error;
-      const outcome = await gate.recover(origin).catch(() => "not-gated" as const);
+      accessSignIns += 1;
+      const outcome = await gate
+        .recover(origin)
+        .catch(() => "not-gated" as const)
+        .finally(() => {
+          accessSignIns -= 1;
+        });
       if (outcome === "cancelled") throw new RemoteEnvironmentAccessSignInRequiredError(origin);
       // A streamed body is spent; the caller's own retry resends it with the new credential.
       if (outcome === "not-gated" || init?.body instanceof ReadableStream) throw error;
@@ -228,7 +250,7 @@ export const executeEnvironmentHttpRequest = <A, E, R>(
   request: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, RemoteEnvironmentRequestError, R> =>
   request.pipe(
-    Effect.timeoutOption(Duration.millis(timeoutMs)),
+    (effect) => withDeadline(effect, timeoutMs),
     Effect.flatMap(
       Option.match({
         onNone: () => Effect.fail(new RemoteEnvironmentAuthTimeoutError(requestUrl, timeoutMs)),
