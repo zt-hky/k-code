@@ -77,6 +77,9 @@ Checksums are published in `SHA256SUMS.txt` on every release. Builds are unsigne
 
 On Debian or Ubuntu: `sudo apt install ./K-code-linux-amd64.deb`.
 
+On macOS the app is not signed with an Apple Developer ID. After moving it to **Applications**, run once:
+`xattr -dr com.apple.quarantine /Applications/K-code.app`.
+
 ## Run from source
 
 K-code uses [Vite+](https://viteplus.dev/guide/), so install the global `vp` tool first.

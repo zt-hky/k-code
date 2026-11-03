@@ -14,8 +14,20 @@ Download from the [downloads section](/#downloads) or the [GitHub releases page]
 | Linux (x86_64)         | `K-code-linux-x86_64.AppImage` | `chmod +x` it, then run it.                           |
 | Debian, Ubuntu (amd64) | `K-code-linux-amd64.deb`       | `sudo apt install ./K-code-linux-amd64.deb`           |
 | Windows (x64)          | `K-code-windows-x64-setup.exe` | Run the installer. SmartScreen may warn on first run. |
-| macOS, Apple Silicon   | `K-code-macos-arm64.dmg`       | Unsigned: right-click the app, choose Open.           |
-| macOS, Intel           | `K-code-macos-x64.dmg`         | Unsigned: right-click the app, choose Open.           |
+| macOS, Apple Silicon   | `K-code-macos-arm64.dmg`       | Unsigned: run the `xattr` command below.              |
+| macOS, Intel           | `K-code-macos-x64.dmg`         | Unsigned: run the `xattr` command below.              |
+
+### macOS: "K-code is damaged" or "cannot be opened"
+
+K-code is not signed with an Apple Developer ID, so Gatekeeper blocks the first launch. After you drag
+K-code to **Applications**, remove the quarantine flag once:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/K-code.app
+```
+
+Then open the app normally. If it still refuses, right-click it, choose **Open**, then **Open** again.
+You only need this after a fresh install; the in-app updater keeps working.
 
 Verify a download against `SHA256SUMS.txt` from the same release:
 

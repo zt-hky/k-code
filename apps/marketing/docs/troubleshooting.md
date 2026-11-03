@@ -28,7 +28,7 @@ Release assets only exist once a release is published at [GitHub Releases](https
 
 ### macOS says the app is damaged or from an unidentified developer
 
-The macOS builds are unsigned. Right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/K-code.app`.
+The macOS builds are unsigned. After moving K-code to **Applications**, run `xattr -dr com.apple.quarantine /Applications/K-code.app`, then open it. See [Install](/docs/install/).
 
 ### Where are my threads and logs?
 
