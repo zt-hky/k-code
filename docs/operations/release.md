@@ -54,6 +54,46 @@ and `/install.ps1`. They download from `releases/latest/download`, verify `SHA25
 `KCODE_DOWNLOAD_BASE` points them at a local directory for testing, and `--dry-run` / `-DryRun` verifies
 without installing.
 
+## Release notes
+
+Notes live in `docs/releases/<version>.md`, one file per release, written for users: a short intro, then
+`## Highlights` (required), `## New (from T3 Code)`, `## K-code features`, `## Fixes` and
+`## Breaking or migration notes` as needed. Write the file before tagging. The `notes` job fails in
+seconds if it is missing, then `scripts/compose-release-notes.mjs` appends the downloads table, the
+one-line installer and the compare link, and `assemble` publishes that as the release body (a
+re-run replaces it). Nothing is generated from commit titles. To fix notes later, edit the file and run
+`gh release edit vX.Y.Z --notes-file <(node scripts/compose-release-notes.mjs X.Y.Z --previous vA.B.C)`.
+
+## Site
+
+`https://kcode.agentbox.io.vn/docs/changelog/` is built from the GitHub Releases of this repository
+(`apps/marketing/scripts/github-changelog.mjs`), one entry per published release with its version, date
+and link. If the API is rate limited the build falls back to `docs/releases/`. The home page also reads
+the latest release when it loads, so its version and download links never go stale.
+
+The site is static files served by the AgentBox gateway on the same host as `t3code.service`, so it is
+published with `scripts/deploy-site.sh` (needs sudo), not from GitHub Actions. `scripts/sync-site.sh`
+runs it when the releases change; a user timer calls that every five minutes:
+
+```ini
+# ~/.config/systemd/user/kcode-site-sync.service
+[Service]
+Type=oneshot
+WorkingDirectory=%h/personal/t3code
+Environment=PATH=%h/.local/opt/node26/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/personal/t3code/scripts/sync-site.sh
+
+# ~/.config/systemd/user/kcode-site-sync.timer
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target
+```
+
+Enable with `systemctl --user enable --now kcode-site-sync.timer`; `journalctl --user -u kcode-site-sync`
+shows each run. Run `scripts/sync-site.sh --force` to republish without waiting.
+
 ## Auto-update
 
 `T3CODE_DESKTOP_UPDATE_REPOSITORY=zt-hky/k-code` is set in the workflow, so electron-builder writes a GitHub
