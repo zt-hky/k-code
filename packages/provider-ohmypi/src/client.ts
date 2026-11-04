@@ -8,9 +8,9 @@ export const ohMyPiClient = defineProviderClient({
   label: "Oh My Pi",
   acpRegistryAgentIds: ["omp"],
   settingsSchema: OhMyPiSettings,
-  // The π from https://omp.sh/favicon.svg, cropped to the glyph without its dark tile.
+  // The π from https://omp.sh/favicon.svg without its dark tile, padded to sit like the other icons.
   icon: {
-    viewBox: "12 16 40 40",
+    viewBox: "8 12 48 48",
     fill: { light: "#9b4dff", dark: "#9b4dff" },
     paths: [
       {

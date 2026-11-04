@@ -28,7 +28,6 @@ import { type ContextWindowSnapshot, formatContextWindowTokens } from "../../lib
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { redactedPlaceholder, RedactedSensitiveText } from "../settings/RedactedSensitiveText";
-import { Button } from "../ui/button";
 import {
   Menu,
   MenuGroup,
@@ -226,7 +225,7 @@ function LimitRow({
   );
 }
 
-/** The account serving the thread, shown in full, and the menu that pins another one. */
+/** The email of the account serving the thread; with other accounts, hover reveals the switcher. */
 function PinnedAccountRow({
   accounts,
   pinned,
@@ -240,58 +239,77 @@ function PinnedAccountRow({
 }) {
   const revealEmails = useClientSettings((settings) => settings.revealAccountEmails);
   const pinnedLabel = pinned?.email ?? pinned?.nativeAccountId;
+  if (accounts.length < 2) {
+    return pinnedLabel ? (
+      <div className="col-span-3 flex h-6 min-w-0 items-center px-2.5">
+        <RedactedSensitiveText
+          key={pinnedLabel}
+          value={pinnedLabel}
+          ariaLabel="Toggle pinned account visibility"
+          revealTooltip="Click to reveal account"
+          hideTooltip="Click to hide account"
+          className="max-w-full truncate font-sans text-xs"
+        />
+      </div>
+    ) : null;
+  }
   return (
-    <div className="col-span-3 flex min-h-6 items-center gap-2 ps-2.5">
-      <span className="text-muted-foreground">Account</span>
-      <span className="min-w-0 flex-1 text-end">
-        {pinnedLabel ? (
-          <RedactedSensitiveText
-            key={pinnedLabel}
-            value={pinnedLabel}
-            ariaLabel="Toggle pinned account visibility"
-            revealTooltip="Click to reveal account"
-            hideTooltip="Click to hide account"
-            className="break-all text-end font-sans text-xs text-foreground/80"
+    <Menu>
+      <MenuTrigger
+        disabled={disabled}
+        render={
+          <button
+            type="button"
+            aria-label={`Pinned account${revealEmails && pinnedLabel ? `: ${pinnedLabel}` : ""}. Change account`}
+            className="group col-span-3 flex h-6 min-w-0 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-start outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]"
           />
-        ) : (
-          <span className="text-muted-foreground">Not pinned</span>
-        )}
-      </span>
-      <Menu>
-        <MenuTrigger
-          render={<Button size="xs" variant="ghost" disabled={disabled} className="shrink-0" />}
+        }
+      >
+        <span
+          className={cn(
+            "min-w-0 truncate text-foreground/80",
+            pinnedLabel && !revealEmails && "select-none blur-xs",
+            !pinnedLabel && "text-muted-foreground",
+          )}
         >
-          Change
-          <ChevronDownIcon aria-hidden />
-        </MenuTrigger>
-        <MenuPopup align="end">
-          <MenuGroup>
-            <MenuGroupLabel>Pin an account to this thread</MenuGroupLabel>
-            <MenuRadioGroup
-              value={pinned?.id ?? ""}
-              onValueChange={(value) => {
-                const account = accounts.find((candidate) => candidate.id === value);
-                if (account && account.id !== pinned?.id) onPin(sessionPinCommandText(account));
-              }}
-            >
-              {accounts.map((account) => {
-                const label = account.email ?? account.nativeAccountId ?? account.label;
-                return (
-                  <MenuRadioItem key={account.id} value={account.id} closeOnClick>
-                    <span className={cn("min-w-0", !revealEmails && "select-none blur-xs")}>
-                      {revealEmails ? label : redactedPlaceholder(label)}
-                    </span>
-                    {account.plan ? (
-                      <span className="ms-auto ps-3 text-muted-foreground">{account.plan}</span>
-                    ) : null}
-                  </MenuRadioItem>
-                );
-              })}
-            </MenuRadioGroup>
-          </MenuGroup>
-        </MenuPopup>
-      </Menu>
-    </div>
+          {pinnedLabel
+            ? revealEmails
+              ? pinnedLabel
+              : redactedPlaceholder(pinnedLabel)
+            : "Choose an account"}
+        </span>
+        <ChevronDownIcon
+          aria-hidden
+          className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-popup-open:opacity-100"
+        />
+      </MenuTrigger>
+      <MenuPopup align="start">
+        <MenuGroup>
+          <MenuGroupLabel>Pin an account to this thread</MenuGroupLabel>
+          <MenuRadioGroup
+            value={pinned?.id ?? ""}
+            onValueChange={(value) => {
+              const account = accounts.find((candidate) => candidate.id === value);
+              if (account && account.id !== pinned?.id) onPin(sessionPinCommandText(account));
+            }}
+          >
+            {accounts.map((account) => {
+              const label = account.email ?? account.nativeAccountId ?? account.label;
+              return (
+                <MenuRadioItem key={account.id} value={account.id} closeOnClick>
+                  <span className={cn("min-w-0", !revealEmails && "select-none blur-xs")}>
+                    {revealEmails ? label : redactedPlaceholder(label)}
+                  </span>
+                  {account.plan ? (
+                    <span className="ms-auto ps-3 text-muted-foreground">{account.plan}</span>
+                  ) : null}
+                </MenuRadioItem>
+              );
+            })}
+          </MenuRadioGroup>
+        </MenuGroup>
+      </MenuPopup>
+    </Menu>
   );
 }
 
