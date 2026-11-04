@@ -65,7 +65,7 @@ it("offers Pin to thread only for the current model's upstream and sends the pin
   expect(onPin).toHaveBeenCalledWith("/session pin a@example.com");
 });
 
-it("disables the pin action while the thread is busy", async () => {
+it("disables the pin action while the composer holds a draft", async () => {
   await using screen = await render(
     <ComposerBannerStack
       items={[

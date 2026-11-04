@@ -1453,10 +1453,12 @@ export default function ChatView(props: ChatViewProps) {
     (compactionRunning || (compactRequestIsActive && !compactionSettled));
   const isWorking =
     phase === "running" || isSendBusy || isCompacting || runlessWorkStartedAt !== null;
-  const sendThreadText = useStableCallback((text: string) => {
+  // omp reads `/session pin` only as a turn's prompt, so mid-run it waits for the next turn
+  // instead of being steered in as plain text, like omp's own CLI.
+  const sendPinCommand = useStableCallback((text: string) => {
     promptRef.current = text;
     setComposerDraftPrompt(composerDraftTarget, text);
-    composerRef.current?.submit();
+    composerRef.current?.submit(isWorking ? "queue" : undefined);
   });
   const activeModelSlug =
     (composerSelectedModelSelection?.instanceId === activeProviderInstanceId
@@ -1480,8 +1482,8 @@ export default function ChatView(props: ChatViewProps) {
     providers: providerStatuses,
     sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
     modelSlug: activeModelSlug,
-    pinDisabled: isWorking || composerHasUserContent,
-    sendPinCommand: sendThreadText,
+    pinDisabled: composerHasUserContent,
+    sendPinCommand,
   });
   const activeContextWindow = deriveLatestContextWindowSnapshot(
     serverVisibleTurnItems ?? [],
@@ -3988,8 +3990,8 @@ export default function ChatView(props: ChatViewProps) {
                     contextWindow: activeContextWindow,
                     upstreamProvider: usagePin.upstream,
                     pin: usagePin.pin,
-                    pinDisabled: isWorking || composerHasUserContent,
-                    onPinAccount: sendThreadText,
+                    pinDisabled: composerHasUserContent,
+                    onPinAccount: sendPinCommand,
                   }}
                 />
 
