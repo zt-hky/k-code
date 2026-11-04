@@ -3,9 +3,9 @@ import * as Migrator from "effect/sql/Migrator";
 import * as SqlClient from "effect/sql/SqlClient";
 
 /** The fork's only migration; it stays after upstream's last id so upstream ids are never skipped. */
-export const WEB_PUSH_MIGRATION_ID = 78;
+export const WEB_PUSH_MIGRATION_ID = 80;
 
-// Earlier fork builds recorded Web Push at an id upstream later took (73, then 74). The migrator
+// Earlier fork builds recorded Web Push at an id upstream later took (73, then 74, then 78). The migrator
 // skips every id up to the highest recorded one, so forget that stale row while it is still the
 // newest: the migrator then runs upstream's ids from there and Web Push again (CREATE IF NOT EXISTS).
 export const reconcileWebPushMigration = Effect.fn("reconcileWebPushMigration")(function* () {

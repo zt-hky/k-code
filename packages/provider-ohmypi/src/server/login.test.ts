@@ -1,12 +1,16 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { AcpRegistryOperationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
 import { makeHarness, type FakeChild } from "./loginHarness.testkit.ts";
+
+const testServices = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer);
 
 const parseJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const stringifyJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
@@ -51,7 +55,7 @@ it.live(
         expect(yield* Ref.get(h.changed)).toBe(1);
         expect(stringifyJson(yield* Ref.get(h.seen))).not.toContain("SECRET-CODE");
       }),
-    ).pipe(Effect.provide(NodeServices.layer)),
+    ).pipe(Effect.provide(testServices)),
 );
 
 it.live("masks API key prompts and reports omp's own failure text", () =>
@@ -77,7 +81,7 @@ it.live("masks API key prompts and reports omp's own failure text", () =>
       expect(failed?.message).toBe("API key is required");
       expect(yield* Ref.get(h.changed)).toBe(0);
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 it.live("cancel kills omp, reports cancelled, and frees the slot for another sign-in", () =>
@@ -99,7 +103,7 @@ it.live("cancel kills omp, reports cancelled, and frees the slot for another sig
       yield* h.login.start("anthropic");
       expect((yield* Queue.take(h.spawned)).args).toEqual(["login", "anthropic"]);
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 it.live("refuses answers that could feed omp more than one line or belong to an old prompt", () =>
@@ -122,7 +126,7 @@ it.live("refuses answers that could feed omp more than one line or belong to an 
       expect(stale.reason).toBe("login_stale_flow");
       expect(yield* Queue.size(child.written)).toBe(0);
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 const rpcScript =
@@ -169,7 +173,7 @@ it.live("lists the providers omp can log in to with their stored-credential stat
         },
       ]);
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 it.live("explains why omp could not start when it exits before answering", () =>
@@ -184,7 +188,7 @@ it.live("explains why omp could not start when it exits before answering", () =>
         message: 'Model "sonnet" not found',
       });
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 it.live("signs out by removing every stored credential and reports auth that still applies", () =>
@@ -213,7 +217,7 @@ it.live("signs out by removing every stored credential and reports auth that sti
       });
       expect(yield* Ref.get(h.changed)).toBe(1);
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 const EXPORT = JSON.stringify({
@@ -240,7 +244,7 @@ it.live("copies credentials into omp's own store through stdin and refreshes mod
       expect(yield* Queue.clear(child!.written)).toEqual([EXPORT]);
       expect(yield* Ref.get(h.changed)).toBe(1);
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 it.live("reports why omp refused the credentials and leaves models alone", () =>
@@ -256,7 +260,7 @@ it.live("reports why omp refused the credentials and leaves models alone", () =>
       });
       expect(yield* Ref.get(h.changed)).toBe(0);
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 it.live("does not start omp for an empty import", () =>
@@ -267,5 +271,5 @@ it.live("does not start omp for an empty import", () =>
       expect(failure.reason).toBe("login_import_failed");
       expect(h.children).toHaveLength(0);
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );

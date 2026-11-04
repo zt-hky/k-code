@@ -6,7 +6,7 @@ import {
   type ProviderInstanceId,
 } from "@t3tools/contracts";
 import type { ProviderModelLogin } from "@t3tools/provider-core/server/driver";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -63,7 +63,7 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
 }) {
   const instanceScope = yield* Scope.Scope;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const lock = yield* Semaphore.make(1);
   const idle: OmpLoginState = {
     instanceId: options.instanceId,
@@ -277,8 +277,8 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
           if (active !== undefined) {
             return yield* failure("login_failed", "Another sign-in is already in progress.");
           }
-          const flowId = yield* crypto
-            .randomUUIDv4()
+          const flowId = yield* random
+            .uuidV4()
             .pipe(Effect.mapError(() => failure("login_failed", "Could not start sign-in.")));
           const scope = yield* Scope.fork(instanceScope, "sequential");
           const flow: ActiveFlow = {

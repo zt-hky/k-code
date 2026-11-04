@@ -34,7 +34,7 @@ import {
 } from "@t3tools/provider-core/server/snapshotSettings";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -115,7 +115,7 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
       : Effect.void;
     yield* clearLiveState;
     yield* Effect.addFinalizer(() => clearLiveState);
-    const crypto = yield* Crypto.Crypto;
+    const random = yield* SecureRandom.SecureRandom;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const hostEnvironment = yield* HostProcess.Environment;
     const host = yield* ProviderHost.ProviderHost;
@@ -172,13 +172,13 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
         E,
         | AcpRegistrySupport.AcpRegistryCatalog
         | ChildProcessSpawner.ChildProcessSpawner
-        | Crypto.Crypto
+        | SecureRandom.SecureRandom
       >,
     ): Effect.Effect<A, E> => {
       const provided = effect.pipe(
         Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        Effect.provideService(Crypto.Crypto, crypto),
+        Effect.provideService(SecureRandom.SecureRandom, random),
       );
       return Option.isSome(runtimeCoordinator)
         ? provided.pipe(
@@ -248,7 +248,7 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
       ),
     }).pipe(
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      Effect.provideService(Crypto.Crypto, crypto),
+      Effect.provideService(SecureRandom.SecureRandom, random),
     );
     const textGeneration = yield* makeOhMyPiTextGeneration({
       resolveSpawn: (cwd) =>
@@ -325,7 +325,7 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
         probeAcpRegistryConfiguration(managementInput(host.paths.cwd)).pipe(
           Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.provideService(Crypto.Crypto, crypto),
+          Effect.provideService(SecureRandom.SecureRandom, random),
         ),
       );
       return buildOhMyPiSnapshot({

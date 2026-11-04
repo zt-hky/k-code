@@ -95,6 +95,14 @@ mobile apps.
 - **Skills** appear in the `$` menu; selecting one runs `/skill:<name>`.
 - **Usage**: the card and Usage page show each signed-in account's limits. Token totals come from
   Oh My Pi's session logs.
+- **Pinned account**: Thread details shows the email of the account serving the thread under
+  **Usage limits**. When the model's provider has several accounts, click the email to send
+  `/session pin <account>` for another one; while the agent is working, the switch waits for the
+  next turn. Emails stay hidden unless **Settings → General → Show account emails** is on. The
+  mobile usage panel marks the pinned account.
+- **Auto-compaction**: turn it off in the provider settings to stop Oh My Pi compacting a
+  conversation on its own. This overrides Oh My Pi's own `compaction.enabled` for sessions K-code
+  starts. When it is on, Oh My Pi's config decides.
 
 Approvals follow the thread's [permission mode](./permission-modes.md), as for other
 [ACP agents](./providers-acp.md#permissions-and-terminals). Oh My Pi can write commit messages,

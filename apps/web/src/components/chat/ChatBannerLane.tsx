@@ -46,6 +46,7 @@ export function ChatBannerLane(props: {
   return (
     <div className="chat-banner-lane pointer-events-none absolute top-0 z-30 flex flex-col">
       <ProviderStatusBanner
+        environmentId={props.environmentId}
         status={providerStatus}
         onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
         onOpenProviderSetup={onOpenProviderSetup}

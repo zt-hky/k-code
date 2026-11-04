@@ -12,11 +12,14 @@ export function ComposerUsageLimits({
   environmentId,
   maxHeight,
   onClose,
+  pinnedAccountId,
 }: {
   readonly report: UsageLimitsReport;
   readonly environmentId: EnvironmentId;
   readonly maxHeight: number;
   readonly onClose: () => void;
+  /** The account `/session pin` or omp's record ties to this thread. */
+  readonly pinnedAccountId?: string | undefined;
 }) {
   const now = Date.parse(report.createdAt);
   const close = (
@@ -55,6 +58,11 @@ export function ComposerUsageLimits({
                   : account.label
               }
               detail={account.plan}
+              pinnedLabel={
+                account.id === pinnedAccountId
+                  ? (account.email ?? account.nativeAccountId ?? account.label)
+                  : undefined
+              }
               limits={account.limits}
               now={now}
               trailing={index === 0 ? close : undefined}

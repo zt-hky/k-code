@@ -11,7 +11,7 @@ import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { LimitWindows, ResetCredits } from "../usage/UsageLimits";
 import { ComposerBanner } from "./ComposerBanner";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
-import { isPinnableAccount, sessionPinCommandText } from "./sessionPin";
+import { isPinnableAccount, sessionPinCommandText } from "@t3tools/client-runtime/sessionPin";
 
 export interface UsageLimitsPin {
   /** Upstream provider of the thread's current model; only its accounts can be pinned. */

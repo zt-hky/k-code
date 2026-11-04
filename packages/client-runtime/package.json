@@ -123,6 +123,10 @@
       "types": "./src/platform/index.ts",
       "default": "./src/platform/index.ts"
     },
+    "./sessionPin": {
+      "types": "./src/sessionPin.ts",
+      "default": "./src/sessionPin.ts"
+    },
     "./providerSkills": {
       "types": "./src/providerSkills.ts",
       "default": "./src/providerSkills.ts"
@@ -532,6 +536,7 @@
     "@t3tools/provider-cursor": "workspace:*",
     "@t3tools/provider-fx": "workspace:*",
     "@t3tools/provider-grok": "workspace:*",
+    "@t3tools/provider-kiro": "workspace:*",
     "@t3tools/provider-muse": "workspace:*",
     "@t3tools/provider-ohmypi": "workspace:*",
     "@t3tools/provider-opencode": "workspace:*",

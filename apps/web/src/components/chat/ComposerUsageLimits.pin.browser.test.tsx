@@ -12,7 +12,7 @@ import "~/index.css";
 import { render } from "../../../test/render";
 import { ComposerBannerStack } from "./ComposerBannerStack";
 import { usageLimitsBannerItem } from "./ComposerUsageLimits";
-import { isSessionPinCommand } from "./sessionPin";
+import { isSessionPinCommand } from "@t3tools/client-runtime/sessionPin";
 import { useUsageLimitsPanel } from "./useUsageLimitsPanel";
 
 const environmentId = EnvironmentId.make("env-1");
@@ -65,7 +65,7 @@ it("offers Pin to thread only for the current model's upstream and sends the pin
   expect(onPin).toHaveBeenCalledWith("/session pin a@example.com");
 });
 
-it("disables the pin action while the thread is busy", async () => {
+it("disables the pin action while the composer holds a draft", async () => {
   await using screen = await render(
     <ComposerBannerStack
       items={[

@@ -1,7 +1,7 @@
 import { readCustomModelEntries } from "@t3tools/shared/model";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveSelfInvocation, type SelfInvocation } from "@t3tools/shared/nodeRuntime";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -59,6 +59,10 @@ import {
   T3_OMP_STOP_DIR_ENV,
   type OmpStopExtension,
 } from "./stopExtension.ts";
+import {
+  materializeOmpAutoCompactionOffConfig,
+  withOmpConfigOverlay,
+} from "./compactionOverlay.ts";
 
 const DEFAULT_SETTINGS = Schema.decodeSync(OhMyPiSettings)({});
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
@@ -82,13 +86,18 @@ export interface OhMyPiAdapterV2Options {
   readonly selfInvocation: SelfInvocation;
   /** When set, omp loads the extension that lets one subagent be cancelled on request. */
   readonly stopExtension?: OmpStopExtension;
+  /** When set, omp loads this overlay, which turns its automatic compaction off. */
+  readonly autoCompactionOff?: {
+    readonly configPath: string;
+    readonly platform: NodeJS.Platform;
+  };
   readonly nativeLogging?: Parameters<typeof makeAcpAdapterV2>[0]["nativeLogging"];
   readonly makeRuntime?: (
     input: AcpAdapterV2RuntimeInput,
   ) => Effect.Effect<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
     EffectAcpErrors.AcpError,
-    ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+    ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
   >;
   readonly continuationRequests?: Parameters<typeof makeAcpAdapterV2>[0]["continuationRequests"];
 }
@@ -103,7 +112,7 @@ function makeOmpRuntime(
   ): Effect.Effect<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
     EffectAcpErrors.AcpError,
-    ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+    ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
   > =>
     Effect.gen(function* () {
       const { processEnvironment, ...runtimeInput } = input;
@@ -115,6 +124,20 @@ function makeOmpRuntime(
               new EffectAcpErrors.AcpSpawnError({ command: options.settings.binaryPath, cause }),
           ),
         );
+      const env: NodeJS.ProcessEnv = {
+        ...resolved.spawn.env,
+        ...(options.stopExtension === undefined
+          ? {}
+          : { [T3_OMP_STOP_DIR_ENV]: options.stopExtension.stopDir }),
+        ...processEnvironment,
+      };
+      if (options.autoCompactionOff !== undefined) {
+        env.PI_CONFIG_FILES = withOmpConfigOverlay(
+          env.PI_CONFIG_FILES,
+          options.autoCompactionOff.configPath,
+          options.autoCompactionOff.platform,
+        );
+      }
       const context = yield* Layer.build(
         AcpSessionRuntime.layer({
           ...runtimeInput,
@@ -129,13 +152,7 @@ function makeOmpRuntime(
                     options.stopExtension.extensionPath,
                   ],
                 }),
-            env: {
-              ...resolved.spawn.env,
-              ...(options.stopExtension === undefined
-                ? {}
-                : { [T3_OMP_STOP_DIR_ENV]: options.stopExtension.stopDir }),
-              ...processEnvironment,
-            },
+            env,
           },
           customModels: readCustomModelEntries(options.settings.customModels).map(
             (entry) => entry.slug,
@@ -266,7 +283,7 @@ export const makeOhMyPiAdapterV2 = Effect.fn("makeOhMyPiAdapterV2")(function* (
 
 export type OhMyPiAdapterV2DriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | AcpRegistrySupport.AcpRegistryCatalog
   | IdAllocator.IdAllocatorV2
@@ -295,6 +312,12 @@ export const OhMyPiAdapterV2Driver: ProviderAdapterDriver<
         Effect.option,
         Effect.map(Option.getOrUndefined),
       );
+      const autoCompactionOff = input.config.autoCompaction
+        ? undefined
+        : {
+            configPath: yield* materializeOmpAutoCompactionOffConfig(providerHost.paths.stateDir),
+            platform: yield* HostProcess.Platform,
+          };
       const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
       return yield* makeOhMyPiAdapterV2({
         instanceId: input.instanceId,
@@ -302,6 +325,7 @@ export const OhMyPiAdapterV2Driver: ProviderAdapterDriver<
         environment: yield* mergeProviderInstanceEnvironment(input.environment, hostEnvironment),
         selfInvocation,
         ...(stopExtension === undefined ? {} : { stopExtension }),
+        ...(autoCompactionOff === undefined ? {} : { autoCompactionOff }),
         continuationRequests: yield* ProviderContinuationRequests.ProviderContinuationRequests,
         nativeLogging: (threadId) =>
           makeNativeLogger({

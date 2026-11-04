@@ -6,6 +6,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
+import { threadUsagePin } from "@t3tools/client-runtime/sessionPin";
 import {
   deriveProviderSubagentStatus,
   deriveResumableRunId,
@@ -314,6 +315,15 @@ export function useThreadComposerState() {
     thread: selectedThreadShell,
     projection: selectedThreadProjection?.projection,
   });
+  const selectedProjection = selectedThreadProjection?.projection;
+  const usagePin = threadUsagePin({
+    model: selectedThread?.modelSelection.model,
+    providerThread: selectedProjection?.providerThreads.find(
+      (thread) => thread.id === selectedProjection.thread.activeProviderThreadId,
+    ),
+    messages: selectedProjection?.messages ?? [],
+    runs: selectedProjection?.runs ?? [],
+  });
   const selectedThreadRuntime = selectedThreadProjection
     ? deriveThreadRuntime(selectedThreadProjection.projection)
     : (selectedThreadShell?.runtime ?? null);
@@ -501,6 +511,7 @@ export function useThreadComposerState() {
       text: string,
       hasAttachmentsOrContext: boolean,
     ) => Promise<boolean | "responded">,
+    onWillEnqueue?: () => void,
   ) => {
     if (
       selectedThreadShell &&
@@ -661,6 +672,7 @@ export function useThreadComposerState() {
 
     const metadata = makeQueuedMessageMetadata();
     const messageId = MessageId.make(metadata.messageId);
+    onWillEnqueue?.();
     clearThreadComposerError(threadKey);
     const enqueuePromise = enqueueThreadOutboxMessage({
       environmentId: selectedThreadShell.environmentId,
@@ -761,6 +773,7 @@ export function useThreadComposerState() {
     modelSelection,
     pendingHandoff,
     canSwitchThreadProvider,
+    usagePin,
     runtimeMode,
     interactionMode,
     activeThreadBusy,

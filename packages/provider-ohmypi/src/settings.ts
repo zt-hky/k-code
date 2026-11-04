@@ -31,6 +31,15 @@ export const OhMyPiSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
+    autoCompaction: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.annotateKey({
+        title: "Auto-compaction",
+        description:
+          "When off, omp no longer compacts the conversation on its own, whatever omp's own config says. When on, omp's config decides; it compacts by default.",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
     instructionInteractionMode: instructionToggle(
       "Interaction mode instructions",
       "Tells the agent whether T3 is in Default or Plan mode.",

@@ -8,7 +8,7 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
-import WebPushSubscriptions from "./Migrations/078_WebPushSubscriptions.ts";
+import WebPushSubscriptions from "./Migrations/080_WebPushSubscriptions.ts";
 
 const v2Migrations = migrationManifest.filter(([id]) => id >= 55);
 const newerMigrationId = Math.max(...migrationManifest.map(([id]) => id)) + 1;
@@ -49,27 +49,29 @@ const expectedSchemaNames = [...activeTurnItemIndexNames, "web_push_subscription
 const migrationsAfter = (id: number) => migrationManifest.filter(([entryId]) => entryId > id);
 
 describe("Web Push migration id collisions", () => {
-  // Fork builds recorded Web Push at 73, then at 74, before upstream took each id.
-  it.effect.each([73, 74])("heals a database that recorded %i as WebPushSubscriptions", (staleId) =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: staleId - 1 });
-      yield* WebPushSubscriptions;
-      yield* sql`
+  // Fork builds recorded Web Push at 73, then 74, then 78, before upstream took each id.
+  it.effect.each([73, 74, 78])(
+    "heals a database that recorded %i as WebPushSubscriptions",
+    (staleId) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: staleId - 1 });
+        yield* WebPushSubscriptions;
+        yield* sql`
         INSERT INTO web_push_subscriptions (endpoint, session_id, p256dh, auth, created_at)
         VALUES ('https://push.example/a', 'session-1', 'p', 'a', '2026-10-01T00:00:00.000Z')
       `;
-      yield* sql`
+        yield* sql`
         INSERT INTO effect_sql_migrations (migration_id, name)
         VALUES (${staleId}, 'WebPushSubscriptions')
       `;
 
-      assert.deepStrictEqual(yield* runMigrations(), migrationsAfter(staleId - 1));
-      assert.deepStrictEqual(yield* history, migrationManifest);
-      assert.deepStrictEqual(yield* schemaNames, expectedSchemaNames);
-      assert.strictEqual((yield* sql`SELECT endpoint FROM web_push_subscriptions`).length, 1);
-      assert.deepStrictEqual(yield* runMigrations(), []);
-    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+        assert.deepStrictEqual(yield* runMigrations(), migrationsAfter(staleId - 1));
+        assert.deepStrictEqual(yield* history, migrationManifest);
+        assert.deepStrictEqual(yield* schemaNames, expectedSchemaNames);
+        assert.strictEqual((yield* sql`SELECT endpoint FROM web_push_subscriptions`).length, 1);
+        assert.deepStrictEqual(yield* runMigrations(), []);
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
   it.effect("migrates a fresh database", () =>
@@ -156,6 +158,44 @@ describe("runMigrations", () => {
       assert.deepStrictEqual(yield* runMigrations(), v2Migrations);
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.isAbove(yield* v2TableCount, 0);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("drops the unused correlation index and keeps correlation values", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 54 });
+      yield* sql`
+        INSERT INTO orchestration_events (
+          event_id, aggregate_kind, stream_id, stream_version, event_type, occurred_at,
+          command_id, causation_event_id, correlation_id, actor_kind, payload_json, metadata_json
+        )
+        VALUES (
+          'event-1', 'thread', 'thread-1', 0, 'thread.created', '2026-01-01T00:00:00.000Z',
+          'command-1', NULL, 'correlation-1', 'client', '{}', '{}'
+        )
+      `;
+
+      yield* runMigrations();
+
+      const indexes = yield* sql<{ readonly name: string }>`
+        SELECT name FROM sqlite_master
+        WHERE type = 'index' AND tbl_name = 'orchestration_events' AND sql IS NOT NULL
+      `;
+      const indexNames = indexes.map((row) => row.name);
+      assert.notInclude(indexNames, "idx_orch_events_correlation_id");
+      for (const kept of [
+        "idx_orch_events_stream_version",
+        "idx_orch_events_stream_sequence",
+        "idx_orch_events_command_id",
+        "idx_orchestration_events_agent_stream_sequence",
+      ]) {
+        assert.include(indexNames, kept);
+      }
+      const events = yield* sql<{ readonly correlation_id: string | null }>`
+        SELECT correlation_id FROM orchestration_events WHERE event_id = 'event-1'
+      `;
+      assert.deepStrictEqual(events, [{ correlation_id: "correlation-1" }]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
