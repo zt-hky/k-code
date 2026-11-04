@@ -1,7 +1,7 @@
 import { readCustomModelEntries } from "@t3tools/shared/model";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveSelfInvocation, type SelfInvocation } from "@t3tools/shared/nodeRuntime";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -88,7 +88,7 @@ export interface OhMyPiAdapterV2Options {
   ) => Effect.Effect<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
     EffectAcpErrors.AcpError,
-    ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+    ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
   >;
   readonly continuationRequests?: Parameters<typeof makeAcpAdapterV2>[0]["continuationRequests"];
 }
@@ -103,7 +103,7 @@ function makeOmpRuntime(
   ): Effect.Effect<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
     EffectAcpErrors.AcpError,
-    ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+    ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
   > =>
     Effect.gen(function* () {
       const { processEnvironment, ...runtimeInput } = input;
@@ -266,7 +266,7 @@ export const makeOhMyPiAdapterV2 = Effect.fn("makeOhMyPiAdapterV2")(function* (
 
 export type OhMyPiAdapterV2DriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | AcpRegistrySupport.AcpRegistryCatalog
   | IdAllocator.IdAllocatorV2

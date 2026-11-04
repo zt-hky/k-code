@@ -40,7 +40,8 @@ const releaseHttpClient = (order: string[], urls: string[], beforeDownload?: Eff
   HttpClient.make((request) =>
     Effect.gen(function* () {
       urls.push(request.url);
-      if (request.url.endsWith("/SHA256SUMS.txt")) {
+      // K-code archive names carry no version, so the mirror lists only 1.1.0's release.
+      if (request.url.endsWith("/v1.1.0/SHA256SUMS.txt")) {
         const digest = yield* Effect.promise(() => crypto.subtle.digest("SHA-256", archiveBytes));
         const hex = Array.from(new Uint8Array(digest), (byte) =>
           byte.toString(16).padStart(2, "0"),

@@ -177,7 +177,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
             Effect.succeed(
               HttpClientResponse.fromWeb(
                 request,
-                request.url.endsWith("/SHA256SUMS")
+                request.url.endsWith("/SHA256SUMS.txt")
                   ? new Response(checksums)
                   : new Response("", { status }),
               ),
@@ -336,7 +336,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       assert.equal((yield* install(yield* validChecksums, requests)).entryPath, cached.entryPath);
       // Listed, so the cached runtime is used without downloading it again.
       assert.deepEqual(requests, [
-        `https://updates.example.com/t3code/v${version}/SHA256SUMS?token=abc`,
+        `https://updates.example.com/t3code/v${version}/SHA256SUMS.txt?token=abc`,
       ]);
     }),
   );

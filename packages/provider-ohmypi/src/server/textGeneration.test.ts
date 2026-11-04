@@ -1,13 +1,17 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { makeHarness, type FakeChild } from "./loginHarness.testkit.ts";
 import { makeOhMyPiTextGeneration } from "./textGeneration.ts";
+
+const testServices = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer);
 
 const run = (
   script: (child: FakeChild, written: string) => Effect.Effect<void>,
@@ -56,7 +60,7 @@ it.live("runs omp print mode with the prompt on stdin and decodes the JSON reply
       const prompt = yield* Queue.take(child.written);
       expect(prompt).toContain("Fix login");
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 it.live("surfaces the first stderr line when omp exits non-zero", () =>
@@ -70,7 +74,7 @@ it.live("surfaces the first stderr line when omp exits non-zero", () =>
         expect(result.failure.detail).toBe('Model "nope" not found');
       }
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );
 
 it.live("fails on empty output", () =>
@@ -83,5 +87,5 @@ it.live("fails on empty output", () =>
         expect(result.failure.detail).toBe("Oh My Pi returned empty output.");
       }
     }),
-  ).pipe(Effect.provide(NodeServices.layer)),
+  ).pipe(Effect.provide(testServices)),
 );

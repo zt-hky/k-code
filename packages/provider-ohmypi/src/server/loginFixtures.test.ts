@@ -1,14 +1,18 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
 import { makeHarness, type FakeChild } from "./loginHarness.testkit.ts";
+
+const testServices = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer);
 
 // Recorded from real `omp login <provider>` runs (omp 18.13.2, isolated HOME, stdin a pipe).
 // `stdin` events mark where the recording answered a prompt; the answer text is not recorded.
@@ -67,7 +71,7 @@ it.live("classifies an OAuth flow that takes a pasted redirect (Anthropic)", () 
       // The loopback shortcut resolves on the omp machine only; it must not reach the client.
       expect(state?.instructions).toContain("Complete login in your browser");
       expect(state?.instructions).not.toContain("Local shortcut");
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(testServices)),
   ),
 );
 
@@ -80,7 +84,7 @@ it.live("classifies an OAuth flow with no prompt (Cursor, ChatGPT)", () =>
         expect(state).toMatchObject({ kind: "oauth", userCode: null });
         expect(state?.authorizationUrl).toMatch(/^https:\/\//);
       }
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(testServices)),
   ),
 );
 
@@ -93,7 +97,7 @@ it.live("keeps the prompt that shares a chunk with the progress line (Google)", 
         kind: "oauth",
         prompt: { message: "Paste the authorization code (or full redirect URL)", secret: false },
       });
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(testServices)),
   ),
 );
 
@@ -110,7 +114,7 @@ it.live("shows the device code apart from the instructions", () =>
         expect(state?.authorizationUrl?.startsWith(host)).toBe(true);
         expect(state?.instructions ?? "").not.toContain("Enter code");
       }
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(testServices)),
   ),
 );
 
@@ -140,7 +144,7 @@ it.live("asks GitHub's enterprise question first, then shows the device code", (
         userCode: "DF49-33D3",
         authorizationUrl: "https://github.com/login/device",
       });
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(testServices)),
   ),
 );
 
@@ -157,7 +161,7 @@ it.live("treats a dashboard link plus a secret prompt as an API-key flow", () =>
         expect(state).toMatchObject({ kind: "api_key", userCode: null, prompt: { secret: true } });
         expect(state?.authorizationUrl?.startsWith(host)).toBe(true);
       }
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(testServices)),
   ),
 );
 
@@ -183,7 +187,7 @@ it.live("signs in with an API key without echoing the server's credential path",
       expect(seen).not.toContain("Credentials saved");
       expect(seen).not.toContain("/home/user");
       expect(seen).not.toContain("sk-dummy");
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(testServices)),
   ),
 );
 
@@ -212,6 +216,6 @@ it.live("reports a rejected key by the provider's own message, not its JSON body
         expect(failed?.message).not.toContain("{");
         expect(yield* Ref.get(h.changed)).toBe(0);
       }
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(testServices)),
   ),
 );

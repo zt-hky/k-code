@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -37,6 +38,7 @@ const OMP_SETTINGS = Schema.decodeSync(OhMyPiSettings)({});
 const layerTest = Layer.mergeAll(
   DocumentText.layer.pipe(Layer.provide(NodeServices.layer)),
   NodeServices.layer,
+  NodeCrypto.layer,
   IdAllocator.layer,
   McpProviderSessions.layer,
   TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer)),

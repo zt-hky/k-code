@@ -1,10 +1,11 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Tests sign RS256 tokens like Cloudflare does.
 import * as NodeCrypto from "node:crypto";
+import * as EffectNodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentHttpApi } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Etag from "effect/http/Etag";
@@ -159,19 +160,19 @@ describe("Cloudflare Access sign-in", () => {
     Layer.provide(layerConfig),
     Layer.provideMerge(
       HttpPlatform.layer.pipe(
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, EffectNodeCrypto.layer)),
         Layer.provideMerge(Etag.layerWeak),
       ),
     ),
-    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.mergeAll(NodeServices.layer, EffectNodeCrypto.layer)),
   );
   // Far-future expiry keeps the token valid under both the test and the wall clock.
   const validClaims = { exp: 4_000_000_000, nbf: 0 };
 
   it.effect("exchanges a verified Access identity for a browser session cookie", () =>
     Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
-      const requestContext = Context.make(Crypto.Crypto, crypto).pipe(
+      const random = yield* SecureRandom.SecureRandom;
+      const requestContext = Context.make(SecureRandom.SecureRandom, random).pipe(
         Context.add(
           ServerSecretStore.ServerSecretStore,
           ServerSecretStore.ServerSecretStore.of({
@@ -227,6 +228,6 @@ describe("Cloudflare Access sign-in", () => {
           }),
         (environment) => Effect.promise(() => environment.dispose()),
       );
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, EffectNodeCrypto.layer))),
   );
 });

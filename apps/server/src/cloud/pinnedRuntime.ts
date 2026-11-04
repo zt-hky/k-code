@@ -239,7 +239,7 @@ const publishedArchive = Effect.fn("cloud.pinned_runtime.published_archive")(fun
   input: PinnedRuntimeInstallInput,
   platformKey: CliArchivePlatformKey,
 ) {
-  const fileName = cliArchiveFileName(input.version, platformKey);
+  const fileName = cliArchiveFileName(platformKey);
   const checksums = parseChecksums(
     new TextDecoder().decode(
       yield* fetchReleaseAsset(

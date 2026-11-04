@@ -34,6 +34,7 @@ import * as DesktopPreReadyPlatform from "./DesktopPreReadyPlatform.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
+import * as DesktopCloudflareAccess from "../cloudflareAccess/DesktopCloudflareAccess.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
@@ -184,6 +185,9 @@ it.effect(
           Effect.provideService(DesktopRendererHistory.DesktopRendererHistory, {
             shutdown: Effect.void,
           } as DesktopRendererHistory.DesktopRendererHistory["Service"]),
+          Effect.provideService(DesktopCloudflareAccess.DesktopCloudflareAccess, {
+            install: Effect.void,
+          } as unknown as DesktopCloudflareAccess.DesktopCloudflareAccess["Service"]),
         );
       const app = yield* runApp.pipe(
         Effect.provide(
