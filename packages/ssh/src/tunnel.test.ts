@@ -1,8 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off - one case runs the generated runner script through a real POSIX shell.
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeChildProcess from "node:child_process";
-import { createHash } from "node:crypto";
-import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeCrypto from "node:crypto";
+import * as EffectNodeCrypto from "@effect/platform-node/NodeCrypto";
 import { cliArchiveFileName, cliArchivePlatformKey } from "@t3tools/shared/cliRelease";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as FileSystem from "effect/FileSystem";
@@ -142,7 +142,7 @@ describe("ssh tunnel scripts", () => {
         path.join(root, "stage"),
         stem,
       ]);
-      const digest = createHash("sha256")
+      const digest = NodeCrypto.createHash("sha256")
         .update(yield* fs.readFile(archivePath))
         .digest("hex");
       yield* fs.writeFileString(
@@ -185,7 +185,7 @@ describe("ssh tunnel scripts", () => {
     );
     const layerSpawner = Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner);
     const layerProcess = Layer.merge(
-      Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
+      Layer.mergeAll(NodeServices.layer, EffectNodeCrypto.layer),
       layerSpawner,
     );
 
@@ -218,7 +218,7 @@ describe("ssh tunnel scripts", () => {
     );
     const layerSpawner = Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner);
     const layerProcess = Layer.merge(
-      Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
+      Layer.mergeAll(NodeServices.layer, EffectNodeCrypto.layer),
       layerSpawner,
     );
     return Effect.gen(function* () {
@@ -246,7 +246,7 @@ describe("ssh tunnel scripts", () => {
       );
       const layer = Layer.mergeAll(
         NodeServices.layer,
-        NodeCrypto.layer,
+        EffectNodeCrypto.layer,
         Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Layer.succeed(HttpClient.HttpClient, hangingHttpClient),
         Layer.succeed(NetService.NetService, testNetService),
@@ -304,7 +304,7 @@ describe("ssh tunnel scripts", () => {
       );
       const layer = Layer.mergeAll(
         NodeServices.layer,
-        NodeCrypto.layer,
+        EffectNodeCrypto.layer,
         Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Layer.succeed(HttpClient.HttpClient, hangingHttpClient),
         Layer.succeed(NetService.NetService, testNetService),
@@ -369,7 +369,7 @@ describe("ssh tunnel scripts", () => {
       );
       const layer = Layer.mergeAll(
         NodeServices.layer,
-        NodeCrypto.layer,
+        EffectNodeCrypto.layer,
         Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Layer.succeed(HttpClient.HttpClient, testHttpClient),
         Layer.succeed(NetService.NetService, testNetService),
@@ -474,7 +474,7 @@ describe("ssh tunnel scripts", () => {
         );
         const layer = Layer.mergeAll(
           NodeServices.layer,
-          NodeCrypto.layer,
+          EffectNodeCrypto.layer,
           Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
           Layer.succeed(HttpClient.HttpClient, testHttpClient),
           Layer.succeed(NetService.NetService, testNetService),
