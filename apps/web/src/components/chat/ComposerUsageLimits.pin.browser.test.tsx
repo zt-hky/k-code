@@ -12,7 +12,7 @@ import "~/index.css";
 import { render } from "../../../test/render";
 import { ComposerBannerStack } from "./ComposerBannerStack";
 import { usageLimitsBannerItem } from "./ComposerUsageLimits";
-import { isSessionPinCommand } from "./sessionPin";
+import { isSessionPinCommand } from "@t3tools/client-runtime/sessionPin";
 import { useUsageLimitsPanel } from "./useUsageLimitsPanel";
 
 const environmentId = EnvironmentId.make("env-1");

@@ -1,4 +1,5 @@
 import type { OrchestrationV2ProviderThread, UsageLimitsReport } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
 type UsageLimitsAccount = UsageLimitsReport["accounts"][number];
 
@@ -35,7 +36,8 @@ export function activeSessionPinSelector(
   messages: ReadonlyArray<{
     readonly role: string;
     readonly text: string;
-    readonly createdAt: string;
+    /** Web timelines carry ISO strings; server projections carry `DateTime.Utc`. */
+    readonly createdAt: string | DateTime.Utc;
     readonly runId: string | null;
   }>,
   runs: ReadonlyArray<{
@@ -50,7 +52,11 @@ export function activeSessionPinSelector(
   const recorded = recordedAt === undefined ? Number.NEGATIVE_INFINITY : Date.parse(recordedAt);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
-    if (Date.parse(message.createdAt) <= recorded) return undefined;
+    const createdAt =
+      typeof message.createdAt === "string"
+        ? Date.parse(message.createdAt)
+        : DateTime.toEpochMillis(message.createdAt);
+    if (createdAt <= recorded) return undefined;
     if (message.role !== "user" || message.runId === null) continue;
     const run = runs.find((candidate) => candidate.id === message.runId);
     if (run === undefined || modelUpstreamProvider(run.modelSelection.model) !== upstream) continue;
@@ -60,6 +66,17 @@ export function activeSessionPinSelector(
     if (!text.startsWith("/") && run.status === "completed") return undefined;
   }
   return undefined;
+}
+
+/** What picks the serving account: an unrecorded `/session pin` selector, else omp's record. */
+export interface SessionPin {
+  readonly selector: string | undefined;
+  readonly credentialPin: string | undefined;
+}
+
+export interface ThreadUsagePin {
+  readonly upstream: string | null;
+  readonly pin: SessionPin;
 }
 
 /**
@@ -72,11 +89,7 @@ export function pinnedAccount<
     UsageLimitsAccount,
     "nativeProvider" | "email" | "nativeAccountId" | "credentialPin"
   >,
->(
-  accounts: readonly T[],
-  upstream: string | null,
-  pin: { readonly selector: string | undefined; readonly credentialPin: string | undefined },
-): T | undefined {
+>(accounts: readonly T[], upstream: string | null, pin: SessionPin): T | undefined {
   if (upstream === null) return undefined;
   const ofUpstream = accounts.filter((account) => account.nativeProvider === upstream);
   const { selector, credentialPin } = pin;
@@ -102,4 +115,27 @@ export function threadAccountPin(
   upstream: string | null,
 ) {
   return upstream === null ? undefined : providerThread?.nativeMetadata?.accountPins?.[upstream];
+}
+
+/** The upstream and pin that decide which account serves a thread running `model`. */
+export function threadUsagePin(input: {
+  readonly model: string | null | undefined;
+  readonly providerThread: Parameters<typeof threadAccountPin>[0];
+  readonly messages: Parameters<typeof activeSessionPinSelector>[0];
+  readonly runs: Parameters<typeof activeSessionPinSelector>[1];
+}): ThreadUsagePin {
+  const upstream = modelUpstreamProvider(input.model);
+  const recorded = threadAccountPin(input.providerThread, upstream);
+  return {
+    upstream,
+    pin: {
+      selector: activeSessionPinSelector(
+        input.messages,
+        input.runs,
+        upstream,
+        recorded?.recordedAt,
+      ),
+      credentialPin: recorded?.hash,
+    },
+  };
 }

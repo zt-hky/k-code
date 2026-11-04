@@ -22,6 +22,7 @@ import { type ReactNode, useContext, useRef, useState } from "react";
 import { Atom } from "effect/reactivity";
 import { Linking, Pressable, View } from "react-native";
 
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { environmentPresentations } from "../../state/presentation";
@@ -162,6 +163,8 @@ export function AccountLimits(props: {
   readonly label: string;
   readonly instanceLabel: string;
   readonly detail: string | undefined;
+  /** The account pinned to the current thread; shown as a pin row under the header. */
+  readonly pinnedLabel?: string | undefined;
   readonly limits: ServerProvider["usageLimits"];
   readonly now: number;
   readonly first: boolean;
@@ -197,6 +200,18 @@ export function AccountLimits(props: {
         </View>
         {props.trailing}
       </View>
+      {props.pinnedLabel ? (
+        <View className="-mt-1 flex-row items-center gap-1.5">
+          <SymbolView
+            name="pin"
+            size={11}
+            tintColorClassName="accent-icon-muted"
+            type="monochrome"
+          />
+          <Text className="text-xs text-foreground-tertiary">Pinned to this thread</Text>
+          <AccountInstanceLabel key={props.pinnedLabel} value={props.pinnedLabel} />
+        </View>
+      ) : null}
       {notice ? (
         <Text className="text-sm text-foreground-muted">{notice}</Text>
       ) : (

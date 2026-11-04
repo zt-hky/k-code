@@ -15,7 +15,7 @@ import {
   makeThreadErrorSetter,
 } from "../ChatView.logic";
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
-import { isSessionPinCommand } from "./sessionPin";
+import { isSessionPinCommand } from "@t3tools/client-runtime/sessionPin";
 import {
   AuthOrchestrationOperateScope,
   DEFAULT_MODEL,

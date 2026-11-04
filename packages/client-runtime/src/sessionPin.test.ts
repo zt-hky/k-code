@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { activeSessionPinSelector, pinnedAccount, threadAccountPin } from "./sessionPin";
+import { activeSessionPinSelector, pinnedAccount, threadAccountPin } from "./sessionPin.ts";
 
 const accounts = [
   { nativeProvider: "anthropic", email: "a@x.com", nativeAccountId: "acc-a", credentialPin: "h-a" },

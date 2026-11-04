@@ -314,11 +314,7 @@ import { useRightPanelSurfaceClose } from "../hooks/useRightPanelSurfaceClose";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { modelFallbackBannerItem } from "./chat/ComposerUsageLimits";
 import { ThreadWorkPanelsDock } from "./chat/ThreadWorkPanels";
-import {
-  activeSessionPinSelector,
-  modelUpstreamProvider,
-  threadAccountPin,
-} from "./chat/sessionPin";
+import { threadUsagePin } from "@t3tools/client-runtime/sessionPin";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
 import {
@@ -1585,14 +1581,12 @@ export default function ChatView(props: ChatViewProps) {
   const timelineMessages = timelineEntries.flatMap((entry) =>
     entry.kind === "message" ? [entry.message] : [],
   );
-  const usageUpstreamProvider = modelUpstreamProvider(activeModelSlug);
-  const usageAccountPin = threadAccountPin(activeProviderThread, usageUpstreamProvider);
-  const usageSessionPinSelector = activeSessionPinSelector(
-    timelineMessages,
-    serverProjection?.runs ?? EMPTY_RUNS,
-    usageUpstreamProvider,
-    usageAccountPin?.recordedAt,
-  );
+  const usagePin = threadUsagePin({
+    model: activeModelSlug,
+    providerThread: activeProviderThread,
+    messages: timelineMessages,
+    runs: serverProjection?.runs ?? EMPTY_RUNS,
+  });
   const timelineEmpty = timelineEntries.length === 0 && !hasStreamedTimelineRows;
   const displayedTimelineKey = activeThreadKey ?? routeThreadKey;
   const displayedThreadRef = parseScopedThreadKey(displayedTimelineKey);
@@ -3992,9 +3986,10 @@ export default function ChatView(props: ChatViewProps) {
                     providers: providerStatuses,
                     sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                     contextWindow: activeContextWindow,
-                    upstreamProvider: usageUpstreamProvider,
-                    sessionPinSelector: usageSessionPinSelector,
-                    credentialPin: usageAccountPin?.hash,
+                    upstreamProvider: usagePin.upstream,
+                    pin: usagePin.pin,
+                    pinDisabled: isWorking || composerHasUserContent,
+                    onPinAccount: sendThreadText,
                   }}
                 />
 

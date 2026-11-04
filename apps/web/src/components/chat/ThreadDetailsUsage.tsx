@@ -3,7 +3,15 @@ import type {
   ServerProvider,
   ServerProviderUsageWindow,
   UsageLimitSourceSnapshots,
+  UsageLimitsReport,
 } from "@t3tools/contracts";
+import {
+  isPinnableAccount,
+  pinnedAccount,
+  type SessionPin,
+  sessionPinCommandText,
+} from "@t3tools/client-runtime/sessionPin";
+import { ChevronDownIcon } from "lucide-react";
 import {
   collectProviderUsageLimits,
   formatDuration,
@@ -14,15 +22,27 @@ import {
 } from "@t3tools/shared/usageLimits";
 import type { ReactNode } from "react";
 
-import { usePrimarySettings } from "../../hooks/useSettings";
+import { useClientSettings, usePrimarySettings } from "../../hooks/useSettings";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "../../lib/contextWindow";
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
+import { redactedPlaceholder, RedactedSensitiveText } from "../settings/RedactedSensitiveText";
+import { Button } from "../ui/button";
+import {
+  Menu,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuTrigger,
+} from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
-import { pinnedAccount } from "./sessionPin";
+
+type UsageLimitsAccount = UsageLimitsReport["accounts"][number];
 
 const PACE_LABEL: Record<LimitPace, string> = {
   ahead: "Ahead of pace",
@@ -37,13 +57,16 @@ export interface ThreadDetailsUsageInput {
   readonly contextWindow: ContextWindowSnapshot | null;
   /** Upstream login of the selected model (`<upstream>/<model>`); picks the account of a multi-login harness. */
   readonly upstreamProvider?: string | null;
-  /** Selector of a `/session pin` omp has not recorded yet (`activeSessionPinSelector`). */
-  readonly sessionPinSelector?: string | undefined;
-  /** omp's hash of the account that last served this thread for `upstreamProvider`. */
-  readonly credentialPin?: string | undefined;
+  /** What decides the serving account for `upstreamProvider` (`threadUsagePin`). */
+  readonly pin?: SessionPin;
+  /** Sends a `/session pin` prompt; set when the thread can change its pinned account. */
+  readonly onPinAccount?: (commandText: string) => void;
+  readonly pinDisabled?: boolean;
 }
 
 type UsageTone = "error" | "warning" | null;
+
+const NO_PIN: SessionPin = { selector: undefined, credentialPin: undefined };
 
 /** The selected provider's limit windows. Each row reads as room left. */
 export function ThreadDetailsUsage({
@@ -51,8 +74,9 @@ export function ThreadDetailsUsage({
   providers,
   sources,
   upstreamProvider = null,
-  sessionPinSelector,
-  credentialPin,
+  pin = NO_PIN,
+  onPinAccount,
+  pinDisabled = false,
 }: Omit<ThreadDetailsUsageInput, "contextWindow">) {
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
@@ -69,18 +93,15 @@ export function ThreadDetailsUsage({
   const upstreamAccounts = instanceAccounts.filter(
     (entry) => upstreamProvider !== null && entry.nativeProvider === upstreamProvider,
   );
+  const pinned = pinnedAccount(upstreamAccounts, upstreamProvider, pin);
   const limits =
-    (
-      pinnedAccount(upstreamAccounts, upstreamProvider, {
-        selector: sessionPinSelector,
-        credentialPin,
-      }) ??
-      upstreamAccounts[0] ??
-      instanceAccounts[0]
-    )?.limits ??
+    (pinned ?? upstreamAccounts[0] ?? instanceAccounts[0])?.limits ??
     providers.find((provider) => provider.instanceId === providerInstanceId)?.usageLimits;
   if (!limits) return null;
   const notice = limitsNotice(limits);
+  const pinnableAccounts = upstreamAccounts.filter((account) =>
+    isPinnableAccount(account, upstreamProvider),
+  );
 
   return (
     <ThreadDetailsSection
@@ -89,6 +110,14 @@ export function ThreadDetailsUsage({
       showHeading={false}
     >
       <div className="grid grid-cols-[auto_minmax(3rem,1fr)_auto] gap-x-3 text-xs">
+        {onPinAccount && pinnableAccounts.length > 0 ? (
+          <PinnedAccountRow
+            accounts={pinnableAccounts}
+            pinned={pinned}
+            disabled={pinDisabled}
+            onPin={onPinAccount}
+          />
+        ) : null}
         {notice ? (
           <UsageRow
             label="Limits"
@@ -194,6 +223,75 @@ function LimitRow({
         </>
       }
     />
+  );
+}
+
+/** The account serving the thread, shown in full, and the menu that pins another one. */
+function PinnedAccountRow({
+  accounts,
+  pinned,
+  disabled,
+  onPin,
+}: {
+  readonly accounts: readonly UsageLimitsAccount[];
+  readonly pinned: UsageLimitsAccount | undefined;
+  readonly disabled: boolean;
+  readonly onPin: (commandText: string) => void;
+}) {
+  const revealEmails = useClientSettings((settings) => settings.revealAccountEmails);
+  const pinnedLabel = pinned?.email ?? pinned?.nativeAccountId;
+  return (
+    <div className="col-span-3 flex min-h-6 items-center gap-2 ps-2.5">
+      <span className="text-muted-foreground">Account</span>
+      <span className="min-w-0 flex-1 text-end">
+        {pinnedLabel ? (
+          <RedactedSensitiveText
+            key={pinnedLabel}
+            value={pinnedLabel}
+            ariaLabel="Toggle pinned account visibility"
+            revealTooltip="Click to reveal account"
+            hideTooltip="Click to hide account"
+            className="break-all text-end font-sans text-xs text-foreground/80"
+          />
+        ) : (
+          <span className="text-muted-foreground">Not pinned</span>
+        )}
+      </span>
+      <Menu>
+        <MenuTrigger
+          render={<Button size="xs" variant="ghost" disabled={disabled} className="shrink-0" />}
+        >
+          Change
+          <ChevronDownIcon aria-hidden />
+        </MenuTrigger>
+        <MenuPopup align="end">
+          <MenuGroup>
+            <MenuGroupLabel>Pin an account to this thread</MenuGroupLabel>
+            <MenuRadioGroup
+              value={pinned?.id ?? ""}
+              onValueChange={(value) => {
+                const account = accounts.find((candidate) => candidate.id === value);
+                if (account && account.id !== pinned?.id) onPin(sessionPinCommandText(account));
+              }}
+            >
+              {accounts.map((account) => {
+                const label = account.email ?? account.nativeAccountId ?? account.label;
+                return (
+                  <MenuRadioItem key={account.id} value={account.id} closeOnClick>
+                    <span className={cn("min-w-0", !revealEmails && "select-none blur-xs")}>
+                      {revealEmails ? label : redactedPlaceholder(label)}
+                    </span>
+                    {account.plan ? (
+                      <span className="ms-auto ps-3 text-muted-foreground">{account.plan}</span>
+                    ) : null}
+                  </MenuRadioItem>
+                );
+              })}
+            </MenuRadioGroup>
+          </MenuGroup>
+        </MenuPopup>
+      </Menu>
+    </div>
   );
 }
 

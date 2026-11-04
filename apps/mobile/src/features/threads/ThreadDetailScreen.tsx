@@ -35,6 +35,7 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import { useKeyboardChatComposerInset, useKeyboardScrollToEnd } from "@legendapp/list/keyboard";
 import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSkills";
+import { pinnedAccount, type ThreadUsagePin } from "@t3tools/client-runtime/sessionPin";
 import type { LegendListRef } from "@legendapp/list/react-native";
 import { HeaderHeightContext } from "@react-navigation/elements";
 import { NativeLayoutObserver } from "../../native/NativeLayoutObserver";
@@ -235,6 +236,8 @@ export interface ThreadDetailScreenProps {
   readonly onDismissFeedback: (id: MessageId) => void;
   readonly selectedThreadFeed: ReadonlyArray<ThreadFeedEntry>;
   readonly pendingHandoff?: HandoffEndpoints | null;
+  /** Decides which account the usage-limits panel marks as pinned (`threadUsagePin`). */
+  readonly usagePin?: ThreadUsagePin;
   readonly activityRun: ThreadFeedLatestRun | null;
   readonly activeWorkStartedAt: string | null;
   readonly runlessWorkActive?: boolean;
@@ -942,6 +945,16 @@ function ThreadDetailBody(
           usageLimitsPanel.now,
         )
       : null;
+  const pinnedUsageAccountId =
+    usageLimitsReport === null || props.usagePin === undefined
+      ? undefined
+      : pinnedAccount(
+          usageLimitsReport.accounts.filter(
+            (account) => account.instanceId === props.selectedThread.modelSelection.instanceId,
+          ),
+          props.usagePin.upstream,
+          props.usagePin.pin,
+        )?.id;
   const showUsageLimits = (report: UsageLimitsReport | null) =>
     setUsageLimitsPanel(
       report === null
@@ -1682,6 +1695,7 @@ function ThreadDetailBody(
                           environmentId={props.environmentId}
                           maxHeight={usageLimitsMaxHeight}
                           onClose={dismissUsageLimits}
+                          pinnedAccountId={pinnedUsageAccountId}
                         />
                       </Animated.View>
                     ) : null}

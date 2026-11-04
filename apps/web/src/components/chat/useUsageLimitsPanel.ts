@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { toastManager } from "../ui/toast";
 import { usageLimitsBannerItem } from "./ComposerUsageLimits";
-import { isPinnableAccount, modelUpstreamProvider } from "./sessionPin";
+import { isPinnableAccount, modelUpstreamProvider } from "@t3tools/client-runtime/sessionPin";
 
 /** Keep opened data live. Retain hidden panels during reconnect; clear when quota-spending work resumes. */
 export function useUsageLimitsPanel(input: {

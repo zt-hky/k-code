@@ -123,6 +123,10 @@
       "types": "./src/platform/index.ts",
       "default": "./src/platform/index.ts"
     },
+    "./sessionPin": {
+      "types": "./src/sessionPin.ts",
+      "default": "./src/sessionPin.ts"
+    },
     "./providerSkills": {
       "types": "./src/providerSkills.ts",
       "default": "./src/providerSkills.ts"

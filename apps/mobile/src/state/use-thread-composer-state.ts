@@ -6,6 +6,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
+import { threadUsagePin } from "@t3tools/client-runtime/sessionPin";
 import {
   deriveProviderSubagentStatus,
   deriveResumableRunId,
@@ -313,6 +314,15 @@ export function useThreadComposerState() {
   const canSwitchThreadProvider = threadAllowsProviderSwitch({
     thread: selectedThreadShell,
     projection: selectedThreadProjection?.projection,
+  });
+  const selectedProjection = selectedThreadProjection?.projection;
+  const usagePin = threadUsagePin({
+    model: selectedThread?.modelSelection.model,
+    providerThread: selectedProjection?.providerThreads.find(
+      (thread) => thread.id === selectedProjection.thread.activeProviderThreadId,
+    ),
+    messages: selectedProjection?.messages ?? [],
+    runs: selectedProjection?.runs ?? [],
   });
   const selectedThreadRuntime = selectedThreadProjection
     ? deriveThreadRuntime(selectedThreadProjection.projection)
@@ -763,6 +773,7 @@ export function useThreadComposerState() {
     modelSelection,
     pendingHandoff,
     canSwitchThreadProvider,
+    usagePin,
     runtimeMode,
     interactionMode,
     activeThreadBusy,
