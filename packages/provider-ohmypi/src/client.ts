@@ -8,13 +8,25 @@ export const ohMyPiClient = defineProviderClient({
   label: "Oh My Pi",
   acpRegistryAgentIds: ["omp"],
   settingsSchema: OhMyPiSettings,
+  // The π from https://omp.sh/favicon.svg, cropped to the glyph without its dark tile.
   icon: {
-    viewBox: "0 0 24 24",
-    fill: { light: "#0F0F0F", dark: "#F5F5F5" },
+    viewBox: "12 16 40 40",
+    fill: { light: "#9b4dff", dark: "#9b4dff" },
     paths: [
-      { d: "M3 5h18v2.5H3z" },
-      { d: "M7 7.5h2.5V19H7z" },
-      { d: "M14.5 7.5H17v8.1c0 .9.4 1.4 1.3 1.4H20V19h-1.9c-2.2 0-3.6-1.3-3.6-3.5z" },
+      {
+        d: "M14 16h36v8H40v32h-8V24h-6v22h-8V24h-4z",
+        gradient: {
+          x1: 14,
+          y1: 16,
+          x2: 50,
+          y2: 56,
+          stops: [
+            { offset: 0, color: "#ed4abf" },
+            { offset: 0.5, color: "#9b4dff" },
+            { offset: 1, color: "#5ad8e6" },
+          ],
+        },
+      },
     ],
   },
 });
