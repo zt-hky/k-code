@@ -38,6 +38,14 @@ system=false
 dry_run=false
 [ "${KCODE_DRY_RUN:-}" = "1" ] && dry_run=true
 kcode_home="${KCODE_HOME:-$HOME/.local/share/kcode}"
+case "$kcode_home" in
+  /*) ;;
+  *)
+    # Preserve cwd's trailing newlines; trim only pwd's newline and the sentinel.
+    kcode_cwd="$(pwd -P && printf .)"
+    kcode_home="${kcode_cwd%??}/$kcode_home"
+    ;;
+esac
 
 usage() {
   if [ -r "$0" ] && head -n 1 "$0" | grep -q '^#!'; then
