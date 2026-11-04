@@ -59,6 +59,10 @@ import {
   T3_OMP_STOP_DIR_ENV,
   type OmpStopExtension,
 } from "./stopExtension.ts";
+import {
+  materializeOmpAutoCompactionOffConfig,
+  withOmpConfigOverlay,
+} from "./compactionOverlay.ts";
 
 const DEFAULT_SETTINGS = Schema.decodeSync(OhMyPiSettings)({});
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
@@ -82,6 +86,11 @@ export interface OhMyPiAdapterV2Options {
   readonly selfInvocation: SelfInvocation;
   /** When set, omp loads the extension that lets one subagent be cancelled on request. */
   readonly stopExtension?: OmpStopExtension;
+  /** When set, omp loads this overlay, which turns its automatic compaction off. */
+  readonly autoCompactionOff?: {
+    readonly configPath: string;
+    readonly platform: NodeJS.Platform;
+  };
   readonly nativeLogging?: Parameters<typeof makeAcpAdapterV2>[0]["nativeLogging"];
   readonly makeRuntime?: (
     input: AcpAdapterV2RuntimeInput,
@@ -115,6 +124,20 @@ function makeOmpRuntime(
               new EffectAcpErrors.AcpSpawnError({ command: options.settings.binaryPath, cause }),
           ),
         );
+      const env: NodeJS.ProcessEnv = {
+        ...resolved.spawn.env,
+        ...(options.stopExtension === undefined
+          ? {}
+          : { [T3_OMP_STOP_DIR_ENV]: options.stopExtension.stopDir }),
+        ...processEnvironment,
+      };
+      if (options.autoCompactionOff !== undefined) {
+        env.PI_CONFIG_FILES = withOmpConfigOverlay(
+          env.PI_CONFIG_FILES,
+          options.autoCompactionOff.configPath,
+          options.autoCompactionOff.platform,
+        );
+      }
       const context = yield* Layer.build(
         AcpSessionRuntime.layer({
           ...runtimeInput,
@@ -129,13 +152,7 @@ function makeOmpRuntime(
                     options.stopExtension.extensionPath,
                   ],
                 }),
-            env: {
-              ...resolved.spawn.env,
-              ...(options.stopExtension === undefined
-                ? {}
-                : { [T3_OMP_STOP_DIR_ENV]: options.stopExtension.stopDir }),
-              ...processEnvironment,
-            },
+            env,
           },
           customModels: readCustomModelEntries(options.settings.customModels).map(
             (entry) => entry.slug,
@@ -295,6 +312,12 @@ export const OhMyPiAdapterV2Driver: ProviderAdapterDriver<
         Effect.option,
         Effect.map(Option.getOrUndefined),
       );
+      const autoCompactionOff = input.config.autoCompaction
+        ? undefined
+        : {
+            configPath: yield* materializeOmpAutoCompactionOffConfig(providerHost.paths.stateDir),
+            platform: yield* HostProcess.Platform,
+          };
       const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
       return yield* makeOhMyPiAdapterV2({
         instanceId: input.instanceId,
@@ -302,6 +325,7 @@ export const OhMyPiAdapterV2Driver: ProviderAdapterDriver<
         environment: yield* mergeProviderInstanceEnvironment(input.environment, hostEnvironment),
         selfInvocation,
         ...(stopExtension === undefined ? {} : { stopExtension }),
+        ...(autoCompactionOff === undefined ? {} : { autoCompactionOff }),
         continuationRequests: yield* ProviderContinuationRequests.ProviderContinuationRequests,
         nativeLogging: (threadId) =>
           makeNativeLogger({
