@@ -48,6 +48,17 @@ export function materializeReplayTranscriptRuntimeInstructions(
         Array.isArray(frame.params.prompt)
       ) {
         const prompt: ReadonlyArray<unknown> = frame.params.prompt;
+        // ACP adapters append runtime info only to prompts that also carry the
+        // injected `<t3_code_instructions>` block (first turn, or a mode/tool/model change).
+        const carriesInjectedInstructions = prompt.some(
+          (part) =>
+            typeof part === "object" &&
+            part !== null &&
+            "text" in part &&
+            typeof part.text === "string" &&
+            part.text.startsWith("<t3_code_instructions>"),
+        );
+        if (!carriesInjectedInstructions) return entry;
         const lastPart = prompt.at(-1);
         if (
           typeof lastPart === "object" &&

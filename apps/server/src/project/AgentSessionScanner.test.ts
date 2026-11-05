@@ -22,11 +22,13 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
+import * as ProcessRunner from "../processRunner.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
@@ -56,10 +58,32 @@ interface ScannerTestInput {
   readonly importedWorkspaceRoots?: ReadonlyArray<string>;
   readonly configBaseDir?: string;
   readonly providerInstances?: ContractServerSettings["providerInstances"];
+  /** Called once each `cat` of a git file has settled, whether it finished or timed out. */
+  readonly onGitFileReadSettled?: (filePath: string) => Effect.Effect<void>;
 }
 
+/** A real `cat` finishes on real time, so tests release the TestClock only after it settled. */
+const layerObservedProcessRunner = (onSettled: (filePath: string) => Effect.Effect<void>) =>
+  Layer.effect(
+    ProcessRunner.ProcessRunner,
+    Effect.gen(function* () {
+      const runner = yield* ProcessRunner.make();
+      return ProcessRunner.ProcessRunner.of({
+        run: (input) =>
+          runner.run(input).pipe(Effect.ensuring(onSettled(input.args[input.args.length - 1]!))),
+      });
+    }),
+  );
+
+const layerScanner = (input: ScannerTestInput) =>
+  input.onGitFileReadSettled === undefined
+    ? AgentSessionScanner.layer
+    : Layer.effect(AgentSessionScanner.AgentSessionScanner, AgentSessionScanner.make).pipe(
+        Layer.provide(layerObservedProcessRunner(input.onGitFileReadSettled)),
+      );
+
 const layerScannerTest = (input: ScannerTestInput) =>
-  AgentSessionScanner.layer.pipe(
+  layerScanner(input).pipe(
     Layer.provide(
       Layer.mergeAll(
         ServerSettings.layerTest({
@@ -1959,11 +1983,22 @@ describe.skipIf(HostProcess.Platform.defaultValue() === "win32")(
           });
         }
 
+        const blockedConfig = path.join(repos[1], ".git", "config");
+        const settledReads = yield* Queue.unbounded<string>();
+        const input = {
+          claudeHomePath,
+          codexHomePath,
+          onGitFileReadSettled: (filePath: string) =>
+            filePath === blockedConfig ? Effect.void : Queue.offer(settledReads, filePath),
+        };
         for (let attempt = 1; attempt <= 2; attempt++) {
-          const scan = yield* Effect.forkChild(runScan({ claudeHomePath, codexHomePath }));
+          const scan = yield* Effect.forkChild(runScan(input));
           const result = yield* Effect.scoped(
             Effect.gen(function* () {
-              yield* awaitGateReader(path.join(repos[1], ".git", "config"));
+              yield* awaitGateReader(blockedConfig);
+              // The other repositories' `cat` runs on real time; their deadlines must not fire first.
+              yield* Queue.take(settledReads);
+              yield* Queue.take(settledReads);
               yield* TestClock.adjust("2 seconds");
               return yield* Fiber.join(scan);
             }),
