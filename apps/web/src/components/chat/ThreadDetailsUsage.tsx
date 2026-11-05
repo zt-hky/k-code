@@ -261,7 +261,7 @@ function PinnedAccountRow({
           <button
             type="button"
             aria-label={`Pinned account${revealEmails && pinnedLabel ? `: ${pinnedLabel}` : ""}. Change account`}
-            className="group col-span-3 flex h-6 min-w-0 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-start outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]"
+            className="group col-span-3 flex h-6 min-w-0 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-start outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08] pointer-coarse:h-9"
           />
         }
       >
@@ -280,7 +280,7 @@ function PinnedAccountRow({
         </span>
         <ChevronDownIcon
           aria-hidden
-          className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-popup-open:opacity-100"
+          className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-popup-open:opacity-100 pointer-coarse:opacity-100"
         />
       </MenuTrigger>
       <MenuPopup align="start">

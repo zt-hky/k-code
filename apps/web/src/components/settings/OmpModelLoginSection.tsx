@@ -129,7 +129,7 @@ function SignedInServiceRow(props: {
   const { provider, accounts } = props;
   return (
     <div className="py-2">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <div className="flex min-w-0 items-center gap-2">
           <p className="truncate text-xs font-medium text-foreground">{provider.name}</p>
           <Badge variant="success" size="sm">
@@ -161,13 +161,13 @@ function SignedInServiceRow(props: {
         </div>
       </div>
       {accounts.length > 0 ? (
-        <ul className="mt-1 grid gap-0.5 border-s border-border/60 ps-3">
+        <ul className="mt-1 grid grid-cols-[minmax(0,1fr)] gap-0.5 border-s border-border/60 ps-3">
           {accounts.map((account) => (
             <li
               key={account.credentialId}
               className="flex min-h-7 items-center justify-between gap-2"
             >
-              <div className="flex min-w-0 items-center gap-1.5 text-xs">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 py-0.5 text-xs">
                 {account.email ? (
                   <RedactedSensitiveText
                     key={account.email}
@@ -175,18 +175,20 @@ function SignedInServiceRow(props: {
                     ariaLabel="Toggle account email visibility"
                     revealTooltip="Click to reveal account"
                     hideTooltip="Click to hide account"
-                    className="truncate font-sans text-xs text-foreground/80"
+                    className="max-w-full truncate font-sans text-xs text-foreground/80"
                   />
                 ) : (
-                  <span className="truncate text-foreground/80">
+                  <span className="max-w-full truncate text-foreground/80">
                     {account.label ?? (account.type === "api_key" ? "API key" : "Account")}
                   </span>
                 )}
                 {account.email && account.label ? (
-                  <span className="shrink-0 text-muted-foreground">· {account.label}</span>
+                  <span className="max-w-full truncate text-muted-foreground">
+                    · {account.label}
+                  </span>
                 ) : null}
                 {account.active && accounts.length > 1 ? (
-                  <Badge variant="outline" size="sm">
+                  <Badge variant="outline" size="sm" className="shrink-0">
                     In use
                   </Badge>
                 ) : null}
@@ -195,6 +197,7 @@ function SignedInServiceRow(props: {
                 type="button"
                 size="xs"
                 variant="ghost-muted"
+                className="shrink-0"
                 disabled={props.disabled}
                 aria-label={`Sign out of ${account.email ?? account.label ?? "this account"}`}
                 onClick={() => props.onSignOutAccount(account)}
@@ -744,7 +747,7 @@ export function OmpModelLoginSection(props: {
       {panel !== "active" ? (
         <>
           {signedInProviders.length > 0 ? (
-            <div className="grid gap-1">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-1">
               <p className="text-xs font-medium text-muted-foreground">Signed-in accounts</p>
               <div className="divide-y divide-border/60 border-y border-border/60">
                 {signedInProviders.map((provider) => (
