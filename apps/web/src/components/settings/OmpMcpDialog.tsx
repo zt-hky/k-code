@@ -784,10 +784,9 @@ function OmpMcpBody(props: {
       setTests((current) => ({ ...current, [key]: result.value }));
       return;
     }
-    setTests((current) => {
-      const { [key]: _removed, ...rest } = current;
-      return rest;
-    });
+    setTests((current) =>
+      Object.fromEntries(Object.entries(current).filter(([existing]) => existing !== key)),
+    );
     reportAcpFailure(`Could not test ${server.name}`, result);
   };
 
