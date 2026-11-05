@@ -54,6 +54,16 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.ompLoginSignOut,
       WS_METHODS.ompLoginImportCredentials,
       WS_METHODS.ompLoginSubscribe,
+      WS_METHODS.ompMcpList,
+      WS_METHODS.ompMcpAddServer,
+      WS_METHODS.ompMcpRemoveServer,
+      WS_METHODS.ompMcpSetServerEnabled,
+      WS_METHODS.ompMcpTestServer,
+      WS_METHODS.ompMcpInspect,
+      WS_METHODS.ompMcpAuthStart,
+      WS_METHODS.ompMcpAuthCallback,
+      WS_METHODS.ompMcpAuthCancel,
+      WS_METHODS.ompMcpAuthSubscribe,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthProvidersManageScope);
     }

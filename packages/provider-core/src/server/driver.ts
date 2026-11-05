@@ -12,6 +12,15 @@ import type {
   OmpLoginImportCredentialsResult,
   OmpLoginSignOutResult,
   OmpLoginState,
+  OmpMcpAddServerInput,
+  OmpMcpAuthState,
+  OmpMcpChangeResult,
+  OmpMcpInspectResult,
+  OmpMcpListResult,
+  OmpMcpRemoveServerInput,
+  OmpMcpSetServerEnabledInput,
+  OmpMcpTestServerResult,
+  ServerProviderSlashSubcommand,
   ProviderDriverKind,
   ResolvedProviderInstanceEnvironment,
   ProviderInstanceId,
@@ -60,6 +69,54 @@ export interface ProviderModelLogin {
     credentials: string,
   ) => Effect.Effect<OmpLoginImportCredentialsResult, AcpRegistryOperationError>;
   readonly state: Stream.Stream<OmpLoginState>;
+}
+
+/** Where an MCP operation runs: a project's workspace root, or `undefined` for a neutral directory with only user-scoped servers. */
+export interface ProviderMcpTarget {
+  readonly cwd: string | undefined;
+}
+
+/** MCP server and skill management through the agent's own commands; K-code never edits its config. */
+export interface ProviderMcpManagement {
+  readonly list: (
+    cwd: string | undefined,
+  ) => Effect.Effect<OmpMcpListResult, AcpRegistryOperationError>;
+  readonly addServer: (
+    input: ProviderMcpTarget & Omit<OmpMcpAddServerInput, "instanceId" | "projectId">,
+  ) => Effect.Effect<OmpMcpChangeResult, AcpRegistryOperationError>;
+  readonly removeServer: (
+    input: ProviderMcpTarget & Omit<OmpMcpRemoveServerInput, "instanceId" | "projectId">,
+  ) => Effect.Effect<OmpMcpChangeResult, AcpRegistryOperationError>;
+  readonly setServerEnabled: (
+    input: ProviderMcpTarget & Omit<OmpMcpSetServerEnabledInput, "instanceId" | "projectId">,
+  ) => Effect.Effect<OmpMcpChangeResult, AcpRegistryOperationError>;
+  readonly testServer: (
+    input: ProviderMcpTarget & { readonly name: string },
+  ) => Effect.Effect<OmpMcpTestServerResult, AcpRegistryOperationError>;
+  readonly inspect: (
+    cwd: string | undefined,
+  ) => Effect.Effect<OmpMcpInspectResult, AcpRegistryOperationError>;
+  readonly startAuth: (
+    input: ProviderMcpTarget & { readonly name: string },
+  ) => Effect.Effect<OmpMcpAuthState, AcpRegistryOperationError>;
+  /** Finishes a flow whose browser could not reach the host's loopback callback; `callbackUrl` must be the flow's own redirect URI. */
+  readonly completeAuth: (input: {
+    readonly flowId: string;
+    readonly callbackUrl: string;
+  }) => Effect.Effect<OmpMcpAuthState, AcpRegistryOperationError>;
+  readonly cancelAuth: (
+    flowId: string,
+  ) => Effect.Effect<OmpMcpAuthState, AcpRegistryOperationError>;
+  readonly authState: Stream.Stream<OmpMcpAuthState>;
+  /** Subcommands of the agent's builtin slash commands, by command name; loaded once and kept. */
+  readonly subcommandCatalog: Effect.Effect<
+    ReadonlyMap<string, ReadonlyArray<ServerProviderSlashSubcommand>>,
+    AcpRegistryOperationError
+  >;
+  /** The catalog if it was already loaded; never starts a process. */
+  readonly cachedSubcommandCatalog: Effect.Effect<
+    ReadonlyMap<string, ReadonlyArray<ServerProviderSlashSubcommand>> | undefined
+  >;
 }
 
 export interface ProviderInstance {
@@ -131,6 +188,7 @@ export interface ProviderInstance {
     }) => Effect.Effect<AcpRegistrySetExtensionSourceResult, AcpRegistryOperationError>;
   };
   readonly modelProviderLogin?: ProviderModelLogin;
+  readonly mcpManagement?: ProviderMcpManagement;
 }
 
 export interface ProviderContinuationIdentity {

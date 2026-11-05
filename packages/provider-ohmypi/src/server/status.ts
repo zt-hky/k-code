@@ -186,6 +186,7 @@ function buildOhMyPiSnapshotBase(input: OhMyPiSnapshotInput): ServerProvider {
     checkedAt: input.checkedAt,
     showInteractionModeToggle: true,
     modelProviderLogin: true,
+    mcpManagement: true,
     slashCommands: input.probe?.slashCommands ?? [],
     skills: input.probe?.skills ?? [],
   } satisfies Partial<ServerProvider>;

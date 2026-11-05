@@ -22,6 +22,8 @@ vi.mock("../../state/server", () => ({
 
 import {
   buildComposerSlashCommandItems,
+  buildComposerSlashSubcommandItems,
+  detectComposerSlashSubcommandTrigger,
   resolveComposerCommandSelection,
   resolveComposerMenuSelection,
 } from "./use-composer-command-menu";
@@ -124,5 +126,57 @@ describe("mobile slash commands", () => {
         allowInteractionMode: false,
       }),
     ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
+  });
+});
+
+describe("mobile slash subcommands", () => {
+  const slashCommands = [
+    {
+      name: "mcp",
+      subcommands: [
+        { name: "add", description: "Add a server", usage: "/mcp add <name>" },
+        { name: "list", description: "List servers" },
+        { name: "enable" },
+      ],
+    },
+    { name: "compact" },
+  ];
+
+  it("offers matching subcommands for `/mcp a` and replaces only the partial", () => {
+    const draftMessage = "/mcp a";
+    const trigger = detectComposerSlashSubcommandTrigger(
+      draftMessage,
+      draftMessage.length,
+      slashCommands,
+    );
+    if (trigger?.kind !== "slash-subcommand") throw new Error("Expected a subcommand trigger");
+    expect(trigger).toMatchObject({ command: "mcp", query: "a", rangeStart: 5, rangeEnd: 6 });
+
+    const items = buildComposerSlashSubcommandItems({
+      command: trigger.command,
+      query: trigger.query,
+      slashCommands,
+    });
+    expect(items.map((item) => item.label)).toEqual(["add"]);
+    expect(items[0]?.description).toBe("/mcp add <name> · Add a server");
+
+    const item = items[0];
+    if (!item) throw new Error("Expected the add subcommand");
+    expect(
+      resolveComposerCommandSelection({
+        draftMessage,
+        trigger,
+        item,
+        allowInteractionMode: false,
+      }),
+    ).toEqual({ text: "/mcp add ", cursor: 9, interactionMode: null });
+  });
+
+  it("lists every subcommand for an empty partial and ignores commands without any", () => {
+    expect(
+      buildComposerSlashSubcommandItems({ command: "mcp", query: "", slashCommands }),
+    ).toHaveLength(3);
+    expect(detectComposerSlashSubcommandTrigger("/compact ", 9, slashCommands)).toBeNull();
+    expect(detectComposerSlashSubcommandTrigger("hi /mcp a", 9, slashCommands)).toBeNull();
   });
 });

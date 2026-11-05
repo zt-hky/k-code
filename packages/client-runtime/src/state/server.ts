@@ -1632,6 +1632,61 @@ export function createServerEnvironmentAtoms<R, E>(
         key: ({ environmentId, input }) => `${environmentId}:${input.instanceId}`,
       },
     }),
+    ompMcpAuthState: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:omp-mcp:auth-state",
+      tag: WS_METHODS.ompMcpAuthSubscribe,
+      idleTtlMs: 0,
+    }),
+    listOmpMcp: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:list",
+      tag: WS_METHODS.ompMcpList,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          `${environmentId}:${input.instanceId}:${input.projectId ?? ""}`,
+      },
+    }),
+    addOmpMcpServer: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:add-server",
+      tag: WS_METHODS.ompMcpAddServer,
+    }),
+    removeOmpMcpServer: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:remove-server",
+      tag: WS_METHODS.ompMcpRemoveServer,
+    }),
+    setOmpMcpServerEnabled: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:set-server-enabled",
+      tag: WS_METHODS.ompMcpSetServerEnabled,
+    }),
+    testOmpMcpServer: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:test-server",
+      tag: WS_METHODS.ompMcpTestServer,
+    }),
+    inspectOmpMcp: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:inspect",
+      tag: WS_METHODS.ompMcpInspect,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          `${environmentId}:${input.instanceId}:${input.projectId ?? ""}`,
+      },
+    }),
+    startOmpMcpAuth: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:auth-start",
+      tag: WS_METHODS.ompMcpAuthStart,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => `${environmentId}:${input.instanceId}`,
+      },
+    }),
+    completeOmpMcpAuth: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:auth-callback",
+      tag: WS_METHODS.ompMcpAuthCallback,
+    }),
+    cancelOmpMcpAuth: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:omp-mcp:auth-cancel",
+      tag: WS_METHODS.ompMcpAuthCancel,
+    }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,

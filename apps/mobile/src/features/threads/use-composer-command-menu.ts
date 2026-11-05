@@ -4,6 +4,7 @@ import type {
   ProjectId,
   ProviderInteractionMode,
   ServerProvider,
+  ServerProviderSlashCommand,
   ThreadId,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
@@ -167,6 +168,57 @@ export function buildComposerSlashCommandItems(input: {
   return items;
 }
 
+export type ComposerMenuTrigger =
+  | ComposerTrigger
+  | (Omit<ComposerTrigger, "kind"> & {
+      readonly kind: "slash-subcommand";
+      readonly command: string;
+    });
+
+/**
+ * Detects `/<command> <partial>` at the start of a message for a provider
+ * command that declares subcommands. The shared detector yields no trigger
+ * for the argument word, so this only fills that gap.
+ */
+export function detectComposerSlashSubcommandTrigger(
+  text: string,
+  cursor: number,
+  slashCommands: ReadonlyArray<ServerProviderSlashCommand>,
+): ComposerMenuTrigger | null {
+  const match = /^\/([^\s/]+)[ \t]+(\S*)$/.exec(text.slice(0, cursor));
+  if (!match) return null;
+  const commandName = match[1] ?? "";
+  const partial = match[2] ?? "";
+  const command = slashCommands.find((candidate) => candidate.name === commandName);
+  if (!command?.subcommands?.length) return null;
+  return {
+    kind: "slash-subcommand",
+    command: commandName,
+    query: partial,
+    rangeStart: cursor - partial.length,
+    rangeEnd: cursor,
+  };
+}
+
+export function buildComposerSlashSubcommandItems(input: {
+  readonly command: string;
+  readonly query: string;
+  readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
+}): ComposerCommandItem[] {
+  const query = input.query.toLowerCase();
+  const command = input.slashCommands.find((candidate) => candidate.name === input.command);
+  return (command?.subcommands ?? [])
+    .filter((subcommand) => subcommand.name.toLowerCase().startsWith(query))
+    .map((subcommand) => ({
+      id: `psub:${input.command}:${subcommand.name}`,
+      type: "slash-subcommand",
+      command: input.command,
+      subcommand,
+      label: subcommand.name,
+      description: [subcommand.usage, subcommand.description].filter(Boolean).join(" · "),
+    }));
+}
+
 export function resolveComposerCommandSelection(input: {
   readonly draftMessage: string;
   readonly trigger: Pick<ComposerTrigger, "rangeStart" | "rangeEnd">;
@@ -198,6 +250,8 @@ export function resolveComposerCommandSelection(input: {
     replacement = `/${item.command} `;
   } else if (item.type === "provider-slash-command") {
     replacement = `/${item.command.name} `;
+  } else if (item.type === "slash-subcommand") {
+    replacement = `${item.subcommand.name} `;
   }
   return {
     ...replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, replacement),
@@ -294,7 +348,16 @@ export function useComposerCommandMenu({
     if (!enabled || selection.start !== selection.end) {
       return null;
     }
-    return detectComposerTrigger(draftMessage, selection.end);
+    return (
+      detectComposerTrigger(draftMessage, selection.end) ??
+      detectComposerSlashSubcommandTrigger(
+        draftMessage,
+        selection.end,
+        selectedProviderStatus
+          ? resolveProviderSlashCommandsForCwd(selectedProviderStatus, projectCwd)
+          : [],
+      )
+    );
   })();
   const pathSearch = useComposerPathSearch({
     environmentId,
@@ -338,6 +401,16 @@ export function useComposerCommandMenu({
             : `${entry.repository} · `
         }${entry.title}`,
       }));
+    }
+
+    if (trigger.kind === "slash-subcommand") {
+      return buildComposerSlashSubcommandItems({
+        command: trigger.command,
+        query: trigger.query,
+        slashCommands: selectedProviderStatus
+          ? resolveProviderSlashCommandsForCwd(selectedProviderStatus, projectCwd)
+          : [],
+      });
     }
 
     if (trigger.kind === "slash-command") {

@@ -53,6 +53,7 @@ import { makeAnsiFilter, type AnsiFilter } from "./ansi.ts";
 import { extractOmpAskElicitationForm, isOmpAskToolCall } from "./ask.ts";
 import { OHMYPI_DRIVER_KIND } from "./kind.ts";
 import { toAcpRegistrySettings } from "./registrySettings.ts";
+import { readOmpConfiguredMcpServers } from "./configuredMcpServers.ts";
 import { OMP_SKILL_PREFIXES, rewriteOmpSkillMentions } from "./skills.ts";
 import {
   materializeOmpStopExtension,
@@ -157,6 +158,7 @@ function makeOmpRuntime(
           customModels: readCustomModelEntries(options.settings.customModels).map(
             (entry) => entry.slug,
           ),
+          agentMcpServers: readOmpConfiguredMcpServers,
         }),
       );
       return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(

@@ -547,6 +547,9 @@ export const AcpRegistryOperationErrorReason = Schema.Literals([
   "login_stale_flow",
   "login_sign_out_failed",
   "login_import_failed",
+  "mcp_unsupported",
+  "mcp_failed",
+  "mcp_auth_stale_flow",
 ]);
 export type AcpRegistryOperationErrorReason = typeof AcpRegistryOperationErrorReason.Type;
 

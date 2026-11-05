@@ -51,6 +51,7 @@ import { OhMyPiSettings } from "../settings.ts";
 import { OhMyPiAdapterV2Driver, type OhMyPiAdapterV2DriverEnv } from "./adapter.ts";
 import { OHMYPI_DRIVER_KIND } from "./kind.ts";
 import { makeOmpLogin } from "./login.ts";
+import { makeOmpMcp } from "./mcp.ts";
 import {
   listAcpRegistryExtensions,
   listAcpRegistryProjects,
@@ -261,6 +262,46 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
           Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError),
         ),
     }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
+    const mcp = yield* makeOmpMcp({
+      instanceId,
+      resolveSpawn: Effect.fn("OhMyPiDriver.resolveMcpSpawn")(function* (cwd: string | undefined) {
+        const runCwd = cwd ?? path.join(host.paths.stateDir, "omp-mcp");
+        if (cwd === undefined) {
+          yield* fileSystem.makeDirectory(runCwd, { recursive: true }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new AcpRegistryOperationError({
+                  reason: "mcp_failed",
+                  message: "Could not prepare a directory to run Oh My Pi in.",
+                  cause,
+                }),
+            ),
+          );
+        }
+        const { spawn } = yield* catalog
+          .resolve(registrySettings, runCwd, processEnvironment)
+          .pipe(Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError));
+        return { command: spawn.command, env: spawn.env ?? processEnvironment, cwd: runCwd };
+      }),
+    }).pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.provideService(SecureRandom.SecureRandom, random),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+    );
+    // The slash-command list ACP reports drops subcommands; they come from omp's RPC catalog.
+    const withSubcommands = Effect.fn("OhMyPiDriver.withSubcommands")(function* (
+      input: ServerProvider,
+    ) {
+      const subcommands = yield* mcp.cachedSubcommandCatalog;
+      if (subcommands === undefined) return input;
+      return {
+        ...input,
+        slashCommands: input.slashCommands.map((command) => {
+          const found = subcommands.get(command.name);
+          return found === undefined ? command : { ...command, subcommands: found };
+        }),
+      };
+    });
 
     const readInstall = probeOhMyPiInstall(effectiveConfig, processEnvironment).pipe(
       provideSpawner,
@@ -273,7 +314,7 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
       Effect.orElseSucceed(() => undefined),
     );
 
-    const withLiveRuntimeState = Effect.fn("OhMyPiDriver.withLiveRuntimeState")(function* (
+    const withLiveRuntimeStateBase = Effect.fn("OhMyPiDriver.withLiveRuntimeStateBase")(function* (
       input: ServerProvider,
     ) {
       if (Option.isNone(runtimeCoordinator) || input.auth.status === "unauthenticated") {
@@ -292,6 +333,8 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
         onSome: (live) => applyOhMyPiLiveConfiguration(withCommands, live, customModels),
       });
     });
+    const withLiveRuntimeState = (input: ServerProvider) =>
+      withLiveRuntimeStateBase(input).pipe(Effect.flatMap(withSubcommands));
 
     const checkProvider = Effect.gen(function* () {
       const checkedAt = DateTime.formatIso(yield* DateTime.now);
@@ -451,14 +494,38 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
             }),
           ),
         );
-        if (Option.isNone(runtimeCoordinator)) return publishEnrichment;
+        // Fetched once per instance in the background; a failure leaves commands without subcommands.
+        const publishSubcommands = mcp.cachedSubcommandCatalog.pipe(
+          Effect.flatMap((cached) =>
+            cached !== undefined
+              ? Effect.void
+              : mcp.subcommandCatalog.pipe(
+                  Effect.flatMap(() =>
+                    liveSnapshotSemaphore.withPermit(
+                      getSnapshot.pipe(
+                        Effect.flatMap(withSubcommands),
+                        Effect.flatMap(publishSnapshot),
+                      ),
+                    ),
+                  ),
+                  Effect.ignore,
+                ),
+          ),
+        );
+        if (Option.isNone(runtimeCoordinator)) {
+          return Effect.all([publishEnrichment, publishSubcommands], {
+            concurrency: "unbounded",
+            discard: true,
+          });
+        }
 
         const publishLiveCommands = runtimeCoordinator.value.watchAvailableCommands(
           instanceId,
           ({ slashCommands, skills }) =>
             liveSnapshotSemaphore.withPermit(
               getSnapshot.pipe(
-                Effect.flatMap((current) => publishSnapshot({ ...current, slashCommands, skills })),
+                Effect.flatMap((current) => withSubcommands({ ...current, slashCommands, skills })),
+                Effect.flatMap(publishSnapshot),
               ),
             ),
         );
@@ -475,10 +542,13 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
               ),
             ),
         );
-        return Effect.all([publishEnrichment, publishLiveCommands, publishLiveConfiguration], {
-          concurrency: "unbounded",
-          discard: true,
-        });
+        return Effect.all(
+          [publishEnrichment, publishLiveCommands, publishLiveConfiguration, publishSubcommands],
+          {
+            concurrency: "unbounded",
+            discard: true,
+          },
+        );
       }),
     }).pipe(
       Effect.mapError(
@@ -535,6 +605,7 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
       orchestrationAdapter,
       textGeneration,
       modelProviderLogin: login,
+      mcpManagement: mcp,
       acpSessionManagement: {
         listAllSessions,
         resolveFirstMessages: (sessionIds) =>

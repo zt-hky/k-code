@@ -93,6 +93,23 @@ import {
   AcpRegistrySetProviderInput,
   AcpRegistrySetProviderResult,
 } from "./acpRegistry.ts";
+import {
+  OmpMcpAddServerInput,
+  OmpMcpAuthCallbackInput,
+  OmpMcpAuthCancelInput,
+  OmpMcpAuthStartInput,
+  OmpMcpAuthState,
+  OmpMcpAuthSubscribeInput,
+  OmpMcpChangeResult,
+  OmpMcpInspectInput,
+  OmpMcpInspectResult,
+  OmpMcpListInput,
+  OmpMcpListResult,
+  OmpMcpRemoveServerInput,
+  OmpMcpSetServerEnabledInput,
+  OmpMcpTestServerInput,
+  OmpMcpTestServerResult,
+} from "./ompMcp.ts";
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
   AuthAccessStreamError,
@@ -563,6 +580,16 @@ export const WS_METHODS = {
   ompLoginSignOut: "server.ompLogin.signOut",
   ompLoginImportCredentials: "server.ompLogin.importCredentials",
   ompLoginSubscribe: "server.ompLogin.subscribe",
+  ompMcpList: "server.ompMcp.list",
+  ompMcpAddServer: "server.ompMcp.addServer",
+  ompMcpRemoveServer: "server.ompMcp.removeServer",
+  ompMcpSetServerEnabled: "server.ompMcp.setServerEnabled",
+  ompMcpTestServer: "server.ompMcp.testServer",
+  ompMcpInspect: "server.ompMcp.inspect",
+  ompMcpAuthStart: "server.ompMcp.authStart",
+  ompMcpAuthCallback: "server.ompMcp.authCallback",
+  ompMcpAuthCancel: "server.ompMcp.authCancel",
+  ompMcpAuthSubscribe: "server.ompMcp.authSubscribe",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetHostResources: "server.getHostResources",
@@ -1021,6 +1048,67 @@ const WsOmpLoginImportCredentialsRpc = Rpc.make(WS_METHODS.ompLoginImportCredent
 const WsOmpLoginSubscribeRpc = Rpc.make(WS_METHODS.ompLoginSubscribe, {
   payload: OmpLoginSubscribeInput,
   success: OmpLoginState,
+  error: OmpLoginRpcError,
+  stream: true,
+});
+
+const WsOmpMcpListRpc = Rpc.make(WS_METHODS.ompMcpList, {
+  payload: OmpMcpListInput,
+  success: OmpMcpListResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpAddServerRpc = Rpc.make(WS_METHODS.ompMcpAddServer, {
+  payload: OmpMcpAddServerInput,
+  success: OmpMcpChangeResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpRemoveServerRpc = Rpc.make(WS_METHODS.ompMcpRemoveServer, {
+  payload: OmpMcpRemoveServerInput,
+  success: OmpMcpChangeResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpSetServerEnabledRpc = Rpc.make(WS_METHODS.ompMcpSetServerEnabled, {
+  payload: OmpMcpSetServerEnabledInput,
+  success: OmpMcpChangeResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpTestServerRpc = Rpc.make(WS_METHODS.ompMcpTestServer, {
+  payload: OmpMcpTestServerInput,
+  success: OmpMcpTestServerResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpInspectRpc = Rpc.make(WS_METHODS.ompMcpInspect, {
+  payload: OmpMcpInspectInput,
+  success: OmpMcpInspectResult,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpAuthStartRpc = Rpc.make(WS_METHODS.ompMcpAuthStart, {
+  payload: OmpMcpAuthStartInput,
+  success: OmpMcpAuthState,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpAuthCallbackRpc = Rpc.make(WS_METHODS.ompMcpAuthCallback, {
+  payload: OmpMcpAuthCallbackInput,
+  success: OmpMcpAuthState,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpAuthCancelRpc = Rpc.make(WS_METHODS.ompMcpAuthCancel, {
+  payload: OmpMcpAuthCancelInput,
+  success: OmpMcpAuthState,
+  error: OmpLoginRpcError,
+});
+
+const WsOmpMcpAuthSubscribeRpc = Rpc.make(WS_METHODS.ompMcpAuthSubscribe, {
+  payload: OmpMcpAuthSubscribeInput,
+  success: OmpMcpAuthState,
   error: OmpLoginRpcError,
   stream: true,
 });
@@ -2193,6 +2281,16 @@ export const WsRpcGroup = RpcGroup.make(
   WsOmpLoginSignOutRpc,
   WsOmpLoginImportCredentialsRpc,
   WsOmpLoginSubscribeRpc,
+  WsOmpMcpListRpc,
+  WsOmpMcpAddServerRpc,
+  WsOmpMcpRemoveServerRpc,
+  WsOmpMcpSetServerEnabledRpc,
+  WsOmpMcpTestServerRpc,
+  WsOmpMcpInspectRpc,
+  WsOmpMcpAuthStartRpc,
+  WsOmpMcpAuthCallbackRpc,
+  WsOmpMcpAuthCancelRpc,
+  WsOmpMcpAuthSubscribeRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetHostResourcesRpc,

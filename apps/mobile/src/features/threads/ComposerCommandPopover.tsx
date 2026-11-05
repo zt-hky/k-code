@@ -9,6 +9,7 @@ import type {
   ScopedThreadRef,
   ServerProviderSkill,
   ServerProviderSlashCommand,
+  ServerProviderSlashSubcommand,
 } from "@t3tools/contracts";
 import type { ComposerTriggerKind } from "@t3tools/shared/composerTrigger";
 import { memo } from "react";
@@ -20,6 +21,9 @@ import { ENVIRONMENT_MACHINE_SYMBOLS } from "../../components/EnvironmentMachine
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
+
+export type ComposerMenuTriggerKind = ComposerTriggerKind | "slash-subcommand";
+
 export type ComposerCommandItem =
   | {
       readonly id: string;
@@ -67,6 +71,14 @@ export type ComposerCommandItem =
     }
   | {
       readonly id: string;
+      readonly type: "slash-subcommand";
+      readonly command: string;
+      readonly subcommand: ServerProviderSlashSubcommand;
+      readonly label: string;
+      readonly description: string;
+    }
+  | {
+      readonly id: string;
       readonly type: "skill";
       readonly skill: ServerProviderSkill;
       readonly label: string;
@@ -75,7 +87,7 @@ export type ComposerCommandItem =
 
 interface ComposerCommandPopoverProps {
   readonly items: ReadonlyArray<ComposerCommandItem>;
-  readonly triggerKind: ComposerTriggerKind | null;
+  readonly triggerKind: ComposerMenuTriggerKind | null;
   readonly isLoading: boolean;
   readonly error?: string | null;
   readonly onSelect: (item: ComposerCommandItem) => void;
@@ -115,6 +127,8 @@ function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
     case "slash-command":
     case "provider-slash-command":
       return "terminal";
+    case "slash-subcommand":
+      return "chevron.right";
     case "skill":
       return SKILL_SOURCE_SYMBOL_BY_KIND[resolveProviderSkillSourceKind(item.skill)];
     case "path":
@@ -126,12 +140,14 @@ function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
   }
 }
 
-function groupLabel(triggerKind: ComposerTriggerKind | null): string | null {
+function groupLabel(triggerKind: ComposerMenuTriggerKind | null): string | null {
   switch (triggerKind) {
     case "pull-request":
       return "Pull requests";
     case "slash-command":
       return "Commands";
+    case "slash-subcommand":
+      return "Subcommands";
     case "skill":
       return "Skills";
     case "path":
@@ -141,7 +157,7 @@ function groupLabel(triggerKind: ComposerTriggerKind | null): string | null {
   }
 }
 
-function emptyText(triggerKind: ComposerTriggerKind | null, isLoading: boolean): string {
+function emptyText(triggerKind: ComposerMenuTriggerKind | null, isLoading: boolean): string {
   if (isLoading) {
     return triggerKind === "path" ? "Searching files…" : "Loading…";
   }
@@ -154,6 +170,8 @@ function emptyText(triggerKind: ComposerTriggerKind | null, isLoading: boolean):
       return "No skills found.";
     case "slash-command":
       return "No matching commands.";
+    case "slash-subcommand":
+      return "No matching subcommands.";
     default:
       return "No results.";
   }

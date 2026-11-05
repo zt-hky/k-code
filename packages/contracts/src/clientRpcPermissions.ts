@@ -65,6 +65,15 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.ompLoginSignOut]: AuthProvidersManageScope,
   // Copies the user's own model credentials to this environment.
   [WS_METHODS.ompLoginImportCredentials]: AuthProvidersManageScope,
+  // MCP servers run commands and hold credentials on this environment; testing one starts it.
+  [WS_METHODS.ompMcpAddServer]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpRemoveServer]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpSetServerEnabled]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpTestServer]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpInspect]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpAuthStart]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpAuthCallback]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpAuthCancel]: AuthProvidersManageScope,
 
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,

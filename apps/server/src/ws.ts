@@ -1585,6 +1585,43 @@ export const layerWsRpc = (
         return instance.modelProviderLogin;
       });
 
+      const ompMcp = Effect.fn("ws.ompMcp.resolve")(function* (instanceId: ProviderInstanceId) {
+        const instance = yield* providerInstances.getInstance(instanceId);
+        if (instance === undefined) {
+          return yield* new AcpRegistryOperationError({
+            reason: "instance_not_found",
+            message: `Provider instance ${instanceId} was not found.`,
+          });
+        }
+        if (instance.mcpManagement === undefined) {
+          return yield* new AcpRegistryOperationError({
+            reason: "mcp_unsupported",
+            message: `Provider instance ${instanceId} does not manage MCP servers.`,
+          });
+        }
+        return instance.mcpManagement;
+      });
+
+      // No project runs omp in a neutral directory, where only user-scoped servers apply.
+      const ompMcpTarget = Effect.fn("ws.ompMcp.target")(function* (input: {
+        readonly instanceId: ProviderInstanceId;
+        readonly projectId?: ProjectId | undefined;
+        readonly scope?: "user" | "project";
+      }) {
+        const mcp = yield* ompMcp(input.instanceId);
+        if (input.projectId === undefined) {
+          if (input.scope === "project") {
+            return yield* new AcpRegistryOperationError({
+              reason: "mcp_failed",
+              message: "Pick a project to change project-scoped servers.",
+            });
+          }
+          return { mcp, cwd: undefined };
+        }
+        const project = yield* acpRegistryProject(input.projectId);
+        return { mcp, cwd: project.workspaceRoot };
+      });
+
       const importedAcpThreadId = (input: {
         readonly driver: ProviderDriverKind;
         readonly instanceId: ProviderInstanceId;
@@ -2643,6 +2680,94 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.ompLoginSubscribe]: (input) =>
           Stream.unwrap(ompLogin(input.instanceId).pipe(Effect.map((login) => login.state))),
+        [WS_METHODS.ompMcpList]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+          }).pipe(
+            Effect.andThen(ompMcpTarget(input)),
+            Effect.flatMap(({ mcp, cwd }) => mcp.list(cwd)),
+          ),
+        // The token is a write-only secret: it never reaches a span attribute or a log.
+        [WS_METHODS.ompMcpAddServer]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+            "omp_mcp.scope": input.scope,
+          }).pipe(
+            Effect.andThen(ompMcpTarget(input)),
+            Effect.flatMap(({ mcp, cwd }) =>
+              mcp.addServer({
+                cwd,
+                name: input.name,
+                scope: input.scope,
+                transport: input.transport,
+                ...(input.url === undefined ? {} : { url: input.url }),
+                ...(input.token === undefined ? {} : { token: input.token }),
+                ...(input.command === undefined ? {} : { command: input.command }),
+              }),
+            ),
+          ),
+        [WS_METHODS.ompMcpRemoveServer]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+            "omp_mcp.scope": input.scope,
+          }).pipe(
+            Effect.andThen(ompMcpTarget(input)),
+            Effect.flatMap(({ mcp, cwd }) =>
+              mcp.removeServer({ cwd, name: input.name, scope: input.scope }),
+            ),
+          ),
+        [WS_METHODS.ompMcpSetServerEnabled]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+          }).pipe(
+            Effect.andThen(ompMcpTarget(input)),
+            Effect.flatMap(({ mcp, cwd }) =>
+              mcp.setServerEnabled({ cwd, name: input.name, enabled: input.enabled }),
+            ),
+          ),
+        [WS_METHODS.ompMcpTestServer]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+          }).pipe(
+            Effect.andThen(ompMcpTarget(input)),
+            Effect.flatMap(({ mcp, cwd }) => mcp.testServer({ cwd, name: input.name })),
+          ),
+        [WS_METHODS.ompMcpInspect]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+          }).pipe(
+            Effect.andThen(ompMcpTarget(input)),
+            Effect.flatMap(({ mcp, cwd }) => mcp.inspect(cwd)),
+          ),
+        [WS_METHODS.ompMcpAuthStart]: (input) =>
+          Effect.annotateCurrentSpan({
+            "provider.instance_id": input.instanceId,
+            "project.id": input.projectId,
+          }).pipe(
+            Effect.andThen(ompMcpTarget(input)),
+            Effect.flatMap(({ mcp, cwd }) => mcp.startAuth({ cwd, name: input.name })),
+          ),
+        // The callback address carries the authorization code: it never reaches a span attribute or a log.
+        [WS_METHODS.ompMcpAuthCallback]: (input) =>
+          Effect.annotateCurrentSpan({ "provider.instance_id": input.instanceId }).pipe(
+            Effect.andThen(ompMcp(input.instanceId)),
+            Effect.flatMap((mcp) =>
+              mcp.completeAuth({ flowId: input.flowId, callbackUrl: input.callbackUrl }),
+            ),
+          ),
+        [WS_METHODS.ompMcpAuthCancel]: (input) =>
+          Effect.annotateCurrentSpan({ "provider.instance_id": input.instanceId }).pipe(
+            Effect.andThen(ompMcp(input.instanceId)),
+            Effect.flatMap((mcp) => mcp.cancelAuth(input.flowId)),
+          ),
+        [WS_METHODS.ompMcpAuthSubscribe]: (input) =>
+          Stream.unwrap(ompMcp(input.instanceId).pipe(Effect.map((mcp) => mcp.authState))),
         [WS_METHODS.serverLogoutAcpRegistry]: (input) =>
           Effect.annotateCurrentSpan({ "provider.instance_id": input.instanceId }).pipe(
             Effect.andThen(

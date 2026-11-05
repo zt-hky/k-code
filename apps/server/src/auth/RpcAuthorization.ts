@@ -105,6 +105,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverLogoutAcpRegistry]: AuthProvidersManageScope,
   [WS_METHODS.ompLoginListProviders]: AuthProvidersManageScope,
   [WS_METHODS.ompLoginSubscribe]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpList]: AuthProvidersManageScope,
+  [WS_METHODS.ompMcpAuthSubscribe]: AuthProvidersManageScope,
   [WS_METHODS.serverDiscoverSourceControl]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetTraceDiagnostics]: AuthDiagnosticsReadScope,
   [WS_METHODS.serverGetProcessDiagnostics]: AuthDiagnosticsReadScope,

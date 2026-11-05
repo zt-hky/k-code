@@ -104,10 +104,19 @@ export const ServerProviderSlashCommandInput = Schema.Struct({
 });
 export type ServerProviderSlashCommandInput = typeof ServerProviderSlashCommandInput.Type;
 
+/** A second word a command takes, such as `/mcp add`, with the arguments that follow it. */
+export const ServerProviderSlashSubcommand = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  description: Schema.optional(TrimmedNonEmptyString),
+  usage: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerProviderSlashSubcommand = typeof ServerProviderSlashSubcommand.Type;
+
 export const ServerProviderSlashCommand = Schema.Struct({
   name: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
   input: Schema.optional(ServerProviderSlashCommandInput),
+  subcommands: Schema.optional(Schema.Array(ServerProviderSlashSubcommand)),
 });
 export type ServerProviderSlashCommand = typeof ServerProviderSlashCommand.Type;
 
@@ -248,6 +257,8 @@ export const ServerProvider = Schema.Struct({
   configurableProviders: Schema.optional(Schema.Boolean),
   manageableExtensions: Schema.optional(Schema.Boolean),
   modelProviderLogin: Schema.optional(Schema.Boolean),
+  // Oh My Pi: MCP servers and skills are managed through `ompMcp*` RPCs.
+  mcpManagement: Schema.optional(Schema.Boolean),
   runtimePaths: Schema.optionalKey(
     Schema.Struct({
       homePath: TrimmedNonEmptyString,

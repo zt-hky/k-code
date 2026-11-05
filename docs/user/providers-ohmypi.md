@@ -95,6 +95,13 @@ mobile apps.
   turn keep running. K-code loads a small extension into Oh My Pi (`omp acp --extension`) for
   this.
 - **Skills** appear in the `$` menu; selecting one runs `/skill:<name>`.
+- **MCP servers**: threads get the MCP servers you set up in Oh My Pi (user, project, and plugin
+  config), alongside K-code's own. To manage them, open the Oh My Pi card in **Settings →
+  Providers** and click **Manage** under **MCP servers & skills**. From there you can add, remove,
+  enable, disable, test, and authorize servers, and browse their resources and prompts. The
+  **Skills** tab lists the skills Oh My Pi loads; it is read-only. Changes apply to new sessions.
+  In a running thread, send `/mcp reload`. Typing `/mcp ` in the composer lists every `/mcp`
+  subcommand, and the one you pick goes to the thread's Oh My Pi session.
 - **Usage**: the card and Usage page show each signed-in account's limits. Token totals come from
   Oh My Pi's session logs.
 - **Pinned account**: Thread details shows the email of the account serving the thread under

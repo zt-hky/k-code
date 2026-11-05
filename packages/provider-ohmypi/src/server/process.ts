@@ -99,12 +99,107 @@ const firstStderrLine = (stderr: string): string | undefined =>
     .map((line) => line.trim())
     .find((line) => line !== "");
 
-export type OmpRpcCall = (
-  command: { readonly type: string } & Readonly<Record<string, unknown>>,
-) => Effect.Effect<unknown, OmpProcessError>;
+export type OmpRpcCommand = { readonly type: string } & Readonly<Record<string, unknown>>;
+
+export type OmpRpcCall = (command: OmpRpcCommand) => Effect.Effect<unknown, OmpProcessError>;
 
 const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
+
+// Every `/mcp` command is answered by text events, so management sessions keep a bounded copy.
+const MAX_COMMAND_OUTPUT = 262_144;
+
+interface OmpRpcSession {
+  /** Resolves with the response's `data` and the `command_output` texts emitted before it. */
+  readonly call: (command: OmpRpcCommand) => Effect.Effect<
+    {
+      readonly data: unknown;
+      readonly outputs: ReadonlyArray<string>;
+    },
+    OmpProcessError
+  >;
+  /** `command_output` texts that arrive while no call is waiting, such as a reauth's progress. */
+  readonly lateOutputs: Stream.Stream<string>;
+}
+
+const openRpcSession = Effect.fn("OmpProcess.openRpcSession")(function* (
+  spawn: OmpSpawn,
+  args: ReadonlyArray<string>,
+): Effect.fn.Return<
+  OmpRpcSession,
+  OmpProcessError,
+  ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+> {
+  const child = yield* spawnOmp(spawn, args);
+  const responses = yield* Queue.unbounded<
+    {
+      readonly response: Readonly<Record<string, unknown>>;
+      readonly outputs: ReadonlyArray<string>;
+    },
+    Cause.Done
+  >();
+  const lateOutputs = yield* Queue.unbounded<string, Cause.Done>();
+  let stderr = "";
+  let collecting: Array<string> | undefined;
+  let collectedSize = 0;
+  yield* child.stderr.pipe(
+    Stream.runForEach((text) =>
+      Effect.sync(() => {
+        if (stderr.length < MAX_STDERR) stderr += text;
+      }),
+    ),
+    Effect.forkScoped,
+  );
+  yield* child.stdout.pipe(
+    Stream.splitLines,
+    Stream.runForEach((line) => {
+      const record = asRecord(Option.getOrUndefined(decodeJson(line)));
+      if (record?.type === "command_output" && typeof record.text === "string") {
+        if (collecting === undefined) return Queue.offer(lateOutputs, record.text);
+        if (collectedSize < MAX_COMMAND_OUTPUT) {
+          collecting.push(record.text);
+          collectedSize += record.text.length;
+        }
+        return Effect.void;
+      }
+      if (record?.type === "response") {
+        const outputs = collecting ?? [];
+        collecting = undefined;
+        return Queue.offer(responses, { response: record, outputs });
+      }
+      return Effect.void;
+    }),
+    Effect.andThen(Queue.end(responses)),
+    Effect.andThen(Queue.end(lateOutputs)),
+    Effect.forkScoped,
+  );
+  let nextId = 0;
+  const call: OmpRpcSession["call"] = Effect.fn("OmpProcess.rpcCall")(function* (command) {
+    const id = String(++nextId);
+    collecting = [];
+    collectedSize = 0;
+    yield* child.write(`${encodeJson({ ...command, id })}\n`);
+    while (true) {
+      const { response, outputs } = yield* Queue.take(responses).pipe(
+        Effect.mapError(
+          () =>
+            new OmpProcessError({
+              detail: firstStderrLine(stderr) ?? "Oh My Pi exited before it answered.",
+            }),
+        ),
+      );
+      if (response.id !== id) continue;
+      if (response.success !== true) {
+        return yield* new OmpProcessError({
+          detail:
+            typeof response.error === "string" ? response.error : "Oh My Pi rejected the request.",
+        });
+      }
+      return { data: response.data, outputs };
+    }
+  });
+  return { call, lateOutputs: Stream.fromQueue(lateOutputs) };
+});
 
 /**
  * Runs `use` against one short-lived `omp --mode rpc` process. Commands run one at a time and
@@ -116,52 +211,77 @@ export const withOmpRpc = Effect.fn("OmpProcess.withRpc")(function* <A, E>(
 ): Effect.fn.Return<A, E | OmpProcessError, ChildProcessSpawner.ChildProcessSpawner> {
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      const child = yield* spawnOmp(spawn, RPC_ARGS);
-      const responses = yield* Queue.unbounded<Readonly<Record<string, unknown>>, Cause.Done>();
-      let stderr = "";
-      yield* child.stderr.pipe(
-        Stream.runForEach((text) =>
-          Effect.sync(() => {
-            if (stderr.length < MAX_STDERR) stderr += text;
-          }),
-        ),
-        Effect.forkScoped,
-      );
-      yield* child.stdout.pipe(
-        Stream.splitLines,
-        Stream.runForEach((line) => {
-          const record = asRecord(Option.getOrUndefined(decodeJson(line)));
-          return record?.type === "response" ? Queue.offer(responses, record) : Effect.void;
-        }),
-        Effect.andThen(Queue.end(responses)),
-        Effect.forkScoped,
-      );
-      let nextId = 0;
-      const call: OmpRpcCall = Effect.fn("OmpProcess.rpcCall")(function* (command) {
-        const id = String(++nextId);
-        yield* child.write(`${encodeJson({ ...command, id })}\n`);
-        while (true) {
-          const response = yield* Queue.take(responses).pipe(
-            Effect.mapError(
-              () =>
-                new OmpProcessError({
-                  detail: firstStderrLine(stderr) ?? "Oh My Pi exited before it answered.",
-                }),
-            ),
-          );
-          if (response.id !== id) continue;
-          if (response.success !== true) {
-            return yield* new OmpProcessError({
-              detail:
-                typeof response.error === "string"
-                  ? response.error
-                  : "Oh My Pi rejected the request.",
-            });
-          }
-          return response.data;
-        }
-      });
-      return yield* use(call);
+      const session = yield* openRpcSession(spawn, RPC_ARGS);
+      return yield* use((command) => session.call(command).pipe(Effect.map(({ data }) => data)));
+    }),
+  );
+});
+
+// Management keeps extensions and skills on so plugin skills are listed; `--no-tools` stops omp from
+// connecting every MCP server at startup, and `/mcp test|resources|prompts` connect on demand.
+const MANAGEMENT_ARGS = [
+  "--mode",
+  "rpc",
+  "--model",
+  "sonnet",
+  "--no-session",
+  "--no-rules",
+  "--no-context-files",
+  "--no-lsp",
+  "--no-tools",
+  "--no-ui",
+] as const;
+
+export interface OmpManagementSession {
+  readonly command: OmpRpcCall;
+  /**
+   * Runs one slash command and resolves with what it printed. Only commands the caller built from
+   * a known list may be sent: an unknown slash command starts a model turn, which is aborted and
+   * fails the call.
+   */
+  readonly prompt: (message: string) => Effect.Effect<ReadonlyArray<string>, OmpProcessError>;
+  readonly lateOutputs: Stream.Stream<string>;
+}
+
+/** Opens a scoped management process: the session lives until the surrounding scope closes. */
+export const openOmpManagementSession = Effect.fn("OmpProcess.openManagementSession")(function* (
+  spawn: OmpSpawn,
+): Effect.fn.Return<
+  OmpManagementSession,
+  OmpProcessError,
+  ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+> {
+  const session = yield* openRpcSession(spawn, MANAGEMENT_ARGS);
+  const prompt: OmpManagementSession["prompt"] = Effect.fn("OmpProcess.managementPrompt")(
+    function* (message) {
+      const { data, outputs } = yield* session.call({ type: "prompt", message });
+      if (asRecord(data)?.agentInvoked === true) {
+        yield* session.call({ type: "abort" }).pipe(Effect.ignore);
+        return yield* new OmpProcessError({
+          detail: "Oh My Pi did not recognise that command.",
+        });
+      }
+      return outputs;
+    },
+  );
+  return {
+    command: (command) => session.call(command).pipe(Effect.map(({ data }) => data)),
+    prompt,
+    lateOutputs: session.lateOutputs,
+  };
+});
+
+/** Runs `use` against one short-lived management process. */
+export const withOmpManagementSession = Effect.fn("OmpProcess.withManagementSession")(function* <
+  A,
+  E,
+>(
+  spawn: OmpSpawn,
+  use: (session: OmpManagementSession) => Effect.Effect<A, E>,
+): Effect.fn.Return<A, E | OmpProcessError, ChildProcessSpawner.ChildProcessSpawner> {
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      return yield* use(yield* openOmpManagementSession(spawn));
     }),
   );
 });

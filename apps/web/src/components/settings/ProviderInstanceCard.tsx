@@ -68,6 +68,7 @@ import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { AcpSessionManagementSection } from "./AcpSessionManagementSection";
+import { OmpMcpSettingsRow } from "./OmpMcpDialog";
 import { OmpModelLoginSection } from "./OmpModelLoginSection";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
@@ -1303,6 +1304,14 @@ export function ProviderInstanceCard({
             />
           </FoldedSettingsSection>
         </div>
+      ) : null}
+      {environmentId !== undefined && liveProvider?.mcpManagement === true ? (
+        <OmpMcpSettingsRow
+          environmentId={environmentId}
+          instanceId={instanceId}
+          projects={acpProjects}
+          readOnly={readOnly}
+        />
       ) : null}
 
       {setup || environmentFields.length > 0 ? (

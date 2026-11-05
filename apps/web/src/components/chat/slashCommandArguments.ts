@@ -40,3 +40,49 @@ export function searchSlashCommandArgumentOptions(
   }
   return options.filter((option) => option.toLowerCase().startsWith(normalized));
 }
+
+export interface SlashCommandArgumentChoice {
+  readonly value: string;
+  readonly description: string;
+}
+
+/**
+ * Second-level choices for a command. Declared subcommands (with usage) win over the
+ * enumeration parsed from the free-form input hint.
+ */
+export function slashCommandArgumentChoices(
+  command: {
+    readonly description?: string | undefined;
+    readonly input?: { readonly hint?: string | undefined } | undefined;
+    readonly subcommands?:
+      | ReadonlyArray<{
+          readonly name: string;
+          readonly description?: string | undefined;
+          readonly usage?: string | undefined;
+        }>
+      | undefined;
+  },
+  query: string,
+): ReadonlyArray<SlashCommandArgumentChoice> {
+  if (command.subcommands && command.subcommands.length > 0) {
+    return searchSlashCommandArgumentOptions(
+      command.subcommands.map((subcommand) => subcommand.name),
+      query,
+    ).map((value) => {
+      const subcommand = command.subcommands!.find((candidate) => candidate.name === value)!;
+      return {
+        value,
+        description: [subcommand.usage, subcommand.description]
+          .filter((part): part is string => part !== undefined && part.length > 0)
+          .join(" · "),
+      };
+    });
+  }
+  return searchSlashCommandArgumentOptions(
+    parseSlashCommandArgumentOptions(command.input?.hint),
+    query,
+  ).map((value) => ({
+    value,
+    description: command.description ?? command.input?.hint ?? "",
+  }));
+}

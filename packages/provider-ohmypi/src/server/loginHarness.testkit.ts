@@ -23,7 +23,9 @@ export interface FakeChild {
   readonly exit: (code: number) => Effect.Effect<void>;
 }
 
-export const makeHarness = (script?: (child: FakeChild, written: string) => Effect.Effect<void>) =>
+export const makeFakeSpawner = (
+  script?: (child: FakeChild, written: string) => Effect.Effect<void>,
+) =>
   Effect.gen(function* () {
     const children: Array<FakeChild> = [];
     const spawned = yield* Queue.unbounded<FakeChild>();
@@ -73,6 +75,12 @@ export const makeHarness = (script?: (child: FakeChild, written: string) => Effe
         });
       }),
     );
+    return { spawner, spawned, children };
+  });
+
+export const makeHarness = (script?: (child: FakeChild, written: string) => Effect.Effect<void>) =>
+  Effect.gen(function* () {
+    const { spawner, spawned, children } = yield* makeFakeSpawner(script);
     const changed = yield* Ref.make(0);
     const login = yield* makeOmpLogin({
       instanceId: ProviderInstanceId.make("omp"),
