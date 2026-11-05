@@ -25,7 +25,7 @@ import {
   parseOmpImportSummary,
   parseOmpLoginFailure,
   parseOmpLoginProviders,
-  parseOmpLogoutCredentialIds,
+  parseOmpLogoutAccounts,
 } from "./loginOutput.ts";
 import { withLoginFlow } from "./loginFlows.ts";
 import { OmpProcessError, spawnOmp, withOmpRpc, type OmpSpawn } from "./process.ts";
@@ -265,8 +265,20 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
   return {
     listProviders: Effect.suspend(() =>
       rpc("login_list_failed", "Listing Oh My Pi providers timed out.", (spawn) =>
-        withOmpRpc(spawn, (call) => call({ type: "get_login_providers" })).pipe(
-          Effect.map((data) => parseOmpLoginProviders(data).map(withLoginFlow)),
+        withOmpRpc(spawn, (call) =>
+          Effect.gen(function* () {
+            const providers = parseOmpLoginProviders(yield* call({ type: "get_login_providers" }));
+            return yield* Effect.forEach(providers, (provider) =>
+              provider.authenticated
+                ? call({ type: "get_logout_accounts", providerId: provider.providerId }).pipe(
+                    Effect.map((data) => ({
+                      ...withLoginFlow(provider),
+                      accounts: parseOmpLogoutAccounts(data),
+                    })),
+                  )
+                : Effect.succeed(withLoginFlow(provider)),
+            );
+          }),
         ),
       ),
     ),
@@ -338,7 +350,7 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
       }
       return yield* SubscriptionRef.get(state);
     }),
-    signOut: Effect.fn("OmpLogin.signOut")(function* (providerId: string) {
+    signOut: Effect.fn("OmpLogin.signOut")(function* (providerId: string, credentialId?: number) {
       if (active !== undefined) {
         return yield* failure(
           "login_sign_out_failed",
@@ -348,12 +360,19 @@ export const makeOmpLogin = Effect.fn("OmpLogin.make")(function* (options: {
       const result = yield* rpc("login_sign_out_failed", "Signing out timed out.", (spawn) =>
         withOmpRpc(spawn, (call) =>
           Effect.gen(function* () {
-            const accounts = parseOmpLogoutCredentialIds(
+            const stored = parseOmpLogoutAccounts(
               yield* call({ type: "get_logout_accounts", providerId }),
-            );
+            ).map((account) => account.credentialId);
+            const accounts =
+              credentialId === undefined ? stored : stored.filter((id) => id === credentialId);
+            if (credentialId !== undefined && accounts.length === 0) {
+              return yield* new OmpProcessError({
+                detail: "That account is no longer signed in.",
+              });
+            }
             let remainingSource: string | undefined;
-            for (const credentialId of accounts) {
-              const removed = yield* call({ type: "logout", providerId, credentialId });
+            for (const id of accounts) {
+              const removed = yield* call({ type: "logout", providerId, credentialId: id });
               const source = (removed as { readonly remainingSource?: unknown } | null)
                 ?.remainingSource;
               remainingSource = typeof source === "string" ? source : undefined;

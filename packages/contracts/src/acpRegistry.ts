@@ -357,6 +357,19 @@ export const OmpLoginProviderFlow = Schema.Literals([
 ]);
 export type OmpLoginProviderFlow = typeof OmpLoginProviderFlow.Type;
 
+/** One credential Oh My Pi stores for a provider; a provider can hold several. */
+export const OmpLoginAccount = Schema.Struct({
+  // Oh My Pi's id for the stored credential, unique across providers.
+  credentialId: NonNegativeInt,
+  email: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(320))),
+  // What Oh My Pi calls the account when it has no email, or the plan or org beside one.
+  label: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(256))),
+  type: Schema.String.check(Schema.isMaxLength(32)),
+  // The credential Oh My Pi uses first for this provider.
+  active: Schema.Boolean,
+});
+export type OmpLoginAccount = typeof OmpLoginAccount.Type;
+
 export const OmpLoginProvider = Schema.Struct({
   providerId: OmpLoginProviderId,
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
@@ -365,6 +378,8 @@ export const OmpLoginProvider = Schema.Struct({
   // Another way to sign in to the same service: this entry's `providerId` is a variant of the
   // service `variantOf` names, so clients offer one service with several ways in.
   variantOf: Schema.optionalKey(OmpLoginProviderId),
+  // The stored credentials of a signed-in provider. Variants can list the same credential.
+  accounts: Schema.optionalKey(Schema.Array(OmpLoginAccount).check(Schema.isMaxLength(64))),
 });
 export type OmpLoginProvider = typeof OmpLoginProvider.Type;
 
@@ -432,6 +447,8 @@ export type OmpLoginSubscribeInput = typeof OmpLoginSubscribeInput.Type;
 export const OmpLoginSignOutInput = Schema.Struct({
   instanceId: ProviderInstanceId,
   providerId: OmpLoginProviderId,
+  // One account to remove; absent removes every account of the provider.
+  credentialId: Schema.optionalKey(NonNegativeInt),
 });
 export type OmpLoginSignOutInput = typeof OmpLoginSignOutInput.Type;
 

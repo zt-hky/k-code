@@ -69,10 +69,12 @@ does not log or keep them, on either side, and they stay on this computer too. S
 refresh when it is done. If Oh My Pi is not installed on this computer, the panel says so instead.
 The web and mobile apps do not offer this, since they cannot run Oh My Pi locally.
 
-Signed-in accounts are listed under the services, each with **Sign out**. Signing out removes the
-stored credentials from the server; if an environment variable still provides a key, the panel
-says so. Cancel stops a sign-in at any point. Models appear in the picker as soon as a sign-in
-finishes, grouped by the service that provides them.
+Oh My Pi can hold several accounts for the same service. **Signed-in accounts** lists each service
+with its accounts under it: **Add account** signs in another one, and **Sign out** beside an account
+removes only that account's stored credential. With several accounts, **In use** marks the one Oh My
+Pi uses first, and **Sign out all** removes them all. If an environment variable still provides a
+key after signing out, the panel says so. Cancel stops a sign-in at any point. Models appear in the
+picker as soon as a sign-in finishes, grouped by the service that provides them.
 
 The sign-in runs on the environment that hosts Oh My Pi, so it works from the web, desktop, and
 mobile apps.

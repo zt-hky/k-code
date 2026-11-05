@@ -138,7 +138,7 @@ const rpcScript =
     );
   };
 
-it.live("lists the providers omp can log in to with their stored-credential status", () =>
+it.live("lists the providers omp can log in to with each signed-in provider's accounts", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const h = yield* makeHarness(
@@ -154,6 +154,12 @@ it.live("lists the providers omp can log in to with their stored-credential stat
               { id: "openrouter", name: "OpenRouter", available: true, authenticated: false },
             ],
           },
+          get_logout_accounts: {
+            accounts: [
+              { credentialId: 1, label: "a@x.com", type: "oauth", active: true },
+              { credentialId: 2, label: "b@x.com", type: "oauth", active: false },
+            ],
+          },
         }),
       );
       const providers = yield* h.login.listProviders;
@@ -164,6 +170,10 @@ it.live("lists the providers omp can log in to with their stored-credential stat
           name: "Anthropic (Claude Pro/Max)",
           authenticated: true,
           flow: "localhost_redirect",
+          accounts: [
+            { credentialId: 1, email: "a@x.com", type: "oauth", active: true },
+            { credentialId: 2, email: "b@x.com", type: "oauth", active: false },
+          ],
         },
         {
           providerId: "openrouter",
@@ -216,6 +226,35 @@ it.live("signs out by removing every stored credential and reports auth that sti
         remainingSource: "OPENROUTER_API_KEY environment variable",
       });
       expect(yield* Ref.get(h.changed)).toBe(1);
+    }),
+  ).pipe(Effect.provide(testServices)),
+);
+
+it.live("signs out of one account and leaves the provider's other accounts", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const h = yield* makeHarness(
+        rpcScript({
+          get_logout_accounts: { accounts: [{ credentialId: 3 }, { credentialId: 5 }] },
+          logout: {},
+        }),
+      );
+      expect(yield* h.login.signOut("anthropic", 5)).toEqual({ removed: 1 });
+      const [child] = h.children;
+      const commands = (yield* Queue.clear(child!.written)).map((line) => {
+        const { id: _id, ...command } = parseJson(line) as Record<string, unknown>;
+        return command;
+      });
+      expect(commands).toEqual([
+        { type: "get_logout_accounts", providerId: "anthropic" },
+        { type: "logout", providerId: "anthropic", credentialId: 5 },
+      ]);
+      // An account another client already removed is reported, not silently ignored.
+      const stale = yield* h.login.signOut("anthropic", 9).pipe(Effect.flip);
+      expect(stale).toMatchObject({
+        reason: "login_sign_out_failed",
+        message: "That account is no longer signed in.",
+      });
     }),
   ).pipe(Effect.provide(testServices)),
 );

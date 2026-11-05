@@ -1,3 +1,7 @@
+import {
+  type OmpServiceAccount,
+  serviceLoginAccounts,
+} from "@t3tools/client-runtime/ompLoginAccounts";
 import type { OmpLoginPrompt, OmpLoginProvider, OmpLoginState } from "@t3tools/contracts";
 import { parseLocalhostAuthRedirect } from "@t3tools/shared/localhostAuthRedirect";
 import { isLoopbackHost } from "@t3tools/shared/preview";
@@ -191,6 +195,14 @@ function loginWays(
   providers: ReadonlyArray<OmpLoginProvider>,
 ): ReadonlyArray<OmpLoginProvider> {
   return [provider, ...providers.filter((other) => other.variantOf === provider.providerId)];
+}
+
+/** The accounts signed in to the service a provider row stands for, across its ways in. */
+export function serviceAccounts(
+  provider: OmpLoginProvider,
+  providers: ReadonlyArray<OmpLoginProvider>,
+): ReadonlyArray<OmpServiceAccount> {
+  return serviceLoginAccounts(loginWays(provider, providers));
 }
 
 export interface LoginWayChoice {

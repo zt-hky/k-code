@@ -3,6 +3,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
+import type { OmpServiceAccount } from "@t3tools/client-runtime/ompLoginAccounts";
 import type { OmpLoginProvider, OmpLoginState, ServerProvider } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { TextInput, View } from "react-native";
@@ -20,7 +21,9 @@ import {
   loginFlowStep,
   isServiceSignedIn,
   loginWays,
+  maskedAccountName,
   preferredLoginProvider,
+  serviceAccounts,
   signedInServices,
   visibleLoginProviders,
 } from "./ompModelLogin";
@@ -156,6 +159,25 @@ export function OmpModelLoginAccount(props: {
     });
   }
 
+  function signOutAccount(account: OmpServiceAccount) {
+    void run(async () => {
+      const result = await signOutLogin({
+        environmentId,
+        input: {
+          instanceId,
+          providerId: account.providerId,
+          credentialId: account.credentialId,
+        },
+      });
+      if (result._tag === "Success") {
+        setNote(null);
+        void refreshProviders(target);
+        void loadProviders();
+      }
+      return result;
+    });
+  }
+
   function submitPrompt(flow: OmpLoginState) {
     if (flow.flowId === null || flow.prompt === null || !canSubmitPrompt(flow.prompt, draftValue)) {
       return;
@@ -271,15 +293,40 @@ export function OmpModelLoginAccount(props: {
               {`Could not sign in to ${flowProviderName}. ${failed.message ?? ""}`}
             </Text>
           ) : null}
-          {signedIn.map((entry) => (
-            <ListActionRow
-              key={`out:${entry.providerId}`}
-              icon="minus"
-              label={`Sign out of ${entry.name}`}
-              disabled={pending}
-              onPress={() => signOut(entry)}
-            />
-          ))}
+          {signedIn.map((entry) => {
+            const accounts = serviceAccounts(entry, providers ?? []);
+            return (
+              <View key={`signed-in:${entry.providerId}`} className="gap-1">
+                <Text textRole="footnote" className="text-foreground-muted">
+                  {accounts.length > 1 ? `${entry.name} · ${accounts.length} accounts` : entry.name}
+                </Text>
+                {accounts.map((account) => (
+                  <ListActionRow
+                    key={`out:${account.credentialId}`}
+                    icon="minus"
+                    label={`Sign out of ${maskedAccountName(account)}`}
+                    description={account.active && accounts.length > 1 ? "In use" : undefined}
+                    disabled={pending}
+                    onPress={() => signOutAccount(account)}
+                  />
+                ))}
+                {accounts.length !== 1 ? (
+                  <ListActionRow
+                    icon="minus"
+                    label={accounts.length === 0 ? `Sign out of ${entry.name}` : "Sign out of all"}
+                    disabled={pending}
+                    onPress={() => signOut(entry)}
+                  />
+                ) : null}
+                <ListActionRow
+                  icon="plus"
+                  label={`Add a ${entry.name} account`}
+                  disabled={pending}
+                  onPress={() => signIn(preferredLoginProvider(entry, providers ?? []))}
+                />
+              </View>
+            );
+          })}
           {note !== null ? <Text className="text-foreground-muted">{note}</Text> : null}
           <TextInput
             accessibilityLabel="Search model providers"
@@ -298,7 +345,7 @@ export function OmpModelLoginAccount(props: {
               label={entry.name}
               description={
                 isServiceSignedIn(entry, providers ?? [])
-                  ? "Signed in. Sign in again to switch account."
+                  ? "Signed in. Sign in again to add another account."
                   : undefined
               }
               disabled={pending}

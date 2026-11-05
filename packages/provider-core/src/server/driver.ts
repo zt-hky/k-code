@@ -50,8 +50,10 @@ export interface ProviderModelLogin {
     readonly value: string;
   }) => Effect.Effect<OmpLoginState, AcpRegistryOperationError>;
   readonly cancel: (flowId: string) => Effect.Effect<OmpLoginState, AcpRegistryOperationError>;
+  /** Removes one stored account (`credentialId`), or every account of the provider. */
   readonly signOut: (
     providerId: string,
+    credentialId?: number,
   ) => Effect.Effect<OmpLoginSignOutResult, AcpRegistryOperationError>;
   /** Merges credentials exported by another machine's `omp auth export` into this instance. */
   readonly importCredentials: (

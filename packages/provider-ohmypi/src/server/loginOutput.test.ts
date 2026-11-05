@@ -6,7 +6,7 @@ import {
   parseOmpImportSummary,
   parseOmpLoginFailure,
   parseOmpLoginProviders,
-  parseOmpLogoutCredentialIds,
+  parseOmpLogoutAccounts,
 } from "./loginOutput.ts";
 
 // Captured from omp 18.13.2 with stdin as a pipe.
@@ -141,12 +141,35 @@ describe("omp login provider list", () => {
     expect(parseOmpLoginProviders({ unexpected: true })).toEqual([]);
   });
 
-  it("reads credential ids and never needs the credentials themselves", () => {
+  // Shapes omp 18.16 returns from `get_logout_accounts`.
+  it("reads each stored account's email and plan, even when omp masks the label", () => {
     expect(
-      parseOmpLogoutCredentialIds({
-        accounts: [{ credentialId: 4, label: "a@b.c" }, { credentialId: "x" }, { credentialId: 9 }],
+      parseOmpLogoutAccounts({
+        accounts: [
+          {
+            credentialId: 12,
+            provider: "anthropic",
+            label: "s*****@corp.example (Corp)",
+            detail: "share@corp.example · account 0393 · oauth #12",
+            type: "oauth",
+            active: true,
+          },
+          {
+            credentialId: 3,
+            label: "me@gmail.com",
+            detail: "project p · oauth #3",
+            type: "oauth",
+            active: false,
+          },
+          { credentialId: 7, label: "OpenRouter key", type: "api_key" },
+          { credentialId: "x" },
+        ],
       }),
-    ).toEqual([4, 9]);
+    ).toEqual([
+      { credentialId: 12, email: "share@corp.example", label: "Corp", type: "oauth", active: true },
+      { credentialId: 3, email: "me@gmail.com", type: "oauth", active: false },
+      { credentialId: 7, label: "OpenRouter key", type: "api_key", active: false },
+    ]);
   });
 });
 

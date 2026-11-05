@@ -1,4 +1,4 @@
-import type { OmpLoginProvider } from "@t3tools/contracts";
+import type { OmpLoginAccount, OmpLoginProvider } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -198,21 +198,44 @@ export function parseOmpLoginProviders(data: unknown): ReadonlyArray<OmpLoginPro
   return providers;
 }
 
-const RpcLogoutAccount = Schema.Struct({ credentialId: Schema.Int });
+const RpcLogoutAccount = Schema.Struct({
+  credentialId: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  label: Schema.optional(Schema.String),
+  detail: Schema.optional(Schema.String),
+  type: Schema.optional(Schema.String),
+  active: Schema.optional(Schema.Boolean),
+});
 const decodeRpcLogoutAccounts = Schema.decodeUnknownOption(
   Schema.Struct({ accounts: Schema.Array(Schema.Unknown) }),
 );
 const decodeRpcLogoutAccount = Schema.decodeUnknownOption(RpcLogoutAccount);
+const EMAIL = /[^\s@*()·]+@[^\s@*()·]+\.[^\s@*()·]+/;
+// omp labels read `<email or name> (<plan or org>)`; the email in a label can be masked.
+const LABEL_SUFFIX = /\(([^()]+)\)\s*$/;
+const MAX_ACCOUNTS = 64;
 
-/** `get_logout_accounts` response data → ids of the stored credentials `logout` can remove. */
-export function parseOmpLogoutCredentialIds(data: unknown): ReadonlyArray<number> {
+/** `get_logout_accounts` response data → the stored credentials `logout` can remove. */
+export function parseOmpLogoutAccounts(data: unknown): ReadonlyArray<OmpLoginAccount> {
   const accounts = Option.match(decodeRpcLogoutAccounts(data), {
     onNone: () => [],
     onSome: (decoded) => decoded.accounts,
   });
-  return accounts.flatMap((entry) => {
+  return accounts.slice(0, MAX_ACCOUNTS).flatMap((entry) => {
     const account = Option.getOrUndefined(decodeRpcLogoutAccount(entry));
-    return account === undefined ? [] : [account.credentialId];
+    if (account === undefined) return [];
+    const rawLabel = stripAnsi(account.label ?? "").trim();
+    // The detail carries the unmasked email; a label only when omp left it unmasked.
+    const email = (EMAIL.exec(account.detail ?? "") ?? EMAIL.exec(rawLabel))?.[0]?.slice(0, 320);
+    const label = email === undefined ? rawLabel : (LABEL_SUFFIX.exec(rawLabel)?.[1]?.trim() ?? "");
+    return [
+      {
+        credentialId: account.credentialId,
+        ...(email === undefined ? {} : { email }),
+        ...(label === "" ? {} : { label: label.slice(0, 256) }),
+        type: (account.type ?? "oauth").slice(0, 32),
+        active: account.active ?? false,
+      },
+    ];
   });
 }
 

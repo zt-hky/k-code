@@ -1,3 +1,7 @@
+import {
+  type OmpServiceAccount,
+  serviceLoginAccounts,
+} from "@t3tools/client-runtime/ompLoginAccounts";
 import type { OmpLoginPrompt, OmpLoginProvider, OmpLoginState } from "@t3tools/contracts";
 
 const POPULAR_LOGIN_PROVIDER_IDS: ReadonlyArray<string> = [
@@ -29,6 +33,24 @@ export function loginWays(
   providers: ReadonlyArray<OmpLoginProvider>,
 ): ReadonlyArray<OmpLoginProvider> {
   return [provider, ...providers.filter((other) => other.variantOf === provider.providerId)];
+}
+
+/** The accounts signed in to the service a row stands for, across its ways in. */
+export function serviceAccounts(
+  provider: OmpLoginProvider,
+  providers: ReadonlyArray<OmpLoginProvider>,
+): ReadonlyArray<OmpServiceAccount> {
+  return serviceLoginAccounts(loginWays(provider, providers));
+}
+
+/** An account's name for a row the user presses: the email's domain stays readable. */
+export function maskedAccountName(account: OmpServiceAccount): string {
+  if (account.email === undefined) {
+    return account.label ?? (account.type === "api_key" ? "API key" : "Account");
+  }
+  const at = account.email.lastIndexOf("@");
+  const masked = at > 0 ? `${account.email[0]}•••${account.email.slice(at)}` : "•••";
+  return account.label === undefined ? masked : `${masked} · ${account.label}`;
 }
 
 /**

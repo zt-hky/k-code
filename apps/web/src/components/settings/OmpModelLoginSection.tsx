@@ -1,11 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
+import type { OmpServiceAccount } from "@t3tools/client-runtime/ompLoginAccounts";
 import type {
   EnvironmentId,
   OmpLoginProvider,
   OmpLoginState,
   ProviderInstanceId,
 } from "@t3tools/contracts";
-import { CheckIcon, ChevronRightIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, CopyIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { reportAcpFailure } from "../../hooks/useAcpNativeSessions";
@@ -37,9 +38,11 @@ import {
   loginWayLabel,
   needsRefreshAfterSignIn,
   promptIsOptional,
+  serviceAccounts,
   signOutWays,
 } from "./OmpModelLoginSection.logic";
 import { OmpLocalSignIns } from "./OmpLocalSignIns";
+import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SecretInput } from "./SecretInput";
 
 function ProviderRow(props: {
@@ -51,7 +54,6 @@ function ProviderRow(props: {
   /** Other ways into the same service, under "Other ways to sign in". */
   readonly others?: ReadonlyArray<OmpLoginProvider> | undefined;
   readonly onSignIn: (provider: OmpLoginProvider) => void;
-  readonly onSignOut?: ((provider: OmpLoginProvider) => void) | undefined;
 }) {
   const { provider, signedIn } = props;
   const [othersOpen, setOthersOpen] = useState(false);
@@ -68,30 +70,18 @@ function ProviderRow(props: {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {props.onSignOut ? (
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost-muted"
-              disabled={props.disabled}
-              onClick={() => props.onSignOut?.(provider)}
-            >
-              Sign out
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              disabled={props.disabled}
-              onClick={() => props.onSignIn(props.primary ?? provider)}
-            >
-              {signedIn ? "Sign in again" : "Sign in"}
-            </Button>
-          )}
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            disabled={props.disabled}
+            onClick={() => props.onSignIn(props.primary ?? provider)}
+          >
+            {signedIn ? "Add account" : "Sign in"}
+          </Button>
         </div>
       </div>
-      {others.length > 0 && !props.onSignOut ? (
+      {others.length > 0 ? (
         <div className="mt-1">
           <button
             type="button"
@@ -121,6 +111,100 @@ function ProviderRow(props: {
             </div>
           ) : null}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A signed-in service and, under it, each account Oh My Pi holds for it. */
+function SignedInServiceRow(props: {
+  readonly provider: OmpLoginProvider;
+  readonly accounts: ReadonlyArray<OmpServiceAccount>;
+  readonly disabled: boolean;
+  readonly busyCredentialId: number | null;
+  readonly onAddAccount: () => void;
+  readonly onSignOutAccount: (account: OmpServiceAccount) => void;
+  readonly onSignOutAll: () => void;
+}) {
+  const { provider, accounts } = props;
+  return (
+    <div className="py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate text-xs font-medium text-foreground">{provider.name}</p>
+          <Badge variant="success" size="sm">
+            {accounts.length > 1 ? `${accounts.length} accounts` : "Signed in"}
+          </Badge>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost-muted"
+            disabled={props.disabled}
+            onClick={props.onAddAccount}
+          >
+            <PlusIcon aria-hidden />
+            Add account
+          </Button>
+          {accounts.length !== 1 ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost-muted"
+              disabled={props.disabled}
+              onClick={props.onSignOutAll}
+            >
+              {accounts.length === 0 ? "Sign out" : "Sign out all"}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      {accounts.length > 0 ? (
+        <ul className="mt-1 grid gap-0.5 border-s border-border/60 ps-3">
+          {accounts.map((account) => (
+            <li
+              key={account.credentialId}
+              className="flex min-h-7 items-center justify-between gap-2"
+            >
+              <div className="flex min-w-0 items-center gap-1.5 text-xs">
+                {account.email ? (
+                  <RedactedSensitiveText
+                    key={account.email}
+                    value={account.email}
+                    ariaLabel="Toggle account email visibility"
+                    revealTooltip="Click to reveal account"
+                    hideTooltip="Click to hide account"
+                    className="truncate font-sans text-xs text-foreground/80"
+                  />
+                ) : (
+                  <span className="truncate text-foreground/80">
+                    {account.label ?? (account.type === "api_key" ? "API key" : "Account")}
+                  </span>
+                )}
+                {account.email && account.label ? (
+                  <span className="shrink-0 text-muted-foreground">· {account.label}</span>
+                ) : null}
+                {account.active && accounts.length > 1 ? (
+                  <Badge variant="outline" size="sm">
+                    In use
+                  </Badge>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost-muted"
+                disabled={props.disabled}
+                aria-label={`Sign out of ${account.email ?? account.label ?? "this account"}`}
+                onClick={() => props.onSignOutAccount(account)}
+              >
+                {props.busyCredentialId === account.credentialId ? <Spinner /> : null}
+                Sign out
+              </Button>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   );
@@ -184,6 +268,7 @@ export function OmpModelLoginSection(props: {
   const [startedFlowId, setStartedFlowId] = useState<string | null>(null);
   const [dismissedFlowId, setDismissedFlowId] = useState<string | null>(null);
   const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
+  const [busyCredentialId, setBusyCredentialId] = useState<number | null>(null);
   const [draft, setDraft] = useState({ id: "", value: "" });
   const [submitting, setSubmitting] = useState(false);
   const [signOutNote, setSignOutNote] = useState<string | null>(null);
@@ -375,6 +460,32 @@ export function OmpModelLoginSection(props: {
     } else {
       setSignOutNote(`${provider.name} is still signed in via ${remainingSource}.`);
     }
+    refreshAfterSignIn();
+  };
+
+  const signOutAccount = async (provider: OmpLoginProvider, account: OmpServiceAccount) => {
+    if (flowActive || busyProviderId !== null) return;
+    setBusyProviderId(provider.providerId);
+    setBusyCredentialId(account.credentialId);
+    const result = await signOutLogin({
+      environmentId,
+      input: {
+        instanceId,
+        providerId: account.providerId,
+        credentialId: account.credentialId,
+      },
+    });
+    setBusyProviderId(null);
+    setBusyCredentialId(null);
+    if (result._tag !== "Success") {
+      reportAcpFailure(`Could not sign out of ${provider.name}`, result);
+      return;
+    }
+    toastManager.add({
+      type: "success",
+      title: `Signed out of ${account.email ?? account.label ?? provider.name}`,
+    });
+    setSignOutNote(null);
     refreshAfterSignIn();
   };
 
@@ -637,13 +748,17 @@ export function OmpModelLoginSection(props: {
               <p className="text-xs font-medium text-muted-foreground">Signed-in accounts</p>
               <div className="divide-y divide-border/60 border-y border-border/60">
                 {signedInProviders.map((provider) => (
-                  <ProviderRow
+                  <SignedInServiceRow
                     key={provider.providerId}
                     provider={provider}
-                    signedIn
+                    accounts={serviceAccounts(provider, providers ?? [])}
                     disabled={rowDisabled}
-                    onSignIn={(next) => void signIn(next)}
-                    onSignOut={(next) => void signOut(next)}
+                    busyCredentialId={busyCredentialId}
+                    onAddAccount={() =>
+                      void signIn(chooseLoginWay(provider, providers ?? [], locality).primary)
+                    }
+                    onSignOutAccount={(account) => void signOutAccount(provider, account)}
+                    onSignOutAll={() => void signOut(provider)}
                   />
                 ))}
               </div>

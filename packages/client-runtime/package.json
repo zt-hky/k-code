@@ -123,6 +123,10 @@
       "types": "./src/platform/index.ts",
       "default": "./src/platform/index.ts"
     },
+    "./ompLoginAccounts": {
+      "types": "./src/ompLoginAccounts.ts",
+      "default": "./src/ompLoginAccounts.ts"
+    },
     "./sessionPin": {
       "types": "./src/sessionPin.ts",
       "default": "./src/sessionPin.ts"
