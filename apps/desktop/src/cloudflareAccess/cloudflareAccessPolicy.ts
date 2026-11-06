@@ -64,3 +64,27 @@ export function cloudflareAccessUrlPatterns(origins: Iterable<string>): string[]
   }
   return patterns;
 }
+
+const headerValue = (headers: Readonly<Record<string, string>>, name: string) =>
+  Object.entries(headers).find(([key]) => key.toLowerCase() === name)?.[1];
+
+/**
+ * The CORS approval for a preflight Access rejected. Access answers every preflight with 403,
+ * signed in or not, because OPTIONS carries no credentials; the request that follows does.
+ */
+export function cloudflareAccessPreflightApproval(
+  requestHeaders: Readonly<Record<string, string>>,
+): Record<string, string[]> {
+  const approval: Record<string, string[]> = {
+    "Access-Control-Allow-Origin": [headerValue(requestHeaders, "origin") ?? "*"],
+    "Access-Control-Allow-Methods": [
+      headerValue(requestHeaders, "access-control-request-method") ?? "GET",
+    ],
+    Vary: ["Origin"],
+  };
+  const requestedHeaders = headerValue(requestHeaders, "access-control-request-headers");
+  if (requestedHeaders !== undefined) {
+    approval["Access-Control-Allow-Headers"] = [requestedHeaders];
+  }
+  return approval;
+}

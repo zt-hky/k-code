@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   cloudflareAccessOrigin,
+  cloudflareAccessPreflightApproval,
   cloudflareAccessTokenExpiresAtMs,
   isCloudflareAccessChallenge,
 } from "./cloudflareAccessPolicy.ts";
@@ -67,5 +68,22 @@ describe("cloudflareAccessOrigin", () => {
     );
     expect(cloudflareAccessOrigin("ws://127.0.0.1:8080/ws")).toBe("http://127.0.0.1:8080");
     expect(cloudflareAccessOrigin("t3code://app/index.html")).toBeNull();
+  });
+});
+
+describe("cloudflareAccessPreflightApproval", () => {
+  it("approves exactly what the blocked preflight asked for", () => {
+    expect(
+      cloudflareAccessPreflightApproval({
+        Origin: "t3code://app",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,traceparent",
+      }),
+    ).toEqual({
+      "Access-Control-Allow-Origin": ["t3code://app"],
+      "Access-Control-Allow-Methods": ["POST"],
+      "Access-Control-Allow-Headers": ["authorization,traceparent"],
+      Vary: ["Origin"],
+    });
   });
 });

@@ -162,7 +162,10 @@ header on a preflight or a socket, so the client runtime takes a
 after a fetch rejects. The desktop's gate probes the origin from main, runs the
 Access login in its own window, and adds `cf-access-token` to renderer traffic
 for that origin with `webRequest`, so the token never enters the renderer.
-Hosted web and mobile have no gate.
+Access still answers every CORS preflight with 403, token or not, so main
+answers a blocked preflight for a signed-in origin itself; the request that
+follows carries the token and the server still authorizes it. Hosted web and
+mobile have no gate.
 
 ## Access and process ownership are different
 

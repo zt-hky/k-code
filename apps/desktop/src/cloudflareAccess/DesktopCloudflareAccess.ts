@@ -20,6 +20,7 @@ import {
   CLOUDFLARE_ACCESS_COOKIE,
   CLOUDFLARE_ACCESS_TOKEN_HEADER,
   cloudflareAccessOrigin,
+  cloudflareAccessPreflightApproval,
   cloudflareAccessTokenExpiresAtMs,
   cloudflareAccessUrlPatterns,
   isCloudflareAccessChallenge,
@@ -114,26 +115,46 @@ const make = Effect.gen(function* () {
   const inFlight = new Map<string, Deferred.Deferred<DesktopCloudflareAccessRecovery>>();
   const loginSession = () => session.fromPartition(LOGIN_PARTITION);
 
+  // Preflight request headers by request id, to echo in the approval of a preflight Access blocks.
+  const preflights = new Map<number, Record<string, string>>();
+
   const applyHeaderInjection = () => {
     const webRequest = session.defaultSession.webRequest;
     if (tokens.size === 0) {
       webRequest.onBeforeSendHeaders(null);
+      webRequest.onHeadersReceived(null);
+      webRequest.onErrorOccurred(null);
+      preflights.clear();
       return;
     }
-    // Main adds the header after the renderer's CORS checks, so preflights and WebSocket
-    // upgrades pass the Access edge too, and the token never reaches the renderer.
-    webRequest.onBeforeSendHeaders(
-      { urls: cloudflareAccessUrlPatterns(tokens.keys()) },
-      (details, callback) => {
-        const token = tokens.get(cloudflareAccessOrigin(details.url) ?? "")?.token;
-        callback({
-          requestHeaders:
-            token === undefined
-              ? details.requestHeaders
-              : { ...details.requestHeaders, [CLOUDFLARE_ACCESS_TOKEN_HEADER]: token },
-        });
-      },
-    );
+    const filter = { urls: cloudflareAccessUrlPatterns(tokens.keys()) };
+    // Main adds the header after the renderer's CORS checks, so WebSocket upgrades pass the
+    // Access edge too, and the token never reaches the renderer.
+    webRequest.onBeforeSendHeaders(filter, (details, callback) => {
+      const token = tokens.get(cloudflareAccessOrigin(details.url) ?? "")?.token;
+      if (token !== undefined && details.method === "OPTIONS") {
+        preflights.set(details.id, details.requestHeaders);
+      }
+      callback({
+        requestHeaders:
+          token === undefined
+            ? details.requestHeaders
+            : { ...details.requestHeaders, [CLOUDFLARE_ACCESS_TOKEN_HEADER]: token },
+      });
+    });
+    webRequest.onHeadersReceived(filter, (details, callback) => {
+      const requestHeaders = preflights.get(details.id);
+      preflights.delete(details.id);
+      if (requestHeaders === undefined || details.statusCode !== 403) {
+        callback({});
+        return;
+      }
+      callback({
+        statusLine: "HTTP/1.1 204 No Content",
+        responseHeaders: cloudflareAccessPreflightApproval(requestHeaders),
+      });
+    });
+    webRequest.onErrorOccurred(filter, (details) => preflights.delete(details.id));
   };
 
   const persistOrigins = Effect.suspend(() => encodeSavedOrigins([...tokens.keys()])).pipe(
