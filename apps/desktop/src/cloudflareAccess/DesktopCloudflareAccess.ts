@@ -32,6 +32,15 @@ const LOGIN_PARTITION = "persist:t3code-cloudflare-access";
 const PROBE_PATH = "/.well-known/t3/environment";
 const PROBE_TIMEOUT = "10 seconds";
 
+class DesktopCloudflareAccessSessionError extends Schema.TaggedError<DesktopCloudflareAccessSessionError>()(
+  "DesktopCloudflareAccessSessionError",
+  { cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return "The Cloudflare Access login session could not be read or updated.";
+  }
+}
+
 interface AccessToken {
   readonly token: string;
   readonly expiresAtMs: number | null;
@@ -173,20 +182,25 @@ const make = Effect.gen(function* () {
     applyHeaderInjection();
     // Access may issue a browser-session cookie, which Chromium drops on quit.
     if (cookie.session === true && expiresAtMs !== null) {
-      yield* Effect.tryPromise(() =>
-        loginSession().cookies.set({
-          url: origin,
-          name: CLOUDFLARE_ACCESS_COOKIE,
-          value: cookie.value,
-          path: cookie.path ?? "/",
-          secure: cookie.secure ?? origin.startsWith("https:"),
-          httpOnly: true,
-          expirationDate: expiresAtMs / 1_000,
-        }),
-      ).pipe(Effect.ignore);
+      yield* Effect.tryPromise({
+        try: () =>
+          loginSession().cookies.set({
+            url: origin,
+            name: CLOUDFLARE_ACCESS_COOKIE,
+            value: cookie.value,
+            path: cookie.path ?? "/",
+            secure: cookie.secure ?? origin.startsWith("https:"),
+            httpOnly: true,
+            expirationDate: expiresAtMs / 1_000,
+          }),
+        catch: (cause) => new DesktopCloudflareAccessSessionError({ cause }),
+      }).pipe(Effect.ignore);
     }
     // Chromium writes cookies to disk lazily; a quit soon after sign-in would lose it.
-    yield* Effect.tryPromise(() => loginSession().cookies.flushStore()).pipe(Effect.ignore);
+    yield* Effect.tryPromise({
+      try: () => loginSession().cookies.flushStore(),
+      catch: (cause) => new DesktopCloudflareAccessSessionError({ cause }),
+    }).pipe(Effect.ignore);
     yield* persistOrigins;
   });
 
@@ -196,9 +210,10 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed((): ReadonlyArray<string> => []),
     );
     for (const origin of origins) {
-      const cookie = yield* Effect.tryPromise(() => readAccessCookie(loginSession(), origin)).pipe(
-        Effect.orElseSucceed(() => null),
-      );
+      const cookie = yield* Effect.tryPromise({
+        try: () => readAccessCookie(loginSession(), origin),
+        catch: (cause) => new DesktopCloudflareAccessSessionError({ cause }),
+      }).pipe(Effect.orElseSucceed(() => null));
       if (cookie === null) continue;
       tokens.set(origin, {
         token: cookie.value,
@@ -267,9 +282,12 @@ const make = Effect.gen(function* () {
     const origin = cloudflareAccessOrigin(rawOrigin);
     if (origin === null || !tokens.delete(origin)) return;
     applyHeaderInjection();
-    yield* Effect.tryPromise(async () => {
-      await loginSession().cookies.remove(origin, CLOUDFLARE_ACCESS_COOKIE);
-      await loginSession().cookies.flushStore();
+    yield* Effect.tryPromise({
+      try: async () => {
+        await loginSession().cookies.remove(origin, CLOUDFLARE_ACCESS_COOKIE);
+        await loginSession().cookies.flushStore();
+      },
+      catch: (cause) => new DesktopCloudflareAccessSessionError({ cause }),
     }).pipe(Effect.ignore);
     yield* persistOrigins;
   });

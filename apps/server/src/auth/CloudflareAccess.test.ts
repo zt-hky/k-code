@@ -187,7 +187,7 @@ describe("Cloudflare Access sign-in", () => {
       return yield* Effect.acquireUseRelease(
         Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
         (environment) =>
-          Effect.tryPromise(async () => {
+          Effect.promise(async () => {
             const session = (headers: Record<string, string>) =>
               environment.handler(
                 new Request("http://127.0.0.1/api/auth/session", { headers }),

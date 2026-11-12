@@ -166,6 +166,8 @@ export const AcpRegistrySession = Schema.Struct({
   importedThreadId: Schema.NullOr(ThreadId),
   messageCount: Schema.optionalKey(NonNegativeInt),
   projectId: Schema.optionalKey(Schema.NullOr(ProjectId)),
+  /** The imported thread still lacks the session's history, so importing again copies it. */
+  nativeHistoryPending: Schema.optionalKey(Schema.Boolean),
 });
 export type AcpRegistrySession = typeof AcpRegistrySession.Type;
 

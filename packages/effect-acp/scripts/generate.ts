@@ -166,21 +166,34 @@ function isJsonArray(value: Schema.Json | undefined): value is ReadonlyArray<Sch
   return Array.isArray(value);
 }
 
-// `properties` maps user-chosen names to schemas, so their keys are never keywords:
-// TitledMultiSelectItems declares a property literally named `anyOf`.
-function mapSchemaChildren(
+// Keywords whose values are literal JSON data, not schemas.
+const DATA_KEYWORDS = new Set(["const", "default", "enum", "examples"]);
+
+// Applies `transform` to every subschema of a schema object. `properties` maps names to
+// schemas, so its keys stay property names: ACP has properties named `anyOf`, `oneOf`, and
+// `type` that must not be read as keywords. Literal data values are left untouched.
+function mapSubschemas(
   value: { readonly [key: string]: Schema.Json },
-  transform: (child: Schema.Json) => Schema.Json,
+  transform: (schema: Schema.Json) => Schema.Json,
 ): Record<string, Schema.Json> {
   return Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [
-      key,
-      key === "properties" && child !== null && typeof child === "object" && !isJsonArray(child)
-        ? Object.fromEntries(
+    Object.entries(value).map(([key, child]) => {
+      if (DATA_KEYWORDS.has(key)) return [key, child];
+      if (
+        key === "properties" &&
+        child !== null &&
+        typeof child === "object" &&
+        !isJsonArray(child)
+      ) {
+        return [
+          key,
+          Object.fromEntries(
             Object.entries(child).map(([name, schema]) => [name, transform(schema)]),
-          )
-        : transform(child),
-    ]),
+          ),
+        ];
+      }
+      return [key, isJsonArray(child) ? child.map(transform) : transform(child)];
+    }),
   );
 }
 
@@ -192,7 +205,7 @@ function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
     return value;
   }
 
-  const normalizedObject = mapSchemaChildren(value, normalizeSchemaKeywords);
+  const normalizedObject = mapSubschemas(value, normalizeSchemaKeywords);
   // ACP's forward-compatible variants exclude known discriminator values.
   // The Effect generator does not support `not`; express this exact exclusion
   // as a string pattern while preserving validation of the known variants.
@@ -330,7 +343,7 @@ function flattenCompositions(
 ): Schema.Json {
   if (isJsonArray(value)) return value.map((child) => flattenCompositions(child, definitions));
   if (value === null || typeof value !== "object") return value;
-  const normalized = mapSchemaChildren(value, (child) => flattenCompositions(child, definitions));
+  const normalized = mapSubschemas(value, (child) => flattenCompositions(child, definitions));
   const { allOf, anyOf, ...base } = normalized;
   const merge = (left: Schema.Json, right: Schema.Json): Schema.Json => {
     if (

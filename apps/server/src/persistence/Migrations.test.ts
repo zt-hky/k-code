@@ -8,7 +8,7 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
-import WebPushSubscriptions from "./Migrations/080_WebPushSubscriptions.ts";
+import WebPushSubscriptions from "./Migrations/086_WebPushSubscriptions.ts";
 
 const v2Migrations = migrationManifest.filter(([id]) => id >= 55);
 const newerMigrationId = Math.max(...migrationManifest.map(([id]) => id)) + 1;
@@ -49,8 +49,8 @@ const expectedSchemaNames = [...activeTurnItemIndexNames, "web_push_subscription
 const migrationsAfter = (id: number) => migrationManifest.filter(([entryId]) => entryId > id);
 
 describe("Web Push migration id collisions", () => {
-  // Fork builds recorded Web Push at 73, then 74, then 78, before upstream took each id.
-  it.effect.each([73, 74, 78])(
+  // Fork builds recorded Web Push at 73, then 74, 78, then 80, before upstream took each id.
+  it.effect.each([73, 74, 78, 80])(
     "heals a database that recorded %i as WebPushSubscriptions",
     (staleId) =>
       Effect.gen(function* () {
@@ -231,6 +231,20 @@ describe("runMigrations", () => {
       );
       assert.notInclude(String(exit), "57_ScheduledTaskWebhooks");
       assert.deepStrictEqual(yield* history, before);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("reapplies peer link migrations whose ledger rows are missing", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 72 });
+      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id BETWEEN 70 AND 72`;
+
+      assert.deepStrictEqual(
+        yield* runMigrations(),
+        migrationManifest.filter(([id]) => id >= 70),
+      );
+      assert.deepStrictEqual(yield* history, migrationManifest);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 

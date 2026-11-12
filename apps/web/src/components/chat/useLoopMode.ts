@@ -26,6 +26,7 @@ import {
   type makeThreadErrorSetter,
 } from "../ChatView.logic";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { DEFAULT_INTERACTION_MODE } from "../../types";
 import { draftSendState } from "./chatViewSend";
 import { decideLoopAction, loopFinishedTitle, type LoopPrompt } from "./loopMode.logic";
 import { useLoopModeStore } from "./loopModeStore";
@@ -152,7 +153,7 @@ export function useLoopMode(input: LoopModeInput) {
       createdAt,
       ...(localCheckoutBranchMismatch ? { branch: localCheckoutBranchMismatch.currentBranch } : {}),
       runtimeMode,
-      interactionMode: sendCtx.interactionMode,
+      interactionMode: DEFAULT_INTERACTION_MODE,
     });
     const result =
       settingsResult._tag === "Failure"
@@ -165,7 +166,7 @@ export function useLoopMode(input: LoopModeInput) {
               modelSelection: sendCtx.selectedModelSelection,
               titleSeed: activeThread.title,
               runtimeMode,
-              interactionMode: sendCtx.interactionMode,
+              interactionMode: DEFAULT_INTERACTION_MODE,
               createdAt,
             },
           });
