@@ -78,6 +78,10 @@ describe("extractOmpAskElicitationForm", () => {
       "agree",
       "level",
     ]);
+    expect(form?.questions[2]?.options).toEqual([
+      { label: "Yes", description: "Yes", value: "true" },
+      { label: "No", description: "No", value: "false" },
+    ]);
     // A select has no companion, so it only accepts its own options.
     expect(form?.questions[3]?.allowCustomAnswer).toBe(false);
     expect(form?.respond({ project_name: "demo", count: "3", agree: "true", level: "b" })).toEqual({

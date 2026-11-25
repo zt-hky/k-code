@@ -177,7 +177,11 @@ export const extractOmpAskElicitationForm: NonNullable<
     if (field.kind === "boolean") {
       return {
         ...base,
-        options: elicitationChoices(schema)?.options ?? [],
+        // omp sends a checkbox as a boolean titled with its label; ask it as Yes/No.
+        options: [
+          { label: "Yes", description: "Yes", value: "true" },
+          { label: "No", description: "No", value: "false" },
+        ],
         allowCustomAnswer: false,
       };
     }

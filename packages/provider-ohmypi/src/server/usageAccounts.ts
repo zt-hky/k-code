@@ -155,7 +155,7 @@ export function ompUsageToAccounts(
     const base = `${provider}:${identity ?? "default"}`;
     const occurrence = seen.get(base) ?? 0;
     seen.set(base, occurrence + 1);
-    const plan = metadataText(metadata, "plan", "planType", "orgName");
+    const plan = metadataText(metadata, "subscriptionPlan", "plan", "planType", "orgName");
     const credits = report.value.resetCredits;
     const upstreamDriver = UPSTREAM_DRIVERS[provider];
     return [

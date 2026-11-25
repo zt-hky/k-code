@@ -72,7 +72,12 @@ const fixture = {
         { id: "anthropic:broken", label: "Broken", amount: {} },
         "not a limit",
       ],
-      metadata: { accountId: "claude-account", email: "claude@example.test", orgName: "Org" },
+      metadata: {
+        accountId: "claude-account",
+        email: "claude@example.test",
+        orgName: "Org",
+        subscriptionPlan: "Max 20x",
+      },
       resetCredits: { availableCount: 0 },
     },
     { provider: "anthropic", limits: [], metadata: { accountId: "claude-account" } },
@@ -128,7 +133,7 @@ describe("ompUsageToAccounts", () => {
         resetCredits: { availableCount: 1 },
       },
     });
-    expect(accounts[2]).toMatchObject({ plan: "Org" });
+    expect(accounts[2]).toMatchObject({ plan: "Max 20x" });
     expect(accounts[2]?.usageLimits.resetCredits).toBeUndefined();
     expect(accounts[3]?.usageLimits.checkedAt).toBe("2026-10-27T12:00:00.000Z");
   });
