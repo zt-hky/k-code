@@ -257,6 +257,20 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.rust_target }}
 
+      # The Apple Speech helper (on-device Mac dictation) needs the macOS 26 SDK; the macos-15
+      # images carry Xcode 26 but default to an older one.
+      - name: Select Xcode 26
+        if: matrix.platform == 'mac'
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$xcode" ]; then
+            echo "::error::No Xcode 26 on this runner; the Apple Speech helper cannot be built."
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
       - name: Stamp package versions
         run: node scripts/update-release-package-versions.ts "${{ needs.meta.outputs.version }}"
 
