@@ -208,7 +208,8 @@ jobs:
             resource_key: linux-arm64
             desktop: false
           - label: macOS arm64
-            runner: macos-15
+            # macos-15 arm64 jobs went unassigned for lack of hosted capacity.
+            runner: macos-26
             platform: mac
             arch: arm64
             target: dmg
@@ -257,8 +258,8 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.rust_target }}
 
-      # The Apple Speech helper (on-device Mac dictation) needs the macOS 26 SDK; the macos-15
-      # images carry Xcode 26 but default to an older one.
+      # The Apple Speech helper (on-device Mac dictation) needs the macOS 26 SDK; the
+      # macos-15-intel image carries Xcode 26 but defaults to an older one.
       - name: Select Xcode 26
         if: matrix.platform == 'mac'
         run: |
