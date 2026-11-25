@@ -32,6 +32,7 @@ vi.mock(import("./remoteOpen"), async (original) => ({
   ...(await original()),
   useRemoteOpenResolution: () => state.remoteOpen,
   useRemoteCapableEditors: () => ["vscode"],
+  useVscodeWebOpener: () => null,
   openRemoteEditorUrl: state.openRemoteEditorUrl,
 }));
 

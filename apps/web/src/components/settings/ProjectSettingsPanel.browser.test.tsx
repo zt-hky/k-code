@@ -215,6 +215,8 @@ function setup() {
   });
   state.delete.mockResolvedValue(AsyncResult.success(undefined));
   state.confirm.mockResolvedValue(true);
+  // Drafts persist to localStorage shared with other browser test files; never leave one behind.
+  useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
   useComposerDraftStore.setState({ clearProjectDraftThreadId: state.clearDraft });
 }
 
