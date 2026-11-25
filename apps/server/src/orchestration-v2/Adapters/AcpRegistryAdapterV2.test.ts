@@ -1742,7 +1742,6 @@ describe("AcpRegistryAdapterV2", () => {
                       interactionMode: "default",
                       hasT3Mcp: false,
                       hasDeviceTools: false,
-                      model: "default",
                     },
                   })
                 : "test prompt",
