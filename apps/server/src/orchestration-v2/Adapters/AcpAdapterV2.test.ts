@@ -8,7 +8,7 @@ import {
 } from "@t3tools/provider-acp-registry/testing";
 import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
 import { OhMyPiSettings } from "@t3tools/provider-ohmypi/settings";
-import { makeOhMyPiAdapterV2 } from "@t3tools/provider-ohmypi/testing";
+import { makeOhMyPiAdapterV2, registerOmpAcpExtensions } from "@t3tools/provider-ohmypi/testing";
 import { AcpRegistryCatalog } from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 import {
   decodeAcpReplayTranscript,
@@ -820,6 +820,9 @@ const makeInstructionCompactionHarness = Effect.fnUntraced(function* (
   let copilotSessionEvent:
     | ((event: unknown) => Effect.Effect<void, EffectAcpErrors.AcpError>)
     | undefined;
+  let ompCompactionEnd:
+    | ((notice: unknown) => Effect.Effect<void, EffectAcpErrors.AcpError>)
+    | undefined;
   let duringNextPreparation: Effect.Effect<void, EffectAcpErrors.AcpError> = Effect.void;
   let nextPromptStopReason: "cancelled" | "refusal" | "error" | undefined;
   const prepare = Effect.suspend(() => {
@@ -840,7 +843,11 @@ const makeInstructionCompactionHarness = Effect.fnUntraced(function* (
             buildAttachmentPrompt: () => prepare.pipe(Effect.as([])),
           }
         : {}),
-      registerExtensions: makeCopilotSubagentRouting().registerExtensions,
+      registerExtensions: (context) =>
+        Effect.andThen(
+          makeCopilotSubagentRouting().registerExtensions(context),
+          registerOmpAcpExtensions(context),
+        ),
       // Routes updates tagged with a Devin subagent context to that child session.
       normalizeSessionUpdate: normalizeDevinSessionUpdate,
       makeRuntime: makeMockRuntime({
@@ -859,6 +866,9 @@ const makeInstructionCompactionHarness = Effect.fnUntraced(function* (
             Effect.sync(() => {
               if (method === "github.com/copilot/sessionEvent") {
                 copilotSessionEvent = next as typeof copilotSessionEvent;
+              }
+              if (method === "_omp/compaction/end") {
+                ompCompactionEnd = next as typeof ompCompactionEnd;
               }
             }).pipe(Effect.andThen(runtime.handleExtNotification(method, payload, next))),
           // Make compaction during prompt completion deterministic at the adapter boundary.
@@ -941,6 +951,10 @@ const makeInstructionCompactionHarness = Effect.fnUntraced(function* (
     }) {
       assert.isDefined(copilotSessionEvent);
       yield* copilotSessionEvent({ sessionId, ...event });
+    }),
+    idleOmpCompactionEnd: Effect.fnUntraced(function* (notice: Record<string, unknown>) {
+      assert.isDefined(ompCompactionEnd);
+      yield* ompCompactionEnd({ sessionId, ...notice });
     }),
   };
 });
@@ -3194,12 +3208,13 @@ describe("AcpAdapterV2", () => {
           runTurn,
           idleSessionUpdate,
           idleCopilotSessionEvent,
+          idleOmpCompactionEnd,
           sessionUpdateDuringNextPreparation,
           reportNextPromptStopped,
         } = yield* makeInstructionCompactionHarness(
           {
             T3_ACP_COMPACTION_PROMPT_ORDINALS: "2,4",
-            T3_ACP_OPEN_COMPACTION_PROMPT_ORDINALS: "13",
+            T3_ACP_OPEN_COMPACTION_PROMPT_ORDINALS: "15",
           },
           stopReason === "error",
         );
@@ -3265,6 +3280,15 @@ describe("AcpAdapterV2", () => {
           yield* runTurn("Continue after legacy Copilot compaction."),
           "Continue after legacy Copilot compaction.",
         );
+        yield* idleOmpCompactionEnd({ action: "context-full", aborted: true, willRetry: false });
+        assert.deepEqual(yield* runTurn("Continue after an aborted omp compaction."), [
+          { type: "text", text: "Continue after an aborted omp compaction." },
+        ]);
+        yield* idleOmpCompactionEnd({ action: "context-full", aborted: false, willRetry: false });
+        assertReinjectedInstructions(
+          yield* runTurn("Continue after omp compaction."),
+          "Continue after omp compaction.",
+        );
         yield* idleSessionUpdate({
           sessionUpdate: "compaction_update",
           compactionId: "compact-child",
@@ -3281,7 +3305,7 @@ describe("AcpAdapterV2", () => {
         );
         yield* idleSessionUpdate({
           sessionUpdate: "compaction_update",
-          compactionId: "compact-13",
+          compactionId: "compact-15",
           status: "completed",
         });
         assertReinjectedInstructions(

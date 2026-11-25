@@ -15,6 +15,24 @@ import { type OmpAccountPin, readOmpAccountPins } from "./credentialPin.ts";
 import { ompSubagentStopMarkerName } from "./stopExtension.ts";
 
 export const OMP_MODE_OPTION_ID = "mode";
+export const OMP_COMPACTION_END_METHOD = "_omp/compaction/end";
+
+const OmpCompactionEnd = Schema.Struct({
+  sessionId: Schema.String,
+  aborted: Schema.optional(Schema.Boolean),
+  skipped: Schema.optional(Schema.Boolean),
+  errorMessage: Schema.optional(Schema.String),
+});
+
+/** omp reports its automatic compaction only through this notification, not ACP `compaction_update`. */
+export const registerOmpAcpExtensions: NonNullable<AcpAdapterV2Flavor["registerExtensions"]> = (
+  context,
+) =>
+  context.runtime.handleExtNotification(OMP_COMPACTION_END_METHOD, OmpCompactionEnd, (notice) =>
+    notice.aborted === true || notice.skipped === true || notice.errorMessage !== undefined
+      ? Effect.void
+      : context.markSessionCompacted(notice.sessionId),
+  );
 
 const OMP_PLAN_PATH = /(?:^|[\\/:])[^\\/:]*plan\.md$/i;
 const OMP_PLAN_LOCAL_PATH = /^local:\/\/.*plan\.md$/i;

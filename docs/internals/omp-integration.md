@@ -17,8 +17,8 @@ When upstream changes a registration point below, keep upstream's shape and re-a
 
 ## omp-only files
 
-- `packages/provider-ohmypi/src/server/acp.ts` (+ test) — the plan capture and approval gate, the `task` subagent mapping (`extractOmpSubagentUpdate`, detected from `rawInput` because omp sends no tool name), and the `_omp/projects/list` and `_omp/extensions*` method names.
-- `ask.ts` — `askDialog` forms (`qN`, `qN__other`) and hiding the duplicate `ask` tool row.
+- `packages/provider-ohmypi/src/server/acp.ts` (+ test) — the plan capture and approval gate, the `task` subagent mapping (`extractOmpSubagentUpdate`, detected from `rawInput` because omp sends no tool name), the `_omp/projects/list` and `_omp/extensions*` method names, and `_omp/compaction/end`: omp reports automatic compaction only there, so a successful one marks the session compacted and the next prompt resends K-code's instructions.
+- `ask.ts` — the `ask` tool's HTML form (one property per input, `name_other` or older `qN__other` companions folded into the question, checkboxes asked as Yes/No) and hiding the duplicate `ask` tool row.
 - `usageAccounts.ts` (+ test), `management.ts` — `_omp/usage` accounts, projects and extensions. omp reports usage only once a session exists, so the driver reuses one usage session via `session/resume`. `usage.ts` is the session-log reader (Pi's JSONL format under `~/.omp/agent/sessions`).
 - `skills.ts` (+ test) — rewrites composer `$skill` mentions to omp's `/skill:name`; `OMP_SKILL_PREFIXES` makes `skill:*` commands skills.
 - `ansi.ts` (+ test) — strips the terminal escapes omp prints in `/context` and similar output, holding back a partial escape split across chunks.
