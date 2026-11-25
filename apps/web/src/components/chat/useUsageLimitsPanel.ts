@@ -1,3 +1,5 @@
+import { msg, useMessages } from "gt-react";
+import { m } from "~/i18n/messages";
 import type {
   EnvironmentId,
   ProviderInstanceId,
@@ -17,6 +19,7 @@ export function useUsageLimitsPanel(input: {
   readonly threadKey: string;
   readonly panelKey: string | null;
   readonly providerInstanceId: ProviderInstanceId | null;
+  readonly model: string | null;
   readonly providerDriver: ServerProvider["driver"] | null;
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
@@ -30,6 +33,7 @@ export function useUsageLimitsPanel(input: {
     threadKey,
     panelKey,
     providerInstanceId,
+    model,
     providerDriver,
     providers,
     sources,
@@ -38,6 +42,7 @@ export function useUsageLimitsPanel(input: {
     sendPinCommand,
   } = input;
   const upstream = modelUpstreamProvider(modelSlug);
+  const messages = useMessages();
   const [panel, setPanel] = useState<{
     readonly key: string;
     readonly threadKey: string;
@@ -49,7 +54,7 @@ export function useUsageLimitsPanel(input: {
   }
   const fullReport =
     panel !== null && panelKey !== null && panel.key === panelKey && providerInstanceId !== null
-      ? collectProviderUsageLimits(providerInstanceId, providers, sources, panel.now)
+      ? collectProviderUsageLimits(providerInstanceId, providers, sources, panel.now, model)
       : null;
   const pinnableAccounts = fullReport?.accounts.filter((account) =>
     isPinnableAccount(account, upstream),
@@ -74,6 +79,7 @@ export function useUsageLimitsPanel(input: {
               sendPinCommand(commandText);
             },
           },
+          messages,
         )
       : null;
   // Intercept /usage-limits only when Limits has selected-provider data.
@@ -100,14 +106,17 @@ export function useUsageLimitsPanel(input: {
     const now = Date.now();
     const nextReport =
       providerInstanceId !== null && panelKey !== null
-        ? collectProviderUsageLimits(providerInstanceId, providers, sources, now)
+        ? collectProviderUsageLimits(providerInstanceId, providers, sources, now, model)
         : null;
     if (nextReport && panelKey !== null) {
       setPanel({ key: panelKey, threadKey, now, pinnableOnly: options?.pinnableOnly === true });
       return true;
     }
     setPanel(null);
-    toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
+    toastManager.add({
+      type: "info",
+      title: m(msg("Usage limits are unavailable for this provider")),
+    });
     return false;
   });
   // Async responses may clear only their originating thread's panel.

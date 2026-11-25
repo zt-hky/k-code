@@ -1,4 +1,8 @@
-import type { ConnectionTarget } from "@t3tools/client-runtime/connection";
+import {
+  connectionRoutes,
+  type ConnectionRoute,
+  type ConnectionTarget,
+} from "@t3tools/client-runtime/connection";
 import {
   REMOTE_CAPABLE_EDITOR_IDS,
   type EditorId,
@@ -10,12 +14,14 @@ import * as Schema from "effect/Schema";
 import { Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
 
+import { browserClientOs, type BrowserIdentity } from "~/connection/clientMetadata";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { isLoopbackHostname } from "~/environments/primary/target";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { environmentPresentations } from "~/state/presentation";
 import { serverEnvironment } from "~/state/server";
 import { useClientSettings } from "~/hooks/useSettings";
+import { hostEnvironmentIdAtom } from "~/state/primaryEnvironment";
 
 export interface RemoteOpenHost {
   readonly kind: "ssh-alias" | "configured" | RemoteOpenTarget["kind"];
@@ -66,15 +72,27 @@ function sshHost(
   return { kind, host, ...(resolvedUsername ? { username: resolvedUsername } : {}) };
 }
 
+function firstSshTarget(routes: ReadonlyArray<ConnectionRoute>) {
+  for (const route of routes) {
+    const profile = Option.getOrNull(route.profile);
+    if (profile?._tag === "SshConnectionProfile" && profile.target.alias.length > 0) {
+      return profile.target;
+    }
+  }
+  return null;
+}
+
 export function resolveRemoteOpenState(input: {
   readonly target: ConnectionTarget | null;
-  readonly sshTarget: { readonly alias: string; readonly username: string | null } | null;
+  /** The environment's saved routes, preferred route first. */
+  readonly routes: ReadonlyArray<ConnectionRoute>;
   readonly configuredSsh?: { readonly host: string; readonly username: string } | undefined;
   readonly remoteOpenTargets: ReadonlyArray<RemoteOpenTarget> | undefined;
   readonly isDesktopRenderer: boolean;
+  readonly hostEnvironmentId: string | null;
 }): RemoteOpenState {
   const { target } = input;
-  if (target === null) {
+  if (target === null || target.environmentId === input.hostEnvironmentId) {
     return LOCAL_EXEC;
   }
   if (target._tag === "PrimaryConnectionTarget") {
@@ -90,10 +108,11 @@ export function resolveRemoteOpenState(input: {
     return LOCAL_EXEC;
   }
 
-  if (input.sshTarget !== null && input.sshTarget.alias.length > 0) {
+  const sshTarget = firstSshTarget(input.routes);
+  if (sshTarget !== null) {
     return {
       mode: "remote-links",
-      host: sshHost("ssh-alias", input.sshTarget.alias, input.sshTarget.username?.trim()),
+      host: sshHost("ssh-alias", sshTarget.alias, sshTarget.username?.trim()),
     };
   }
   const advertised = input.remoteOpenTargets?.[0];
@@ -133,12 +152,10 @@ const remoteOpenResolutionAtom = Atom.family((environmentId: EnvironmentId) =>
     if (entry === null) {
       return UNRESOLVED_REMOTE_OPEN;
     }
-    const profile = Option.getOrNull(entry.profile);
     const next: RemoteOpenResolution = {
       state: resolveRemoteOpenState({
         target: entry.target,
-        sshTarget:
-          profile !== null && profile._tag === "SshConnectionProfile" ? profile.target : null,
+        routes: connectionRoutes(entry),
         ...(presentation?.serverConfig?.settings === undefined
           ? {}
           : {
@@ -149,6 +166,7 @@ const remoteOpenResolutionAtom = Atom.family((environmentId: EnvironmentId) =>
             }),
         remoteOpenTargets: presentation?.serverConfig?.remoteOpenTargets,
         isDesktopRenderer: window.desktopBridge !== undefined,
+        hostEnvironmentId: get(hostEnvironmentIdAtom),
       }),
       isResolved: true,
     };
@@ -175,6 +193,12 @@ export function useRemoteOpenState(environmentId: EnvironmentId | null): RemoteO
 
 const REMOTE_FALLBACK_EDITORS: ReadonlyArray<EditorId> = ["vscode"];
 
+// Phone and tablet browsers have no desktop editor to receive a vscode:// remote link.
+export function remoteFallbackEditors(identity: BrowserIdentity): ReadonlyArray<EditorId> {
+  const os = browserClientOs(identity);
+  return os === "iOS" || os === "Android" ? [] : REMOTE_FALLBACK_EDITORS;
+}
+
 // Probed once per page: installed editors rarely change, and the probe spawns processes.
 const remoteCapableEditorsAtom = Atom.make((get): ReadonlyArray<EditorId> => {
   const probe = window.desktopBridge?.probeRemoteEditors;
@@ -185,7 +209,7 @@ const remoteCapableEditorsAtom = Atom.make((get): ReadonlyArray<EditorId> => {
     },
     () => undefined,
   );
-  return REMOTE_FALLBACK_EDITORS;
+  return remoteFallbackEditors(navigator);
 }).pipe(Atom.keepAlive, Atom.withLabel("remote-capable-editors"));
 
 export function useRemoteCapableEditors(): ReadonlyArray<EditorId> {

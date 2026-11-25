@@ -19,6 +19,8 @@ export {
   normalizeAcpRegistryAuthMethods,
   normalizeAcpRegistryCommands,
   normalizeAcpRegistrySession,
+  probeAcpRegistryConfiguration,
   type AcpRegistryAvailableCommands,
   type AcpRegistryLiveConfiguration,
 } from "./server/probe.ts";
+export { makeAcpRegistryTextGeneration } from "./server/textGeneration.ts";

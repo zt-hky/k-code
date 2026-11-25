@@ -48,6 +48,7 @@ import {
   makeOmpSessionMetadataReader,
   makeOmpSubagentTranscriptReader,
   OMP_MODE_OPTION_ID,
+  registerOmpAcpExtensions,
 } from "./acp.ts";
 import { makeAnsiFilter, type AnsiFilter } from "./ansi.ts";
 import { extractOmpAskElicitationForm, isOmpAskToolCall } from "./ask.ts";
@@ -224,6 +225,7 @@ export const makeOhMyPiAdapterV2 = Effect.fn("makeOhMyPiAdapterV2")(function* (
     interactionModeOptionIds: [OMP_MODE_OPTION_ID],
     supportsSessionSteering: true,
     supportsCompaction: true,
+    registerExtensions: registerOmpAcpExtensions,
     extractSubagentUpdate: extractOmpSubagentUpdate,
     ...(readSubagentTranscript === undefined ? {} : { readSubagentTranscript }),
     ...(readSessionMetadata === undefined ? {} : { readSessionMetadata }),

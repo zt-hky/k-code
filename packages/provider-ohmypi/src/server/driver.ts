@@ -174,12 +174,16 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
         | AcpRegistrySupport.AcpRegistryCatalog
         | ChildProcessSpawner.ChildProcessSpawner
         | SecureRandom.SecureRandom
+        | FileSystem.FileSystem
+        | Path.Path
       >,
     ): Effect.Effect<A, E> => {
       const provided = effect.pipe(
         Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(SecureRandom.SecureRandom, random),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
       );
       return Option.isSome(runtimeCoordinator)
         ? provided.pipe(
@@ -238,6 +242,7 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
           cwd: host.paths.cwd,
         })),
         Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError),
+        Effect.provideService(Scope.Scope, instanceScope),
       ),
       // A probe takes seconds; the login result must not wait for it.
       onCredentialsChanged: clearLiveState.pipe(
@@ -260,6 +265,7 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
             cwd,
           })),
           Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError),
+          Effect.provideService(Scope.Scope, instanceScope),
         ),
     }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
     const mcp = yield* makeOmpMcp({
@@ -280,7 +286,10 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
         }
         const { spawn } = yield* catalog
           .resolve(registrySettings, runCwd, processEnvironment)
-          .pipe(Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError));
+          .pipe(
+            Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError),
+            Effect.provideService(Scope.Scope, instanceScope),
+          );
         return { command: spawn.command, env: spawn.env ?? processEnvironment, cwd: runCwd };
       }),
     }).pipe(
@@ -369,6 +378,8 @@ export const OhMyPiDriver: ProviderDriver<OhMyPiSettings, OhMyPiDriverEnv, Path.
           Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
           Effect.provideService(SecureRandom.SecureRandom, random),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
         ),
       );
       return buildOhMyPiSnapshot({

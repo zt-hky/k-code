@@ -238,7 +238,7 @@ function AgentActivitySource(props: {
   useEffect(() => {
     onItems(
       agentId,
-      items.slice(-AGENT_HUB_ACTIVITY_ITEM_LIMIT).map(workLogEntryFromProjectedItem),
+      items.slice(-AGENT_HUB_ACTIVITY_ITEM_LIMIT).map((row) => workLogEntryFromProjectedItem(row)),
     );
   }, [agentId, items, onItems]);
   return null;

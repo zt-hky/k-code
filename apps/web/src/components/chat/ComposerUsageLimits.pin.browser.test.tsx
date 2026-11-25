@@ -110,6 +110,7 @@ function PanelHarness({ model }: { readonly model: string }) {
     threadKey: "thread",
     panelKey: "key",
     providerInstanceId: instanceId,
+    model,
     providerDriver: driver,
     providers: [hubProvider],
     sources: [],

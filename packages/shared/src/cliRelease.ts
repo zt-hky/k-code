@@ -10,7 +10,8 @@ export const CLI_RELEASE_BASE_URL_ENV = "T3CODE_RELEASE_BASE_URL";
 
 /**
  * Server archives release.yml publishes, by Node `<platform>-<arch>`. The workflow reads this table;
- * the marketing install.sh/install.ps1 hardcode the same names and must stay in step.
+ * the marketing install.sh/install.ps1 hardcode the same names and must stay in step, and so must
+ * the SSH runner's host check in packages/ssh/src/tunnel.ts.
  * @public
  */
 export const CLI_RELEASE_ARCHIVES = {
