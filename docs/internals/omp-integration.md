@@ -17,7 +17,7 @@ When upstream changes a registration point below, keep upstream's shape and re-a
 
 ## omp-only files
 
-- `packages/provider-ohmypi/src/server/acp.ts` (+ test) — the plan capture and approval gate, the `task` subagent mapping (`extractOmpSubagentUpdate`, detected from `rawInput` because omp sends no tool name), the `_omp/projects/list` and `_omp/extensions*` method names, and `_omp/compaction/end`: omp reports automatic compaction only there, so a successful one marks the session compacted and the next prompt resends K-code's instructions.
+- `packages/provider-ohmypi/src/server/acp.ts` (+ test) — the plan capture and approval gate, the `task` subagent mapping (`extractOmpSubagentUpdate`, detected from `rawInput` because omp sends no tool name), the `_omp/projects/list` and `_omp/extensions*` method names, and `_omp/compaction/start|end`: omp reports automatic compaction only there, never as ACP `compaction_update`, so `registerOmpAcpExtensions` replays each pair as that update (in progress, then completed, failed, or cancelled when aborted or skipped). The run shows the compaction divider while it runs, and a completed one resends K-code's instructions on the next prompt. Ids are process-unique because the adapter dedupes finished compactions by id across runtime restarts.
 - `ask.ts` — the `ask` tool's HTML form (one property per input, `name_other` or older `qN__other` companions folded into the question, checkboxes asked as Yes/No) and hiding the duplicate `ask` tool row.
 - `usageAccounts.ts` (+ test), `management.ts` — `_omp/usage` accounts, projects and extensions. omp reports usage only once a session exists, so the driver reuses one usage session via `session/resume`. `usage.ts` is the session-log reader (Pi's JSONL format under `~/.omp/agent/sessions`).
 - `skills.ts` (+ test) — rewrites composer `$skill` mentions to omp's `/skill:name`; `OMP_SKILL_PREFIXES` makes `skill:*` commands skills.
@@ -40,7 +40,7 @@ When upstream changes a registration point below, keep upstream's shape and re-a
 
 ## Upstream registration points
 
-- `packages/provider-acp/src/server/adapter.ts` — optional `AcpAdapterV2Flavor` fields (`supportsSessionSteering`, `planApprovalElicitation`, `interactionModeOptionIds`, `isUserInputTool`), a real `steerTurn`, `turnUsage` → `tokenUsage`, assistant image attachments on text segments, and cancelled runtime requests when a handler is interrupted.
+- `packages/provider-acp/src/server/adapter.ts` — optional `AcpAdapterV2Flavor` fields (`supportsSessionSteering`, `planApprovalElicitation`, `interactionModeOptionIds`, `isUserInputTool`), `applySessionUpdate` on `AcpAdapterV2ExtensionContext` (projects a standard session update an extension reported), a real `steerTurn`, `turnUsage` → `tokenUsage`, assistant image attachments on text segments, and cancelled runtime requests when a handler is interrupted.
 - `packages/provider-acp/src/server/elicitationForm.ts` — generic form mapping (`oneOf`, multi-select, typed answers).
 - `packages/effect-acp/src/protocol.ts`, `errors.ts` — `$/cancel_request` interrupts the inbound handler and answers `-32800`. `scripts/generate.ts` — property maps are not keywords (fixes `TitledMultiSelectItems`).
 - `packages/provider-core/src/server/ProviderHost.ts` — optional `persistImageAttachment`; implemented in `apps/server/src/provider/ProviderHostLive.ts` and `packages/provider-testing/src/TestProviderHost.ts`. `driver.ts` — optional `listProjects`, `listExtensions`, `setExtensionSource` on `acpSessionManagement`.

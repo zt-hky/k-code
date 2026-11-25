@@ -1,6 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import type * as EffectAcpErrors from "effect-acp/errors";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
@@ -11,6 +13,7 @@ import {
   makeOmpSubagentStopper,
   makeOmpSessionMetadataReader,
   makeOmpSubagentTranscriptReader,
+  registerOmpAcpExtensions,
 } from "./acp.ts";
 import { ompSubagentStopMarkerName } from "./stopExtension.ts";
 
@@ -551,5 +554,55 @@ describe("omp subagent stop markers", () => {
       })({ sessionId: "missing", agentIds: ["x"] }).pipe(Effect.exit);
       expect(exit._tag).toBe("Failure");
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+});
+
+describe("omp automatic compaction", () => {
+  it.effect("reports omp's compaction notices as ACP compaction updates", () =>
+    Effect.gen(function* () {
+      type Handler = (notice: unknown) => Effect.Effect<void, EffectAcpErrors.AcpError>;
+      const handlers = new Map<string, Handler>();
+      const updates: Array<EffectAcpSchema.SessionNotification> = [];
+      yield* registerOmpAcpExtensions({
+        runtime: {
+          handleExtNotification: (method: string, _schema: unknown, handler: Handler) =>
+            Effect.sync(() => void handlers.set(method, handler)),
+        },
+        applySessionUpdate: (notification: EffectAcpSchema.SessionNotification) =>
+          Effect.sync(() => void updates.push(notification)),
+        // Registration touches only these two members of the adapter's extension context.
+      } as unknown as Parameters<typeof registerOmpAcpExtensions>[0]);
+      const notify = (method: string, notice: Record<string, unknown>) =>
+        handlers.get(method)!({ sessionId: "s1", ...notice });
+      const reported = () =>
+        updates.flatMap(({ update }) =>
+          update.sessionUpdate === "compaction_update"
+            ? [{ id: update.compactionId, status: update.status, error: update.error }]
+            : [],
+        );
+
+      yield* notify("_omp/compaction/start", { reason: "threshold", action: "context-full" });
+      yield* notify("_omp/compaction/end", { aborted: false, willRetry: false, tokensBefore: 9 });
+      yield* notify("_omp/compaction/start", { action: "context-full" });
+      yield* notify("_omp/compaction/end", { aborted: false, skipped: true });
+      yield* notify("_omp/compaction/start", { action: "context-full" });
+      yield* notify("_omp/compaction/end", { aborted: false, errorMessage: "Budget exhausted" });
+      // An end whose start never arrived still closes under an id of its own.
+      yield* notify("_omp/compaction/end", { aborted: true });
+
+      const rows = reported();
+      const ids = [rows[0]?.id, rows[2]?.id, rows[4]?.id, rows[6]?.id];
+      expect(rows).toEqual([
+        { id: ids[0], status: "in_progress", error: undefined },
+        { id: ids[0], status: "completed", error: undefined },
+        { id: ids[1], status: "in_progress", error: undefined },
+        { id: ids[1], status: "cancelled", error: undefined },
+        { id: ids[2], status: "in_progress", error: undefined },
+        { id: ids[2], status: "failed", error: "Budget exhausted" },
+        { id: ids[3], status: "cancelled", error: undefined },
+      ]);
+      // The adapter dedupes finished compactions by id, so each needs its own.
+      expect(new Set(ids).size).toBe(4);
+    }),
   );
 });

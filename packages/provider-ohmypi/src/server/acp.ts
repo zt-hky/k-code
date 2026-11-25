@@ -15,8 +15,10 @@ import { type OmpAccountPin, readOmpAccountPins } from "./credentialPin.ts";
 import { ompSubagentStopMarkerName } from "./stopExtension.ts";
 
 export const OMP_MODE_OPTION_ID = "mode";
+export const OMP_COMPACTION_START_METHOD = "_omp/compaction/start";
 export const OMP_COMPACTION_END_METHOD = "_omp/compaction/end";
 
+const OmpCompactionStart = Schema.Struct({ sessionId: Schema.String });
 const OmpCompactionEnd = Schema.Struct({
   sessionId: Schema.String,
   aborted: Schema.optional(Schema.Boolean),
@@ -24,15 +26,58 @@ const OmpCompactionEnd = Schema.Struct({
   errorMessage: Schema.optional(Schema.String),
 });
 
-/** omp reports its automatic compaction only through this notification, not ACP `compaction_update`. */
+// Unique for the process: the adapter remembers finished compaction ids across runtime restarts.
+let ompCompactionSequence = 0;
+
+/**
+ * omp reports automatic compaction only as `_omp/compaction/start|end`, never ACP
+ * `compaction_update`; both become that update so the run shows it and the next prompt
+ * resends K-code's instructions. A skipped compaction (no usable model) is cancelled.
+ */
 export const registerOmpAcpExtensions: NonNullable<AcpAdapterV2Flavor["registerExtensions"]> = (
   context,
-) =>
-  context.runtime.handleExtNotification(OMP_COMPACTION_END_METHOD, OmpCompactionEnd, (notice) =>
-    notice.aborted === true || notice.skipped === true || notice.errorMessage !== undefined
-      ? Effect.void
-      : context.markSessionCompacted(notice.sessionId),
+) => {
+  const open = new Map<string, string>();
+  const update = (
+    sessionId: string,
+    compactionId: string,
+    status: "in_progress" | "completed" | "failed" | "cancelled",
+    error?: string,
+  ) =>
+    context.applySessionUpdate({
+      sessionId,
+      update: {
+        sessionUpdate: "compaction_update",
+        compactionId,
+        status,
+        ...(error === undefined ? {} : { error }),
+      },
+    });
+  return Effect.andThen(
+    context.runtime.handleExtNotification(
+      OMP_COMPACTION_START_METHOD,
+      OmpCompactionStart,
+      ({ sessionId }) => {
+        const compactionId = `omp-compaction-${++ompCompactionSequence}`;
+        open.set(sessionId, compactionId);
+        return update(sessionId, compactionId, "in_progress");
+      },
+    ),
+    context.runtime.handleExtNotification(OMP_COMPACTION_END_METHOD, OmpCompactionEnd, (notice) => {
+      const compactionId =
+        open.get(notice.sessionId) ?? `omp-compaction-${++ompCompactionSequence}`;
+      open.delete(notice.sessionId);
+      if (notice.errorMessage !== undefined) {
+        return update(notice.sessionId, compactionId, "failed", notice.errorMessage);
+      }
+      return update(
+        notice.sessionId,
+        compactionId,
+        notice.aborted === true || notice.skipped === true ? "cancelled" : "completed",
+      );
+    }),
   );
+};
 
 const OMP_PLAN_PATH = /(?:^|[\\/:])[^\\/:]*plan\.md$/i;
 const OMP_PLAN_LOCAL_PATH = /^local:\/\/.*plan\.md$/i;

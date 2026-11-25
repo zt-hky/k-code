@@ -307,6 +307,10 @@ export interface AcpAdapterV2ExtensionContext {
   }) => Effect.Effect<void>;
   /** For compactions reported outside ACP `compaction_update`. */
   readonly markSessionCompacted: (sessionId: string) => Effect.Effect<void>;
+  /** Projects a standard ACP session update the agent reported through its own extension. */
+  readonly applySessionUpdate: (
+    notification: EffectAcpSchema.SessionNotification,
+  ) => Effect.Effect<void, EffectAcpErrors.AcpError>;
   /**
    * For agents that hold `session/prompt` past their foreground work on ACP v1. An idle settles
    * the run only after a `running` report during it, so an earlier prompt's idle cannot.
@@ -8255,6 +8259,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   handlerGeneration,
                   markSessionCompacted(sessionId),
                 ).pipe(Effect.asVoid),
+              applySessionUpdate: (notification) =>
+                projectAcpRuntimeSessionUpdate(handlerGeneration, notification).pipe(Effect.asVoid),
               reportForegroundWork: (notice) =>
                 runRuntimeCallbackAtGeneration(
                   handlerGeneration,
