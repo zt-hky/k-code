@@ -9700,7 +9700,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 callLauncher,
               ).servers.length > 0,
             hasDeviceTools: mcpSession?.capabilities?.has("device") === true,
-            model: turnInput.modelSelection.model,
           } satisfies T3AcpInstructionState;
           const userText =
             flavor.rewriteUserText === undefined

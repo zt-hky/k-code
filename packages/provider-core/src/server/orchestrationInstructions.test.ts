@@ -89,7 +89,6 @@ describe("T3 device instructions", () => {
       interactionMode: "default",
       hasT3Mcp: true,
       hasDeviceTools: false,
-      model: "test-model",
     } as const;
     const prompt = "Check the login screen.";
     const withDevices = { ...state, hasDeviceTools: true };
