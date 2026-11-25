@@ -25,7 +25,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { reportAcpFailure } from "../../hooks/useAcpNativeSessions";
-import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
+import { namedClipboardTarget, writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { ensureLocalApi } from "../../localApi";
 import { useEnvironment, useEnvironmentHttpBaseUrl } from "../../state/environments";
@@ -214,9 +214,10 @@ function McpAuthPanel(props: {
             size="xs"
             variant="outline"
             onClick={() =>
-              void writeTextToClipboard(authorizationUrl, "Authorization link").then((didCopy) =>
-                setCopied(didCopy),
-              )
+              void writeTextToClipboard(
+                authorizationUrl,
+                namedClipboardTarget("Authorization link"),
+              ).then((didCopy) => setCopied(didCopy))
             }
           >
             {copied ? <CheckIcon /> : <CopyIcon />}

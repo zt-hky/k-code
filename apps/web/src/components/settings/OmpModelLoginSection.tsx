@@ -10,7 +10,7 @@ import { CheckIcon, ChevronRightIcon, CopyIcon, ExternalLinkIcon, PlusIcon } fro
 import { useEffect, useRef, useState } from "react";
 
 import { reportAcpFailure } from "../../hooks/useAcpNativeSessions";
-import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
+import { namedClipboardTarget, writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { ensureLocalApi } from "../../localApi";
 import { useEnvironment, useEnvironmentHttpBaseUrl } from "../../state/environments";
@@ -221,7 +221,9 @@ function CopyCodeButton(props: { readonly code: string }) {
       size="xs"
       variant="outline"
       onClick={() =>
-        void writeTextToClipboard(props.code, "Device code").then((didCopy) => setCopied(didCopy))
+        void writeTextToClipboard(props.code, namedClipboardTarget("Device code")).then((didCopy) =>
+          setCopied(didCopy),
+        )
       }
     >
       {copied ? <CheckIcon /> : <CopyIcon />}
@@ -643,7 +645,10 @@ export function OmpModelLoginSection(props: {
                           variant="ghost-muted"
                           disabled={controlsDisabled}
                           onClick={() =>
-                            void writeTextToClipboard(authorizationUrl, "Provider sign-in link")
+                            void writeTextToClipboard(
+                              authorizationUrl,
+                              namedClipboardTarget("Provider sign-in link"),
+                            )
                           }
                         >
                           <CopyIcon />

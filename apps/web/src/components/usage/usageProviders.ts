@@ -48,6 +48,7 @@ export const PROVIDER_PRESENTATION = {
     driverKind: ProviderDriverKind.make("muse"),
   },
   omp: {
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- provider brand name
     label: "Oh My Pi",
     color: "#c9a227",
     driverKind: ProviderDriverKind.make("ohmypi"),

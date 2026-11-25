@@ -1,4 +1,8 @@
-import type { ConnectionTarget } from "@t3tools/client-runtime/connection";
+import {
+  connectionRoutes,
+  type ConnectionRoute,
+  type ConnectionTarget,
+} from "@t3tools/client-runtime/connection";
 import {
   REMOTE_CAPABLE_EDITOR_IDS,
   type EditorId,
@@ -68,9 +72,20 @@ function sshHost(
   return { kind, host, ...(resolvedUsername ? { username: resolvedUsername } : {}) };
 }
 
+function firstSshTarget(routes: ReadonlyArray<ConnectionRoute>) {
+  for (const route of routes) {
+    const profile = Option.getOrNull(route.profile);
+    if (profile?._tag === "SshConnectionProfile" && profile.target.alias.length > 0) {
+      return profile.target;
+    }
+  }
+  return null;
+}
+
 export function resolveRemoteOpenState(input: {
   readonly target: ConnectionTarget | null;
-  readonly sshTarget: { readonly alias: string; readonly username: string | null } | null;
+  /** The environment's saved routes, preferred route first. */
+  readonly routes: ReadonlyArray<ConnectionRoute>;
   readonly configuredSsh?: { readonly host: string; readonly username: string } | undefined;
   readonly remoteOpenTargets: ReadonlyArray<RemoteOpenTarget> | undefined;
   readonly isDesktopRenderer: boolean;
@@ -93,10 +108,11 @@ export function resolveRemoteOpenState(input: {
     return LOCAL_EXEC;
   }
 
-  if (input.sshTarget !== null && input.sshTarget.alias.length > 0) {
+  const sshTarget = firstSshTarget(input.routes);
+  if (sshTarget !== null) {
     return {
       mode: "remote-links",
-      host: sshHost("ssh-alias", input.sshTarget.alias, input.sshTarget.username?.trim()),
+      host: sshHost("ssh-alias", sshTarget.alias, sshTarget.username?.trim()),
     };
   }
   const advertised = input.remoteOpenTargets?.[0];
@@ -136,12 +152,10 @@ const remoteOpenResolutionAtom = Atom.family((environmentId: EnvironmentId) =>
     if (entry === null) {
       return UNRESOLVED_REMOTE_OPEN;
     }
-    const profile = Option.getOrNull(entry.profile);
     const next: RemoteOpenResolution = {
       state: resolveRemoteOpenState({
         target: entry.target,
-        sshTarget:
-          profile !== null && profile._tag === "SshConnectionProfile" ? profile.target : null,
+        routes: connectionRoutes(entry),
         ...(presentation?.serverConfig?.settings === undefined
           ? {}
           : {

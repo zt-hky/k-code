@@ -13,12 +13,10 @@ import * as Hash from "effect/Hash";
 import pkg from "./package.json" with { type: "json" };
 import pdfjsPkg from "pdfjs-dist/package.json" with { type: "json" };
 
-import {
-  DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES,
-  DEV_PROXIED_PATH_PREFIXES,
-} from "@t3tools/shared/devProxy";
+import { DEV_PROXIED_PATH_PREFIXES } from "@t3tools/shared/devProxy";
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
+import { resolveTaggedSourceVersion } from "../../scripts/lib/tagged-source-version";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
@@ -46,12 +44,10 @@ const configuredHostedAppChannel = process.env.VITE_HOSTED_APP_CHANNEL?.trim() |
 const configuredClientSettingsDefaults = process.env.VITE_CLIENT_SETTINGS_DEFAULTS?.trim() || "";
 const configuredReleaseChannel =
   process.env.T3CODE_BUILT_DEV === "1" ? "dev" : process.env.VITE_RELEASE_CHANNEL?.trim() || "";
-const configuredAppVersion = process.env.APP_VERSION?.trim() || pkg.version;
 const configuredDesktopUpdateRepository =
   process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY?.trim() ||
   process.env.GITHUB_REPOSITORY?.trim() ||
   "";
-const configuredFeatureSecrets = process.env.T3CODE_FEATURE_SECRETS?.trim() || "";
 const configuredHostedAppUrl = (() => {
   const explicitHostedAppUrl = process.env.VITE_HOSTED_APP_URL?.trim();
   if (explicitHostedAppUrl) {
@@ -74,6 +70,11 @@ const builtDev = process.env.T3CODE_BUILT_DEV === "1";
 const bundledDevEnv = process.env.T3CODE_BUNDLED_DEV?.trim().toLowerCase();
 const bundledDev = bundledDevEnv === "1" || bundledDevEnv === "true";
 
+// Bundled dev and `build --watch` pass Rolldown `exclude` but not Vite's default `ignored`, so
+// they watch node_modules. Those files are pnpm-store hardlinks shared by every worktree, so each
+// `vp i` or worktree removal elsewhere rebuilds every long-running server and leaks native memory.
+const rolldownWatchExclude = [/[\\/]node_modules[\\/]/];
+
 const buildSourcemap: boolean | "hidden" =
   sourcemapEnv === "0" || sourcemapEnv === "false"
     ? false
@@ -92,12 +93,14 @@ const unitTestProject = {
     setupFiles: [
       "../../packages/shared/src/testing/longTempDir.ts",
       "../../packages/shared/src/testing/providerEnv.ts",
+      "../../packages/shared/src/testing/gitEnv.ts",
     ],
   },
 } satisfies TestProjectInlineConfiguration;
 
-// Hash checkout paths to ports 61000-64999; Vitest's fixed port collides under inherited strictPort.
-const browserTestApiPort = 61_000 + ((Hash.string(import.meta.dirname) >>> 0) % 4_000);
+// Hash checkout paths to ports 20000-23999; Vitest's fixed port collides under inherited strictPort.
+// Stay below ephemeral ranges: Windows reserves Hyper-V/WSL blocks there and EACCES is not skipped.
+const browserTestApiPort = 20_000 + ((Hash.string(import.meta.dirname) >>> 0) % 4_000);
 
 const browserTestProject = {
   extends: true,
@@ -106,6 +109,9 @@ const browserTestProject = {
     include: [
       "vite-plus/test/browser",
       "@base-ui/react/autocomplete",
+      "@effect/vitest",
+      "@pierre/diffs/ssr",
+      "effect/testing",
       "saxes",
       "@betteroffice/docx/editor",
       "@betteroffice/docx/layout",
@@ -118,7 +124,7 @@ const browserTestProject = {
       "fast-xml-parser",
       "entities",
       "dompurify",
-      "heic-to/next",
+      "heic-to/csp",
       "jszip",
       "pdfjs-dist",
       "sql.js",
@@ -143,6 +149,13 @@ const browserTestProject = {
         // position starts hovered. test/browserSetup.ts parks it off the page before each test.
         resetPointer: async ({ page }) => {
           await page.mouse.move(-1, -1);
+        },
+        // A press held across a render: userEvent only offers whole clicks.
+        pointerDown: async ({ page }) => {
+          await page.mouse.down();
+        },
+        pointerUp: async ({ page }) => {
+          await page.mouse.up();
         },
       },
     },
@@ -248,6 +261,20 @@ function chunkCycleGuardPlugin(): Plugin {
   };
 }
 
+// Bundled dev never evicts emitted files from memory (vitejs/vite#23781), so hashed names keep
+// a copy of every changed chunk from every rebuild. Fixed names overwrite the previous copy.
+function bundledDevStableNamesPlugin(): Plugin {
+  return {
+    name: "t3code:bundled-dev-stable-names",
+    apply: "serve",
+    outputOptions: (options) => ({
+      ...options,
+      chunkFileNames: "assets/[name].js",
+      assetFileNames: "assets/[name][extname]",
+    }),
+  };
+}
+
 // Stamps index.html's title with the name branding.ts resolves once the app
 // loads, so a tab opens on the right channel instead of flashing another's.
 // Desktop swaps in its injected branding from an inline script in index.html.
@@ -277,7 +304,14 @@ const configuredAllowedHosts = (process.env.T3CODE_DEV_ALLOWED_HOSTS ?? "")
   .filter((entry) => entry.length > 0);
 const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 
-export default defineConfig(() => {
+export default defineConfig(({ command }) => {
+  // `vp dev` and `--built` dev pair this client with a server run from source, which reports the
+  // manifest version. Only a production build is paired with a packed server.
+  const configuredAppVersion =
+    process.env.APP_VERSION?.trim() ||
+    (command === "build" && !builtDev
+      ? resolveTaggedSourceVersion(`${import.meta.dirname}/../..`, pkg.version)
+      : pkg.version);
   return {
     run: {
       tasks: {
@@ -308,6 +342,7 @@ export default defineConfig(() => {
       react({ compiler: true }),
       tailwindPlugins(bundledDev),
       warmBundledDevPlugin(),
+      bundledDev ? bundledDevStableNamesPlugin() : undefined,
     ],
     optimizeDeps: {
       include: [
@@ -345,7 +380,6 @@ export default defineConfig(() => {
       "import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY": JSON.stringify(
         configuredDesktopUpdateRepository,
       ),
-      "import.meta.env.T3CODE_FEATURE_SECRETS": JSON.stringify(configuredFeatureSecrets),
       "import.meta.env.VITE_RELEASE_CHANNEL": JSON.stringify(configuredReleaseChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
     },
@@ -366,6 +400,7 @@ export default defineConfig(() => {
       warmup: {
         clientFiles: ["./src/main.tsx"],
       },
+      watch: { exclude: rolldownWatchExclude },
       ...(devProxyTarget
         ? {
             // Share prefixes with the backend catch-all so the proxy and 404 lists cannot drift.
@@ -374,7 +409,9 @@ export default defineConfig(() => {
                 prefix,
                 {
                   target: devProxyTarget,
-                  changeOrigin: !DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES.has(prefix),
+                  // Keep the client's Host: OAuth metadata, cookie Origin checks and DPoP proofs
+                  // all compare against the URL the client used.
+                  changeOrigin: false,
                   ...(prefix === "/ws" || prefix === "/api" ? { ws: true } : {}),
                 },
               ]),
@@ -401,6 +438,7 @@ export default defineConfig(() => {
       emptyOutDir: true,
       manifest: true,
       sourcemap: buildSourcemap,
+      ...(builtDev ? { watch: { exclude: rolldownWatchExclude } } : {}),
       rolldownOptions: {
         output: {
           // PDF.js resolves decoder modules and ICC data relative to wasmUrl.

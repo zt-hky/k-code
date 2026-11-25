@@ -273,6 +273,39 @@ it("lists extension sources and turns one off after confirmation", async () => {
   });
 });
 
+it("keeps a deleted ACP session out of a pending page only", async () => {
+  setup();
+  commands.list.mockResolvedValueOnce({
+    _tag: "Success",
+    value: { sessions: [session], nextCursor: "page-2" },
+  });
+  let finishPage!: (value: unknown) => void;
+  commands.list.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finishPage = resolve;
+    }),
+  );
+  const otherSession = { ...session, sessionId: `${session.sessionId}0` };
+  await using screen = await renderSection();
+  const deletedRow = screen.getByText(session.sessionId, { exact: true });
+  await screen.click("List sessions");
+  await screen.click("Load more");
+  await screen.click("Delete");
+  await expect.element(deletedRow).not.toBeInTheDocument();
+
+  await act(async () =>
+    finishPage({
+      _tag: "Success",
+      value: { sessions: [session, otherSession], nextCursor: null },
+    }),
+  );
+  await expect.element(screen.getByText(otherSession.sessionId, { exact: true })).toBeVisible();
+  await expect.element(deletedRow).not.toBeInTheDocument();
+
+  await screen.click("Refresh");
+  await expect.element(deletedRow).toBeVisible();
+});
+
 it.each(["Save", "Disable"])("keeps other provider edits through a %s refetch", async (action) => {
   setup();
   const providers: AcpRegistryConfigurableProvider[] = ["google", "other"].map((providerId) => ({
@@ -369,8 +402,11 @@ it.each([true, false])(
     });
     await using screen = await renderSection({ canList, projects: [project, second] });
     await screen.getByRole("combobox").click();
-    if (canList) await userEvent.keyboard("{ArrowDown}{Enter}");
-    else await screen.getByRole("option", { name: "Second", exact: true }).click();
+    if (canList) {
+      // Keys sent before the popup takes focus only move focus onto the selected option.
+      await expect.element(screen.getByRole("option", { name: "Antigravity" })).toHaveFocus();
+      await userEvent.keyboard("{ArrowDown}{Enter}");
+    } else await screen.getByRole("option", { name: "Second", exact: true }).click();
     await expect
       .element(
         screen.getByRole("combobox", {

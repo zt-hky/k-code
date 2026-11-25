@@ -1,4 +1,5 @@
 import type { RuntimeMode } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { memo, useRef } from "react";
 import { EllipsisIcon } from "lucide-react";
 import { Menu, MenuPopup, MenuSeparator as MenuDivider, MenuTrigger } from "../ui/menu";
@@ -19,6 +20,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   hidden?: boolean;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  const gt = useGT();
   const composerFloatingLayerProps = useComposerMenuProps();
   const size = props.size ?? "sm";
   const [open, setOpen] = useComposerMenuState(props.hidden);
@@ -36,7 +38,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             ref={triggerRef}
             size={size}
             className="shrink-0"
-            aria-label="More composer controls"
+            aria-label={gt("More composer controls")}
             data-composer-shortcut={props.showPermissions ? "composer.mode" : undefined}
           />
         }
@@ -46,7 +48,9 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
       <MenuPopup align="start" {...composerFloatingLayerProps}>
         {props.loopThreadKey !== undefined ? (
           <>
-            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Loop</div>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
+              <T>Loop</T>
+            </div>
             <ComposerLoopOptions threadKey={props.loopThreadKey} />
             {props.showPermissions ? <MenuDivider /> : null}
           </>

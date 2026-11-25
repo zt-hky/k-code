@@ -9,6 +9,8 @@ import { formatTokens, formatUsd } from "@t3tools/shared/usageFormat";
 
 import { isActiveSubagentStatus, isTerminalSubagentStatus } from "./subagentRuntime.ts";
 import { resolveActiveThreadRun } from "./threadWorkflows.ts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 type Projection = OrchestrationV2ThreadProjection;
 type Subagent = OrchestrationV2Subagent;
@@ -164,6 +166,7 @@ export function formatAgentHubTotals(totals: ThreadAgentHub["totals"]): string |
 
 export function resolveSubagentPillSegment(
   turn: ThreadTurnSubagents | null,
+  resolve: MFunctionType = mFallback,
 ): SubagentPillSegment | null {
   if (turn === null) return null;
   // Finished agents stay reachable until a later turn replaces them; workflows always stay reachable.
@@ -179,11 +182,17 @@ export function resolveSubagentPillSegment(
   if (turn.liveCount > 0) {
     return {
       label: `${turn.liveCount}/${total}`,
-      accessibilityLabel: `${turn.liveCount} of ${total} agents working`,
+      accessibilityLabel: resolve(
+        msg("{live} of {total} agents working", { live: turn.liveCount, total }),
+      ),
     };
   }
   return {
-    label: `${turn.settledCount} done`,
-    accessibilityLabel: `${turn.settledCount} ${turn.settledCount === 1 ? "agent" : "agents"} done`,
+    label: resolve(msg("{count} done", { count: turn.settledCount })),
+    accessibilityLabel: resolve(
+      msg("{count, plural, one {{count} agent done} other {{count} agents done}}", {
+        count: turn.settledCount,
+      }),
+    ),
   };
 }

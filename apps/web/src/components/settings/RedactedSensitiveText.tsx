@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { flushSync } from "react-dom";
 
 import { useClientSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
@@ -32,9 +33,10 @@ export function RedactedSensitiveText(props: {
   readonly hideTooltip: string;
   readonly className?: string;
 }) {
-  const [clicked, setClicked] = useState(false);
+  const [visibility, setVisibility] = useState<"hidden" | "hiding" | "revealed">("hidden");
   const alwaysReveal = useClientSettings((settings) => settings.revealAccountEmails);
-  const revealed = alwaysReveal || clicked;
+  const clickRevealed = visibility === "revealed";
+  const revealed = alwaysReveal || clickRevealed;
   const value = props.value?.trim();
   const redacted = value ? redactedPlaceholder(value) : "";
 
@@ -51,10 +53,25 @@ export function RedactedSensitiveText(props: {
               revealed ? "text-muted-foreground" : "select-none text-muted-foreground blur-xs",
               props.className,
             )}
-            onClick={() => setClicked((current) => !current)}
+            onClick={(event) => {
+              if (!clickRevealed) return setVisibility("revealed");
+              const button = event.currentTarget;
+              flushSync(() => setVisibility("hiding"));
+              const finishHiding = () =>
+                setVisibility((current) => (current === "hiding" ? "hidden" : current));
+              const blur = button
+                .getAnimations()
+                .find(
+                  (animation) =>
+                    animation instanceof CSSTransition && animation.transitionProperty === "filter",
+                );
+              // Theme changes suppress the transition; a reversed one settles once revealed.
+              if (blur) void blur.finished.then(finishHiding, finishHiding);
+              else finishHiding();
+            }}
             aria-label={props.ariaLabel}
           >
-            {revealed ? value : redacted}
+            {!revealed && visibility === "hidden" ? redacted : value}
           </button>
         }
       />
