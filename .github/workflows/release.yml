@@ -380,10 +380,12 @@ jobs:
           path: desktop-publish/*
           if-no-files-found: error
 
+  # Cross-built on Linux like upstream: a native Windows host also runs the
+  # afterPack server compile cache, which pushes the payload past its file limit.
   desktop_windows:
     name: Build Windows desktop
     needs: [meta, bundle, build]
-    runs-on: windows-2025
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -409,6 +411,11 @@ jobs:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
 
+      - name: Install cargo-xwin
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-xwin@0.23.1
+
       - name: Stamp package versions
         run: node scripts/update-release-package-versions.ts "${{ needs.meta.outputs.version }}"
 
@@ -426,8 +433,7 @@ jobs:
           path: wsl-runtime
 
       - name: Build resource monitor
-        shell: bash
-        run: cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml --target x86_64-pc-windows-msvc
+        run: cargo xwin build --locked --release --manifest-path native/resource-monitor/Cargo.toml --target x86_64-pc-windows-msvc
 
       - name: Build desktop artifact
         shell: bash
