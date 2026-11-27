@@ -140,7 +140,12 @@ const openAICompatible: TextGeneratorDriver = {
   generate: (connection, model, prompt) => {
     const { label } = connection;
     let request = HttpClientRequest.post(endpoint(connection, "/chat/completions")).pipe(
-      HttpClientRequest.bodyJsonUnsafe({ model, messages: [{ role: "user", content: prompt }] }),
+      // Some gateways (9router) stream unless told otherwise, though OpenAI defaults to false.
+      HttpClientRequest.bodyJsonUnsafe({
+        model,
+        stream: false,
+        messages: [{ role: "user", content: prompt }],
+      }),
     );
     if (connection.apiKey) request = HttpClientRequest.bearerToken(request, connection.apiKey);
     return sendJson(label, request, ChatCompletion).pipe(

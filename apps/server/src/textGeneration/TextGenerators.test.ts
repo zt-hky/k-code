@@ -47,12 +47,14 @@ it.effect.each([
     kind: "openaiCompatible",
     path: "/v1/chat/completions",
     auth: ["authorization", "Bearer secret"],
+    stream: false,
     reply: { choices: [{ finish_reason: "stop", message: { content: '{"title":"Fix login"}' } }] },
   },
   {
     kind: "anthropic",
     path: "/v1/messages",
     auth: ["x-api-key", "secret"],
+    stream: undefined,
     reply: { stop_reason: "end_turn", content: [{ type: "text", text: '{"title":"Fix login"}' }] },
   },
 ] as const)("$kind generates structured text with its API's request shape", (api) =>
@@ -63,6 +65,7 @@ it.effect.each([
       expect(new Headers(init?.headers).get(api.auth[0])).toBe(api.auth[1]);
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe("some/model");
+      expect(body.stream).toBe(api.stream);
       expect(body.messages).toEqual([{ role: "user", content: "Name this thread." }]);
       return Response.json(api.reply);
     });
